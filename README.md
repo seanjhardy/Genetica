@@ -1,3 +1,5 @@
+![Genetica](./assets/genetica.png)
+
 # PROJECT GENETICA
 A GPU-accelerated genetic algorithm using CUDA.
 
