@@ -13,16 +13,14 @@
 }
 
 __host__ __device__ void Point::update(float dt) {
-    float acceleration_x = force.x / mass;
-    float acceleration_y = force.y / mass;
+    float2 velocity = pos - prevPos;
+    float2 accel = force / mass;
 
+    //float2 friction = velocity * pow(0.9, dt);
+    float2 newPosition = pos + velocity * pow(0.9, dt) + accel * dt * dt;
 
-    float2 newPosition = pos + (pos - prevPos) * pow(0.9f, dt)
-                         + make_float2(acceleration_x * dt * dt,
-                                       acceleration_y * dt * dt);
-
-    prevPos = newPosition;
-    pos = prevPos;
+    prevPos = pos;
+    pos = newPosition;
 
     force = float2(0.0f, 0.0f);
 }
@@ -41,10 +39,6 @@ __host__ __device__ void Point::rotate(const float2& origin, float angle) {
     float2 d = pos - origin;
     pos.x = origin.x + cosf(angle) * d.x - sinf(angle) * d.y;
     pos.y = origin.y + sinf(angle) * d.x + cosf(angle) * d.y;
-}
-
-__host__ __device__ void Point::applyForce(float2 f) {
-    force = force + f;
 }
 
 #endif

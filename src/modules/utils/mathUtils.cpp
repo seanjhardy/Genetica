@@ -19,29 +19,16 @@ inline std::vector<float2> findPerpendicularPoints(const Point& point1, const Po
     }
 
     double angle = std::atan2(y2 - y1, x2 - x1);
-    double anglePlus90 = angle + M_PI / 2;
-    double angleMinus90 = angle - M_PI / 2;
+    float anglePlus90 = angle + M_PI / 2;
+    float angleMinus90 = angle - M_PI / 2;
 
     // Calculate the coordinates of the points on each circle's circumference
-    float2 point1Circle1 = make_float2(x1 + r1 * std::cos(anglePlus90),
-                                          y1 + r1 * std::sin(anglePlus90));
-
-    float2 point2Circle1 = make_float2(x1 + r1 * std::cos(angleMinus90),
-                                          y1 + r1 * std::sin(angleMinus90));
-
-    float2 point1Circle2 = make_float2(x2 + r2 * std::cos(angleMinus90),
-                                          y2 + r2 * std::sin(angleMinus90));
-
-    float2 point2Circle2 = make_float2(x2 + r2 * std::cos(anglePlus90),
-                                          y2 + r2 * std::sin(anglePlus90));
+    float2 point1Circle1 = point1.pos + vec(anglePlus90) * r1;
+    float2 point2Circle1 = point1.pos + vec(angleMinus90) * r1;
+    float2 point1Circle2 = point2.pos + vec(angleMinus90) * r2;
+    float2 point2Circle2 = point2.pos + vec(anglePlus90) * r2;
 
     return {point1Circle1, point2Circle1, point1Circle2, point2Circle2};
-}
-
-inline std::vector<float> angleToVector(float angle) {
-    float x = std::cos(angle);
-    float y = std::sin(angle);
-    return {x, y}; // Vectors from angles are inherently normalized
 }
 
 inline float getVelocity(const Point& point) {

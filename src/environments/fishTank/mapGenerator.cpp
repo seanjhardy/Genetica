@@ -1,14 +1,15 @@
 #include <vector>
 #include <cmath>
 #include <random>
-# include "../../modules/noise/perlin.hpp"
+#include "../../modules/noise/perlin.hpp"
+#include "rock.hpp"
 
 using namespace std;
 
-inline vector<vector<bool>> generate_map(pair<int, int> map_size, int square_size, double edge_probability, double center_probability) {
+inline vector<Rock> generate_map(pair<int, int> map_size, int square_size, double edge_probability, double center_probability) {
     int x_size = round(map_size.first / square_size);
     int y_size = round(map_size.second / square_size);
-    vector<vector<bool>> map_grid(x_size, vector<bool>(y_size, false));
+    vector<Rock> rocks;
 
     // Calculate the center of the map
     double center_x = x_size / 2.0;
@@ -45,9 +46,12 @@ inline vector<vector<bool>> generate_map(pair<int, int> map_size, int square_siz
             double probability = (noise_value + 1) / 2.0;
 
             // Add the grid cell to the map
-            map_grid[x][y] = probability < edge_dropoff;
+            if (probability < edge_dropoff) {
+                rocks.emplace_back(x * square_size + square_size /2,
+                                   y * square_size + square_size /2, square_size);
+            }
         }
     }
 
-    return map_grid;
+    return rocks;
 }

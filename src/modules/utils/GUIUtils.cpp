@@ -19,11 +19,10 @@ inline void drawPolygon(sf::RenderWindow& window, const std::vector<float2>& poi
 }
 
 inline void drawCircle(sf::RenderWindow& window, sf::Vector2f position, float radius, sf::Color color) {
-    sf::CircleShape circle(50);
-    //circle.setFillColor(color);
-    //std::cout << position.x << " " << position.y << " " << radius << " " <<  std::endl;
-    //circle.setPosition({position.x - radius, position.y - radius});
-    //window.draw(circle);
+    sf::CircleShape circle(radius, 10);
+    circle.setFillColor(color);
+    circle.setPosition({position.x - radius, position.y - radius});
+    window.draw(circle);
 }
 
 #endif // GUIUTILS_HPP

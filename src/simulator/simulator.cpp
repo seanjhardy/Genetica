@@ -1,5 +1,6 @@
 // simulator.cpp
 #include "simulator.hpp"
+#include "../modules//utils/print.hpp"
 
 Simulator::Simulator(Environment& env)
         : environment(env),
@@ -8,11 +9,14 @@ Simulator::Simulator(Environment& env)
         rendering(true),
         camera(CameraController(env.getBounds(), window)){
     std::cout << "Loading Environment: " << env.getTitle() << std::endl;
+
 }
 
 void Simulator::run() {
-    sf::Clock clock; // Clock to measure elapsed time
+    sf::Clock clock;
     while (window.isOpen()) {
+        if (time == 0) this->reset();
+
         sf::Time elapsed = clock.restart(); // Restart the clock and get elapsed time
         float deltaTime = elapsed.asSeconds(); // Convert elapsed time to seconds
 
@@ -30,10 +34,21 @@ void Simulator::run() {
         }
 
         if (rendering) {
-            window.clear();
-            environment.render(window);
-            window.display();
+            std::clock_t now = std::clock();
+            auto renderDelta = static_cast<double>(now - lastRenderTime);
+            if (renderDelta >= FRAME_INTERVAL) {
+                lastRenderTime = now;
+
+                window.clear();
+                vertexManager.clear();
+                //Draw VertexManager to window
+                environment.render(vertexManager);
+                vertexManager.draw(window);
+                window.display();
+            }
         }
+
+        time++;
     }
 }
 

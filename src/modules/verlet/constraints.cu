@@ -1,5 +1,6 @@
 #include "point.hpp"
 #include <cmath>
+#include "../utils/floatOps.hpp"
 
 #ifndef M_PI
     #define M_PI 3.14159265358979323846
@@ -8,23 +9,21 @@
 __host__ __device__ inline void constrainDistance(Point& point1, Point& point2, float distance, float factor = 1.0f) {
     float currentDistance = point1.distanceTo(point2);
     float deltaDistance = factor * (distance - currentDistance);
+
     if (currentDistance == 0) {
-        currentDistance += 0.001f; // Avoid division by zero
+        currentDistance += 1e-8f; // Avoid division by zero
     }
 
-    if (std::abs(deltaDistance) < 0.01) {
+    if (std::abs(deltaDistance) < 0.001) {
         return; // No significant change needed
     }
 
-    float deltaX = (point2.pos.x - point1.pos.x) * deltaDistance / currentDistance;
-    float deltaY = (point2.pos.y - point1.pos.y) * deltaDistance / currentDistance;
+    float2 delta = (point2.pos - point1.pos) * deltaDistance / currentDistance;
 
     float massRatio = point1.mass / (point1.mass + point2.mass);
 
-    point1.pos.x -= deltaX * (1 - massRatio);
-    point1.pos.y -= deltaY * (1 - massRatio);
-    point2.pos.x += deltaX * massRatio;
-    point2.pos.y += deltaY * massRatio;
+    point1.pos -= delta * (1 - massRatio);
+    point2.pos += delta * massRatio;
 }
 
 __host__ __device__ inline void constrainAngle(Point& point1, Point& point2, Point& point3, float desiredAngle, float factor = 0.001f) {

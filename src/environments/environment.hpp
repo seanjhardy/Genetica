@@ -4,6 +4,7 @@
 #include <SFML/Graphics.hpp>
 #include <utility>
 #include <vector>
+#include "../modules/graphics/vertexManager.hpp"
 
 class Environment {
 public:
@@ -18,7 +19,7 @@ public:
     virtual ~Environment() = default;
 
     virtual void simulate(float deltaTime) = 0;
-    virtual void render(sf::RenderWindow& window) = 0;
+    virtual void render(VertexManager& window) = 0;
     virtual void reset() = 0;
 
     [[nodiscard]] const char* getTitle() const { return title; }

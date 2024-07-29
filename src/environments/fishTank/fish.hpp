@@ -26,9 +26,9 @@ public:
     void reset(const Environment& env);
     std::vector<float> random_policy(float deltaTime);
     void step(Environment& env, const std::vector<float>& action);
-    void render(sf::RenderWindow& viewer, bool stereoscopic, bool NPC);
-    void drawVentralFins(sf::RenderWindow& viewer, float x, float y,
-                         float angle, float size, const sf::Color& colour, float skew);
+    void render(VertexManager& viewer, bool stereoscopic, bool NPC);
+    void drawVentralFins(VertexManager& viewer, float2 pos,
+                         float angle, float finSize, const sf::Color& finColour, float skew);
 
     std::vector<Point*> body{};
 
