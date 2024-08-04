@@ -1,8 +1,8 @@
 #ifndef POINT_CU
 #define POINT_CU
 
-#include "point.hpp"
-#include "../utils/floatOps.hpp"
+#include "modules/verlet/point.hpp"
+#include "modules/utils/floatOps.hpp"
 
  __host__ __device__ float2 Point::getVelocity() const {
     float x_vel = pos.x - prevPos.x;
@@ -23,6 +23,11 @@ __host__ __device__ void Point::update(float dt) {
     pos = newPosition;
 
     force = float2(0.0f, 0.0f);
+}
+
+__host__ __device__ void Point::setPos(float2 newPos) {
+    pos = newPos;
+    prevPos = newPos;
 }
 
 __host__ __device__ float Point::distanceTo(const Point& other) const {

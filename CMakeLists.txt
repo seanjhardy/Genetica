@@ -6,23 +6,23 @@ set(CMAKE_CUDA_STANDARD 26)
 
 file(GLOB_RECURSE SRCS "src/*.cpp")
 file(GLOB_RECURSE CUDA_SRCS "src/*.cu")
-file(GLOB_RECURSE HEADERS "./*.hpp")
+file(GLOB_RECURSE HEADERS "./*.hpp" "src/*.tpp")
 
 set_source_files_properties(main.cpp ${SRCS} PROPERTIES LANGUAGE CXX)
 set_source_files_properties(${CUDA_SRCS} PROPERTIES LANGUAGE CUDA)
 
 # Add the executable
-add_executable(Genetica main.cpp ${SRCS} ${CUDA_SRCS} ${HEADERS})
+add_executable(Genetica main.cpp ${SRCS} ${CUDA_SRCS}
+        src/modules/graphics/UI/container.cpp
+        src/modules/graphics/UI/container.h)
 
-include_directories(./include
+file(GLOB_RECURSE INCLUDE_LIBS "${CMAKE_SOURCE_DIR}/libs/*/include")
+
+include_directories(./include ${CMAKE_SOURCE_DIR}/libs/SFML/include
         "c:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.5/include")
 
-target_link_libraries(Genetica ${CMAKE_SOURCE_DIR}/library/sfml-window-d.lib)
-target_link_libraries(Genetica ${CMAKE_SOURCE_DIR}/library/sfml-graphics-d.lib)
-target_link_libraries(Genetica ${CMAKE_SOURCE_DIR}/library/sfml-audio-d.lib)
-target_link_libraries(Genetica ${CMAKE_SOURCE_DIR}/library/sfml-network-d.lib)
-target_link_libraries(Genetica ${CMAKE_SOURCE_DIR}/library/sfml-main-d.lib)
-target_link_libraries(Genetica ${CMAKE_SOURCE_DIR}/library/sfml-system-d.lib)
+file(GLOB_RECURSE LIBS "${CMAKE_SOURCE_DIR}/libs/*.lib")
+target_link_libraries(Genetica ${LIBS})
 
 set_target_properties(Genetica PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(Genetica PROPERTIES CUDA_ARCHITECTURES "52")
@@ -31,7 +31,7 @@ file(COPY assets DESTINATION ${CMAKE_BINARY_DIR})
 
 # Copy dlls to build
 if(WIN32)
-    file(GLOB BINARY_DEP_DLLS "c:/tools/SFML-wvc/bin/*.dll")
+    file(GLOB_RECURSE BINARY_DEP_DLLS "${CMAKE_SOURCE_DIR}/libs/*.dll")
     file(COPY ${BINARY_DEP_DLLS} DESTINATION ${CMAKE_BINARY_DIR})
 
     file(GLOB MINGW_DEP_DLLS "C:/mingw64/bin/*.dll")

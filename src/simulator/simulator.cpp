@@ -1,22 +1,24 @@
 // simulator.cpp
-#include "simulator.hpp"
-#include "../modules//utils/print.hpp"
+#include "simulator/simulator.hpp"
+#include "modules/utils/print.hpp"
+#include "screens/simulationScreen.cpp"
 
-Simulator::Simulator(Environment& env)
-        : environment(env),
-          window(sf::VideoMode(800, 600), env.getTitle()),
+// Instantiate simulator
+Simulator::Simulator(Environment& env, int width, int height)
+        : window(sf::VideoMode(width, height), env.getTitle()),
         state(State::Playing),
-        rendering(true),
         camera(CameraController(env.getBounds(), window)){
-    std::cout << "Loading Environment: " << env.getTitle() << std::endl;
 
+    print("Loading Environment: ", env.getTitle());
+
+    uiManager.addScreen("simulation", getSimulationScreen(this));
+    uiManager.setCurrentScreen("simulation");
 }
 
+// Run simulation step
 void Simulator::run() {
     sf::Clock clock;
     while (window.isOpen()) {
-        if (time == 0) this->reset();
-
         sf::Time elapsed = clock.restart(); // Restart the clock and get elapsed time
         float deltaTime = elapsed.asSeconds(); // Convert elapsed time to seconds
 
@@ -30,25 +32,25 @@ void Simulator::run() {
         camera.update(deltaTime);
 
         if (state == State::Playing) {
-            environment.simulate(deltaTime);
+            GeneticAlgorithm::get().simulate(deltaTime);
         }
 
-        if (rendering) {
-            std::clock_t now = std::clock();
-            auto renderDelta = static_cast<double>(now - lastRenderTime);
-            if (renderDelta >= FRAME_INTERVAL) {
-                lastRenderTime = now;
+        std::clock_t now = std::clock();
+        auto renderDelta = static_cast<double>(now - lastRenderTime);
+        if (renderDelta >= FRAME_INTERVAL) {
+            lastRenderTime = now;
 
+            if (state != State::Fast) {
                 window.clear();
-                vertexManager.clear();
-                //Draw VertexManager to window
-                environment.render(vertexManager);
+                window.setView(camera.getView());
+                GeneticAlgorithm::get().render(vertexManager);
                 vertexManager.draw(window);
-                window.display();
-            }
-        }
 
-        time++;
+                window.setView(window.getDefaultView());
+                uiManager.draw(window);
+            }
+            window.display();
+        }
     }
 }
 
@@ -57,9 +59,5 @@ void Simulator::setState(State newState) {
 }
 
 void Simulator::reset() {
-    environment.reset();
-}
-
-void Simulator::setRendering(bool render) {
-    rendering = render;
+    GeneticAlgorithm::get().reset();
 }

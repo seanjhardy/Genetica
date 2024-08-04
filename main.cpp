@@ -1,18 +1,24 @@
 #undef main
 
 // main.cpp
-#include "src/simulator/simulator.hpp"
-#include "src/environments/fishTank/fishTank.hpp"
-#include <SFML/Graphics.hpp>
-#include <stdexcept>
+#include "simulator/simulator.hpp"
+#include "geneticAlgorithm/environments/fishTank/fishTank.hpp"
+#include "geneticAlgorithm/environments/hyperLife/hyperLife.hpp"
+#include "SFML/Graphics.hpp"
+#include "stdexcept"
 
 int main() {
     try {
-        std::cout << "Genetica v0.1" << std::endl;
-        sf::FloatRect bounds(0, 0, 800, 600);
-        FishTank env(bounds);
-        Simulator simulator(env);
+        print("Genetica v0.1");
+
+        // Set up genetic algorithm with a given environment
+        HyperLife env({0, 0, 2000, 2000});
+        GeneticAlgorithm::get().setEnvironment(env);
+
+        // Set up simulation
+        Simulator simulator(env, 800, 600);
         simulator.run();
+
     } catch (const std::runtime_error& error) {
         std::cerr << "Error: " << error.what() << std::endl;
     }

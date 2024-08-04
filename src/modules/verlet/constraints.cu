@@ -1,7 +1,6 @@
-#include "point.hpp"
-#include <cmath>
-#include "../utils/floatOps.hpp"
-
+#include "modules/verlet/point.hpp"
+#include "modules/utils/floatOps.hpp"
+#include "cmath"
 #ifndef M_PI
     #define M_PI 3.14159265358979323846
 #endif
@@ -26,25 +25,11 @@ __host__ __device__ inline void constrainDistance(Point& point1, Point& point2, 
     point2.pos += delta * massRatio;
 }
 
-__host__ __device__ inline void constrainAngle(Point& point1, Point& point2, Point& point3, float desiredAngle, float factor = 0.001f) {
-    float angle1 = point2.angleTo(point1);
-    float angle2 = point2.angleTo(point3);
-    float currentAngle = angle2 - angle1;
-
-    // Normalize the angle difference
-    float deltaAngle = desiredAngle - currentAngle;
-    if (deltaAngle <= -M_PI) {
-        deltaAngle += 2 * M_PI;
-    } else if (deltaAngle >= M_PI) {
-        deltaAngle -= 2 * M_PI;
-    }
-
-    if (std::abs(deltaAngle) * factor < 1e-3) {
-        return; // No significant change needed
-    }
-
-    point1.rotate(point2.pos, factor * deltaAngle);
-    point3.rotate(point2.pos, factor * deltaAngle);
+__host__ __device__ inline void constrainAngle(Point& point1, Point& point2, float targetAngle, float stiffness) {
+    float length = point1.distanceTo(point2);
+    float2 newPos = point1.pos + vec(targetAngle) * length;
+    point2.prevPos += (newPos - point2.pos) * stiffness * 0.99;
+    point2.pos += (newPos - point2.pos) * stiffness;
 }
 
 __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect bounds) {
@@ -73,4 +58,69 @@ __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect b
     }
 
     return updateDist;
+}
+
+__host__ __device__ inline void checkCollisionCircleRec(Point& circle, Point& rect) {
+    float xOverlap = 0.0f;
+    float yOverlap = 0.0f;
+    float x = circle.pos.x;
+    float y = circle.pos.y;
+    float pX = circle.pos.x;
+    float pY = circle.pos.y;
+    float size = circle.mass;
+    float minX = rect.pos.x - rect.mass / 2;
+    float maxX = rect.pos.x + rect.mass / 2;
+    float minY = rect.pos.y - rect.mass / 2;
+    float maxY = rect.pos.y + rect.mass / 2;
+
+    // Check if the circle is completely outside the rectangle
+    if (pX < minX - size || pX > maxX + size || pY < minY - size || pY > maxY + size) {
+        return;
+    }
+
+    // Compute xOverlap
+    if (pX < minX) {
+        pX = minX;
+    } else if (pX >= maxX) {
+        pX = maxX;
+    } else {
+        float recCenterX = (minX + maxX) / 2.0f;
+        xOverlap = (pX < recCenterX) ? (minX - pX) : (maxX - pX);
+    }
+
+    // Compute yOverlap
+    if (pY < minY) {
+        pY = minY;
+    } else if (pY >= maxY) {
+        pY = maxY;
+    } else {
+        float recCenterY = (minY + maxY) / 2.0f;
+        yOverlap = (pY < recCenterY) ? (minY - pY) : (maxY - pY);
+    }
+
+    // Check collision
+    if ((x - pX) * (x - pX) + (y - pY) * (y - pY) < size * size) {
+        float contactX = pX;
+        float contactY = pY;
+
+        if (fabsf(xOverlap) < fabsf(yOverlap)) {
+            contactX += xOverlap;
+        } else if (fabsf(yOverlap) < fabsf(xOverlap)) {
+            contactY += yOverlap;
+        }
+
+        float penX = x - contactX;
+        float penY = y - contactY;
+        float pLength = sqrtf(penX * penX + penY * penY);
+        float depth = size - pLength;
+        float normalX = penX / pLength;
+        float normalY = penY / pLength;
+
+        if (xOverlap and yOverlap) {
+            depth -= size * 2.0f;
+        }
+
+        circle.pos.x += normalX * depth * 1.1;
+        circle.pos.y += normalY * depth * 1.1;
+    }
 }
