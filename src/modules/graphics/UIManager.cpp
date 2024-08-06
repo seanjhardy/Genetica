@@ -1,9 +1,10 @@
-#include "SFML/Graphics.hpp"
+#include <SFML/Graphics.hpp>
 #include "cmath"
-#include "modules/graphics/UIManager.hpp"
+#include <modules/graphics/UIManager.hpp>
+#include <modules/utils/print.hpp>
 
-void UIManager::addScreen(const std::string& name, std::unique_ptr<Screen> screen) {
-    screens.insert({name, std::move(screen)});
+void UIManager::addScreen(const std::string& name, Screen* screen) {
+    screens.insert({name, screen});
 }
 
 void UIManager::draw(sf::RenderTarget& target) const {

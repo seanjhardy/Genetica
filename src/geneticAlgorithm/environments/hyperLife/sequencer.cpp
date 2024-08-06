@@ -1,12 +1,12 @@
 #include "unordered_map"
-#include "geneticAlgorithm/environments/hyperLife/sequencer.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/segmentType.hpp"
-#include "geneticAlgorithm/genomeUtils.hpp"
+#include <geneticAlgorithm/environments/hyperLife/sequencer.hpp>
+#include <geneticAlgorithm/environments/hyperLife/cellParts/segmentType.hpp>
+#include <geneticAlgorithm/genomeUtils.hpp>
 #include <string>
 #include <utility>
 
-inline unordered_map<int, CellPartType&> sequence(LifeForm* lifeForm, const unordered_map<int, string>& genome) {
-    unordered_map<int, CellPartType&> cellParts;
+std::unordered_map<int, CellPartType&> sequence(LifeForm* lifeForm, const std::unordered_map<int, string>& genome) {
+    std::unordered_map<int, CellPartType&> cellParts;
 
     string header = genome.at(0);
 
@@ -57,7 +57,7 @@ inline unordered_map<int, CellPartType&> sequence(LifeForm* lifeForm, const unor
     return cellParts;
 }
 
-inline std::pair<int, CellPartType&> sequenceChromosome(LifeForm* lifeForm, int key, string chromosome) {
+std::pair<int, CellPartType&> sequenceChromosome(LifeForm* lifeForm, int key, string chromosome) {
     std::string rna = std::move(chromosome);
     bool isSegment = true;//readBase(chromosome, 0) > 0 || key == 1;
 
@@ -85,7 +85,7 @@ inline std::pair<int, CellPartType&> sequenceChromosome(LifeForm* lifeForm, int 
 }
 
 // Generate a build schematic for children of the cell part
-inline void construct(LifeForm* lifeForm, int key, string chromosome) {
+void construct(LifeForm* lifeForm, int key, string chromosome) {
     if (!lifeForm->cellParts.contains(key)) return;
 
     CellPartType& partToBuildFrom = lifeForm->cellParts.at(key);
@@ -106,7 +106,7 @@ inline void construct(LifeForm* lifeForm, int key, string chromosome) {
         // Skip adding CellPart if another CellPart with the same angle already exists
         for (CellPartSchematic child : dynamic_cast<SegmentType&>(partToBuildFrom).children) {
             if (child.angleOnBody == angleOnBody) {
-                goto skip;
+                continue;
             }
         }
 
@@ -126,7 +126,7 @@ inline void construct(LifeForm* lifeForm, int key, string chromosome) {
 
         // Ignore radial symmetry for nodes at 0 and 180 degrees, pointing at 0 degrees (aka along the symmetry line)
         if ((angleOnBody == (float)M_PI || angleOnBody == 0) && angleFromBody == 0) {
-            goto skip;
+            continue;
         }
 
         // If the symmetry type is global or local, add a flipped segment
@@ -139,7 +139,5 @@ inline void construct(LifeForm* lifeForm, int key, string chromosome) {
                                              M_PI * 2 - angleOnBody, -angleFromBody);
             dynamic_cast<SegmentType&>(partToBuildFrom).addChild(cellPartDataFlipped);
         }
-
-        skip:;
     }
 }

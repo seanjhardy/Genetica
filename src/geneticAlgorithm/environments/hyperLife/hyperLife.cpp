@@ -1,7 +1,7 @@
-#include "geneticAlgorithm/environment.hpp"
-#include "modules/verlet/point.hpp"
-#include "geneticAlgorithm/environments/hyperLife/hyperLife.hpp"
-#include "modules/cuda/updatePoints.hpp"
+#include <geneticAlgorithm/environment.hpp>
+#include <modules/verlet/point.hpp>
+#include <geneticAlgorithm/environments/hyperLife/hyperLife.hpp>
+#include <modules/cuda/updatePoints.hpp>
 
 HyperLife::HyperLife(const sf::FloatRect& bounds): Environment("HyperLife", bounds) {
 

@@ -2,8 +2,8 @@
 
 // main.cpp
 #include "simulator/simulator.hpp"
-#include "geneticAlgorithm/environments/fishTank/fishTank.hpp"
-#include "geneticAlgorithm/environments/hyperLife/hyperLife.hpp"
+#include <geneticAlgorithm/environments/fishTank/fishTank.hpp>
+#include <geneticAlgorithm/environments/hyperLife/hyperLife.hpp>
 #include "SFML/Graphics.hpp"
 #include "stdexcept"
 

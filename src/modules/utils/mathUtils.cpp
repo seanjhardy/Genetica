@@ -1,8 +1,8 @@
 #include "cmath"
 #include "utility" // For std::pair
-#include "modules/verlet/point.hpp"
-#include "modules/utils/floatOps.hpp"
-#include "modules/utils/mathUtils.hpp"
+#include <modules/verlet/point.hpp>
+#include <modules/utils/floatOps.hpp>
+#include <modules/utils/mathUtils.hpp>
 #ifndef M_PI_2
     #define M_PI_2 6.283185f
 #endif

@@ -1,8 +1,8 @@
 #ifndef POINT_CU
 #define POINT_CU
 
-#include "modules/verlet/point.hpp"
-#include "modules/utils/floatOps.hpp"
+#include <modules/verlet/point.hpp>
+#include <modules/utils/floatOps.hpp>
 
  __host__ __device__ float2 Point::getVelocity() const {
     float x_vel = pos.x - prevPos.x;

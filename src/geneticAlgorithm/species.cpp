@@ -1,5 +1,5 @@
-#include "geneticAlgorithm/species.hpp"
-#include "geneticAlgorithm/geneticAlgorithm.hpp"
+#include <geneticAlgorithm/species.hpp>
+#include <geneticAlgorithm/geneticAlgorithm.hpp>
 
 void Species::addCreature(Individual* creature) {
     members.push_back(creature);

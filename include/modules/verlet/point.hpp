@@ -4,8 +4,8 @@
 #include "cuda_runtime.h"
 #include "SFML/Graphics.hpp"
 #include "iostream"
-#include "modules/utils/print.hpp"
-#include "modules/graphics/vertexManager.hpp"
+#include <modules/utils/print.hpp>
+#include <modules/graphics/vertexManager.hpp>
 
 struct Point {
     float2 pos{};

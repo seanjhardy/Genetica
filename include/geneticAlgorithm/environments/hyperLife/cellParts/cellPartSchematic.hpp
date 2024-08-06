@@ -1,7 +1,7 @@
 #ifndef CELL_PART_DATA
 #define CELL_PART_DATA
 
-#include "cellPartType.hpp"
+class CellPartType;
 
 /**
  * A cellPartSchematic represents the concept of a particular instance of a given cell part,

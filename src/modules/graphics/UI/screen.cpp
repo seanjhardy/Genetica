@@ -1,9 +1,8 @@
-#include "modules/graphics/UI/screen.hpp"
-#include "SFML/Graphics.hpp"
-#include "vector"
+#include <modules/graphics/UI/screen.hpp>
+#include <SFML/Graphics.hpp>
 
-void Screen::addElement(std::unique_ptr<UIElement> element) {
-    elements.push_back(std::move(element));
+void Screen::addElement(UIElement* element) {
+    elements.push_back(element);
 }
 
 void Screen::draw(sf::RenderTarget& target) const {

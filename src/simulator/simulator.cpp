@@ -1,7 +1,6 @@
 // simulator.cpp
 #include "simulator/simulator.hpp"
-#include "modules/utils/print.hpp"
-#include "screens/simulationScreen.cpp"
+#include "simulator/screens/simulationScreen.hpp"
 
 // Instantiate simulator
 Simulator::Simulator(Environment& env, int width, int height)
@@ -31,9 +30,9 @@ void Simulator::run() {
         }
         camera.update(deltaTime);
 
-        if (state == State::Playing) {
-            GeneticAlgorithm::get().simulate(deltaTime);
-        }
+        //if (state == State::Playing) {
+        //    GeneticAlgorithm::get().simulate(deltaTime);
+        //}
 
         std::clock_t now = std::clock();
         auto renderDelta = static_cast<double>(now - lastRenderTime);
@@ -43,7 +42,7 @@ void Simulator::run() {
             if (state != State::Fast) {
                 window.clear();
                 window.setView(camera.getView());
-                GeneticAlgorithm::get().render(vertexManager);
+                //GeneticAlgorithm::get().render(vertexManager);
                 vertexManager.draw(window);
 
                 window.setView(window.getDefaultView());

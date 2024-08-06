@@ -1,9 +1,9 @@
-#include "SFML/Graphics.hpp"
+#include <SFML/Graphics.hpp>
 #include "vector"
 #include "cmath"
 #include "vector_types.h"
-#include "modules/graphics/vertexManager.hpp"
-#include "modules/utils/floatOps.hpp"
+#include <modules/graphics/vertexManager.hpp>
+#include <modules/utils/floatOps.hpp>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif

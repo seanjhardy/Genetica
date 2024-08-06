@@ -1,7 +1,7 @@
 #ifndef CELL_PART
 #define CELL_PART
 
-#include "geneticAlgorithm/environments/hyperLife/lifeform.hpp"
+#include <geneticAlgorithm/environments/hyperLife/lifeform.hpp>
 #include "SFML/Graphics.hpp"
 
 /**

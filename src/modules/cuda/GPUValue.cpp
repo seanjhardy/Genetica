@@ -1,6 +1,6 @@
 #include "vector"
 #include "cuda_runtime.h"
-#include "modules/cuda/GPUValue.hpp"
+#include <modules/cuda/GPUValue.hpp>
 
 
 template<typename T>

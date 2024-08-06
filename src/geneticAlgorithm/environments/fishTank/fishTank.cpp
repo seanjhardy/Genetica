@@ -1,10 +1,8 @@
-#include "geneticAlgorithm/environments/fishTank/fish.hpp"
-#include "geneticAlgorithm/environments/fishTank/fishTank.hpp"
+#include <geneticAlgorithm/environments/fishTank/fish.hpp>
+#include <geneticAlgorithm/environments/fishTank/fishTank.hpp>
 #include "mapGenerator.cpp"
-#include "modules/cuda/updatePoints.hpp"
 #include "cuda_runtime.h"
-#include "geneticAlgorithm/environments/fishTank/rock.hpp"
-#include "modules/noise/random.hpp"
+#include <modules/noise/random.hpp>
 
 FishTank::FishTank(const sf::FloatRect& bounds)
         : Environment("FishTank", bounds) {
@@ -18,7 +16,7 @@ void FishTank::simulate(float deltaTime) {
     dt = 1;//deltaTime;
 
     for (Fish &fish : fishArray) {
-        fish.step(*this);
+        fish.simulate(deltaTime);
     }
     points.syncToDevice();
     //updatePoints(points, connections, bounds, dt);
@@ -47,8 +45,8 @@ std::pair<int, int> FishTank::get_random_pos() {
     int x = 0, y = 0;
 
     while (!valid_pos) {
-        x = getRandom(bounds.width);
-        y = getRandom(bounds.height);
+        x = Random::random(bounds.width);
+        y = Random::random(bounds.height);
         valid_pos = true;
     }
 

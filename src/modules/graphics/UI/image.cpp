@@ -1,6 +1,6 @@
-#include "SFML/Graphics.hpp"
-#include "modules/graphics/UI/UIElement.hpp"
-#include "modules/graphics/UI/image.hpp"
+#include <SFML/Graphics.hpp>
+#include <modules/graphics/UI/UIElement.hpp>
+#include <modules/graphics/UI/image.hpp>
 
 ImageElement::ImageElement(const sf::FloatRect& bounds, const std::string& imagePath) : bounds(bounds) {
     if (!texture.loadFromFile(imagePath)) {

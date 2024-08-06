@@ -12,9 +12,7 @@ set_source_files_properties(main.cpp ${SRCS} PROPERTIES LANGUAGE CXX)
 set_source_files_properties(${CUDA_SRCS} PROPERTIES LANGUAGE CUDA)
 
 # Add the executable
-add_executable(Genetica main.cpp ${SRCS} ${CUDA_SRCS}
-        src/modules/graphics/UI/container.cpp
-        src/modules/graphics/UI/container.h)
+add_executable(Genetica main.cpp ${SRCS} ${CUDA_SRCS})
 
 file(GLOB_RECURSE INCLUDE_LIBS "${CMAKE_SOURCE_DIR}/libs/*/include")
 

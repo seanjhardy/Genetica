@@ -2,13 +2,13 @@
 #ifndef FISH_TANK_HPP
 #define FISH_TANK_HPP
 
-#include "geneticAlgorithm/environment.hpp"
+#include <geneticAlgorithm/environment.hpp>
 #include "random"
-#include "modules/verlet/point.hpp"
-#include "geneticAlgorithm/environments/fishTank/fish.hpp"
-#include "modules/cuda/GPUVector.hpp"
-#include "modules/graphics/vertexManager.hpp"
-#include "geneticAlgorithm/environments/fishTank/rock.hpp"
+#include <modules/verlet/point.hpp>
+#include <geneticAlgorithm/environments/fishTank/fish.hpp>
+#include <modules/cuda/GPUVector.hpp>
+#include <modules/graphics/vertexManager.hpp>
+#include <geneticAlgorithm/environments/fishTank/rock.hpp>
 
 class FishTank : public Environment {
 public:

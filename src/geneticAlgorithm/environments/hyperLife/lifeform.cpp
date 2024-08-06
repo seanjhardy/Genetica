@@ -1,9 +1,12 @@
 #include <utility>
-
 #include "vector_types.h"
-#include "geneticAlgorithm/environments/hyperLife/lifeform.hpp"
-#include "geneticAlgorithm/environments/hyperLife/sequencer.hpp"
-#include "geneticAlgorithm/genomeUtils.hpp"
+#include <geneticAlgorithm/environments/hyperLife/lifeform.hpp>
+#include <geneticAlgorithm/environments/hyperLife/sequencer.hpp>
+#include <geneticAlgorithm/genomeUtils.hpp>
+#include <geneticAlgorithm/environments/hyperLife/cellParts/segmentType.hpp>
+#include "unordered_map"
+
+using namespace std;
 
 int LifeForm::HEADER_SIZE = 35;
 int LifeForm::CELL_DATA_SIZE = 10;

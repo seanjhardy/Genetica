@@ -1,8 +1,8 @@
 #ifndef ROCK
 #define ROCK
 #include "SFML/Graphics.hpp"
-#include "modules/verlet/point.hpp"
-#include "modules/utils/floatOps.hpp"
+#include <modules/verlet/point.hpp>
+#include <modules/utils/floatOps.hpp>
 
 class Rock : public Point {
 public:

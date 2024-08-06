@@ -2,26 +2,29 @@
 #define FISH_CPP
 
 // Fish.cpp
-#include "geneticAlgorithm/environments/fishTank/fish.hpp"
-#include "geneticAlgorithm/environments/fishTank/fishTank.hpp"
+#include <geneticAlgorithm/environments/fishTank/fish.hpp>
+#include <geneticAlgorithm/environments/fishTank/fishTank.hpp>
 #include "cmath"
 #include "algorithm"
-#include "modules/utils/mathUtils.hpp"
+#include <modules/utils/mathUtils.hpp>
 #include "../../../modules/verlet/constraints.cu"
-#include "modules/noise/random.hpp"
+#include <modules/noise/random.hpp>
 
 const sf::Color Fish::colour = sf::Color(255, 0, 0);
+const float Fish::maxAng = 10 * (M_PI / 180);
+const float Fish::maxAccel = 10.0f;
 
 Fish::Fish(FishTank* fishTank, float x, float y)
-        : Individual(fishTank), dir_change(0), dir_change_avg(0), dir(0), target_dir(0), target_speed(0),
-          size(5),
+        : Individual(fishTank, unordered_map<int, string>()),
+          dir_change(0), dir_change_avg(0), dir(0), target_dir(0),
+          target_speed(0), size(5),
           collision_force(4, 0) {
 
     std::vector<float3> points = {
-            make_float3(x + 20, y, 4.0f),
-            make_float3(x + 5, y, 5.0f),
-            make_float3(x - 10, y, 2.0f),
-            make_float3(x - 25, y, 0.6f)
+        make_float3(x + 20, y, 4.0f),
+        make_float3(x + 5, y, 5.0f),
+        make_float3(x - 10, y, 2.0f),
+        make_float3(x - 25, y, 0.6f)
     };
 
     for (int i = 0; i < points.size(); ++i) {
@@ -54,12 +57,12 @@ std::tuple<float, float> Fish::random_policy(float deltaTime) {
     dir_change /= Fish::maxAng;
 
     //float2 vel = body[0]->getVelocity();
-    if (getRandom() < 0.2 * deltaTime || reset) {
-        target_dir = getRandom() * M_PI * 2;
+    if (Random::random() < 0.2 * deltaTime || reset) {
+        target_dir = Random::random() * M_PI * 2;
     }
 
-    if (getRandom() < 0.2 * deltaTime || reset) {
-        target_speed = getRandom() * (getRandom() < 0.2f ? -1.0f : 1.0f);
+    if (Random::random() < 0.2 * deltaTime || reset) {
+        target_speed = Random::random() * (Random::random() < 0.2f ? -1.0f : 1.0f);
     }
 
     if (std::abs(collision_force[0]) > 0.1f) {
@@ -69,13 +72,13 @@ std::tuple<float, float> Fish::random_policy(float deltaTime) {
 }
 
 // Step method implementation
-void Fish::step(Environment &env) {
-    std::tuple<float, float> action = random_policy(env.dt);
+void Fish::simulate(float dt) {
+    std::tuple<float, float> action = random_policy(dt);
     float accel = std::get<0>(action) * (std::get<0>(action) >= 0 ? 1 : -0.2) * Fish::maxAccel;
 
     dir_change = std::get<1>(action) * Fish::maxAng;
     dir_change_avg = dir_change_avg * 0.9 + dir_change * 0.1;
-    dir += dir_change * env.dt;
+    dir += dir_change * dt;
 
     body[0]->force += accel * vec(dir);
 }

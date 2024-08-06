@@ -4,32 +4,33 @@
 // Fish.hpp
 #include "vector"
 #include "cmath"
-#include "modules/verlet/point.hpp"
-#include "geneticAlgorithm/environment.hpp"
-#include "geneticAlgorithm/individual.hpp"
+#include <modules/verlet/point.hpp>
+#include <geneticAlgorithm/environment.hpp>
+#include <geneticAlgorithm/individual.hpp>
 
 #ifndef M_PI
     #define M_PI 3.14159265358979323846
 #endif
 class FishTank;
 
-class Fish : Individual {
+class Fish : public Individual {
 public:
-    static constexpr float maxAng = 10 * (M_PI / 180); // Convert degrees to radians
-    static constexpr float maxAccel = 10.0f;
+    static const float maxAng; // Convert degrees to radians
+    static const float maxAccel;
     static const sf::Color colour;
 
     Fish(FishTank* fishTank, float x, float y);
 
     void set_position(float x, float y);
     std::tuple<float, float> random_policy(float deltaTime);
-    void step(Environment& env) override;
+    void simulate(float dt) override;
     void render(VertexManager& viewer) override;
     void drawVentralFins(VertexManager& viewer, float2 pos,
                          float angle, float finSize, const sf::Color& finColour, float skew);
     void mutate() override {};
-    void combine(Individual *partner) override {};
     void init() override;
+    Individual& combine(Individual *partner) override { return (Individual &) *this; };
+    Individual& clone(bool mutate) override {return (Individual &) *this; };
 
     std::vector<Point*> body{};
 

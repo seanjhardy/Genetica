@@ -1,9 +1,9 @@
-#include "modules/verlet/point.hpp"
+#include <modules/verlet/point.hpp>
 #include "../verlet/constraints.cu"
 #include "cuda_runtime.h"
-#include "modules/cuda/updatePoints.hpp"
-#include "SFML/Graphics.hpp"
-#include "geneticAlgorithm/environments/fishTank/rock.hpp"
+#include <modules/cuda/updatePoints.hpp>
+#include <SFML/Graphics.hpp>
+#include <geneticAlgorithm/environments/fishTank/rock.hpp>
 
 __global__ void updatePointsKernel(Point* points, int numParticles, float dt, sf::FloatRect* bounds) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;

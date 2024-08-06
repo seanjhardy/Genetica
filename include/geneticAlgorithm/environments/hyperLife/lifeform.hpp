@@ -4,13 +4,16 @@
 // Fish.hpp
 #include "vector"
 #include "cmath"
-#include "modules/verlet/point.hpp"
-#include "geneticAlgorithm/environment.hpp"
-#include "geneticAlgorithm/individual.hpp"
+#include <modules/verlet/point.hpp>
+#include <geneticAlgorithm/environment.hpp>
+#include <geneticAlgorithm/individual.hpp>
 #include "hyperLife.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/cellPartInstance.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/cellPartType.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/segmentType.hpp"
+#include "unordered_map"
+#include "map"
+
+class CellPartInstance;
+class CellPartType;
+class CellPartSchematic;
 
 class LifeForm : public Individual {
 public:
@@ -21,7 +24,7 @@ public:
         NONE, LOCAL, GLOBAL, RADIAL
     };
 
-    unordered_map<int, CellPartType&> cellParts{};
+    std::unordered_map<int, CellPartType&> cellParts{};
     vector<CellPartInstance*> cellPartInstances;
     vector<CellPartInstance*> inputs;
     vector<CellPartInstance*> outputs;
@@ -41,10 +44,10 @@ public:
     int numChildren = 0;
     float size = 0;
 
-    int randomTime = int(getRandom(0, 50));
+    int randomTime = int(Random::random(0, 50));
 
 
-    LifeForm(HyperLife* env, float2 pos, unordered_map<int, string> genome);
+    LifeForm(HyperLife* env, float2 pos, std::unordered_map<int, string> genome);
 
     void simulate(float dt) override;
     void render(VertexManager& viewer) override;

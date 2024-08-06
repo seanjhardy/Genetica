@@ -1,11 +1,11 @@
-#include "SFML/Graphics.hpp"
-#include "modules/graphics/UI/UIElement.hpp"
-#include "modules/graphics/UI/button.hpp"
+#include <SFML/Graphics.hpp>
+#include <modules/graphics/UI/UIElement.hpp>
+#include <modules/graphics/UI/button.hpp>
 #include <functional>
 #include <utility>
 
-Button::Button(const sf::FloatRect& bounds, const std::string& text, auto onClick)
-        : bounds(bounds), onClick(std::move(onClick)) {
+Button::Button(const std::string& text, std::function<void()> onClick)
+        : onClick(std::move(onClick)) {
     buttonShape.setSize(sf::Vector2f(bounds.width, bounds.height));
     buttonShape.setFillColor(sf::Color::Blue);
 

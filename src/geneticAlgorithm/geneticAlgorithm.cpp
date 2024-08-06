@@ -1,6 +1,6 @@
-#include "geneticAlgorithm/geneticAlgorithm.hpp"
-#include "modules/noise/random.hpp"
-#include "geneticAlgorithm/genomeUtils.hpp"
+#include <geneticAlgorithm/geneticAlgorithm.hpp>
+#include <modules/noise/random.hpp>
+#include <geneticAlgorithm/genomeUtils.hpp>
 
 GeneticAlgorithm& GeneticAlgorithm::get(){
     static GeneticAlgorithm geneticAlgorithm;
@@ -27,15 +27,15 @@ unordered_map<int, string> GeneticAlgorithm::mutate(const unordered_map<int, str
     // Clone genes
     for (auto& [key, value]: genome) {
         mutatedGenome.insert({key, value});
-        if (getRandom() < cloneGeneChance) {
+        if (Random::random() < cloneGeneChance) {
             mutatedGenome.insert({nextGeneID(), value});
         }
     }
     // Insert new genes
-    float insertRandom = getRandom();
+    float insertRandom = Random::random();
     if (insertRandom < insertGeneChance) {
         string newChromosome;
-        int size = getRandom(headerSize, MAX_CHROMOSOME_SIZE);
+        int size = Random::random(headerSize, MAX_CHROMOSOME_SIZE);
         for(int i = 0; i < size; i++) {
             //TODO: Fix random character generation
             newChromosome += std::to_string(rand() % 4);
@@ -52,7 +52,7 @@ unordered_map<int, string> GeneticAlgorithm::mutate(const unordered_map<int, str
     for (auto& [key, value]: mutatedGenome) {
         for(int i = 0; i <value.size(); i++) {
             int adjustedIndex = i - headerSize - (cellDataSize - 1);
-            if(getRandom() < cloneBaseChance &&
+            if(Random::random() < cloneBaseChance &&
             i >= headerSize && adjustedIndex % cellDataSize == 0){
                 string lastItems = value.substr(i - (cellDataSize - 1),i + 1);
                 value += lastItems;
@@ -69,14 +69,14 @@ string GeneticAlgorithm::mutateGene(unordered_map<int, string> genome,
     string mutatedGene = gene;
     for (int i = 0; i < gene.size(); i++) {
         int base = readBase(gene);
-        float mutateParentGene = getRandom();
+        float mutateParentGene = Random::random();
         int adjustedIndex = i - headerSize - (cellDataSize - 1);
         // Mutate base
-        if (getRandom() < mutateBaseChance) {
+        if (Random::random() < mutateBaseChance) {
             base = rand() % 4;
         }
         // Delete base
-        if (getRandom() > deleteBaseChance &&
+        if (Random::random() > deleteBaseChance &&
             !(mutateParentGene < mutateSectionLocationChance &&
               i >= headerSize &&
               (adjustedIndex % cellDataSize == 0))) {
@@ -85,7 +85,7 @@ string GeneticAlgorithm::mutateGene(unordered_map<int, string> genome,
 
         if (i >= headerSize && adjustedIndex % cellDataSize == 0) {
             // Insert new section
-            if (getRandom() < insertGeneChance) {
+            if (Random::random() < insertGeneChance) {
                 for (int j = 0; i < cellDataSize; j++) {
                     mutatedGene += rand() % 4;
                 }

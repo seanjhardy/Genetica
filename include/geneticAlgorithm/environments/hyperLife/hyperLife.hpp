@@ -3,12 +3,12 @@
 #define HYPERLIFE_HPP
 
 #include "vector"
-#include "geneticAlgorithm/environment.hpp"
+#include <geneticAlgorithm/environment.hpp>
 #include "random"
-#include "modules/verlet/point.hpp"
-#include "modules/cuda/GPUVector.hpp"
-#include "modules/graphics/vertexManager.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/segmentInstance.hpp"
+#include <modules/verlet/point.hpp>
+#include <modules/cuda/GPUVector.hpp>
+#include <modules/graphics/vertexManager.hpp>
+#include <geneticAlgorithm/environments/hyperLife/cellParts/segmentInstance.hpp>
 
 /**
  * A 2D top-down simulation of multi-cellular organisms with modular neural networks.

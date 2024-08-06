@@ -2,7 +2,7 @@
 #define TEXT_ELEMENT
 
 #include "SFML/Graphics.hpp"
-#include "modules/graphics/UI/UIElement.hpp"
+#include <modules/graphics/UI/UIElement.hpp>
 
 class TextElement : public UIElement {
 public:

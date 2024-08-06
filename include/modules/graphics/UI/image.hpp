@@ -2,7 +2,7 @@
 #define IMAGE_ELEMENT
 
 #include "SFML/Graphics.hpp"
-#include "modules/graphics/UI/UIElement.hpp"
+#include <modules/graphics/UI/UIElement.hpp>
 
 class ImageElement : public UIElement {
 public:

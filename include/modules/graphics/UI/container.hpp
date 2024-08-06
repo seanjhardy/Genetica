@@ -8,14 +8,14 @@
 #include "vector"
 #include "memory"
 
-class Container : public UIElement {
+class Container : public UIElement, public FlexItem {
 public:
     enum class Direction { Row, Column };
     enum class Alignment { Start, Center, End, SpaceBetween, SpaceAround };
 
-    Container(Direction direction = Direction::Row,
-              Alignment mainAlignment = Alignment::Start,
-              Alignment crossAlignment = Alignment::Start);
+    explicit Container(Direction direction = Direction::Row,
+                       Alignment mainAlignment = Alignment::Start,
+                       Alignment crossAlignment = Alignment::Start);
     void addChild(UIElement* child, Size width, Size height);
     void removeChild(UIElement* child);
 

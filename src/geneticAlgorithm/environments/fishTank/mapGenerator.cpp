@@ -1,8 +1,8 @@
 #include "vector"
 #include "cmath"
 #include "random"
-#include "modules/noise/perlin.hpp"
-#include "geneticAlgorithm/environments/fishTank/rock.hpp"
+#include <modules/noise/perlin.hpp>
+#include <geneticAlgorithm/environments/fishTank/rock.hpp>
 
 using namespace std;
 

@@ -3,10 +3,10 @@
 
 #include "vector"
 #include "cellPartInstance.hpp"
-#include "modules/noise/random.hpp"
-#include "modules/utils/floatOps.hpp"
-#include "geneticAlgorithm/geneticAlgorithm.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/CellPartSchematic.hpp"
+#include <modules/noise/random.hpp>
+#include <modules/utils/floatOps.hpp>
+#include <geneticAlgorithm/geneticAlgorithm.hpp>
+#include <geneticAlgorithm/environments/hyperLife/cellParts/CellPartSchematic.hpp>
 
 /**
  * A segment instance is a specific instantiation of a cell part, adding an endpoint to the base class,

@@ -2,7 +2,6 @@
 #define SEGMENT_TYPE
 
 #include "../lifeform.hpp"
-#include "cellPartSchematic.hpp"
 #include "cellPartType.hpp"
 
 class LifeForm;

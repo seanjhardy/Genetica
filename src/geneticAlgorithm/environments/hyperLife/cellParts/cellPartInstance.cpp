@@ -1,8 +1,6 @@
-#include "geneticAlgorithm/environments/hyperLife/cellParts/cellPartInstance.hpp"
-#include "modules/utils/mathUtils.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/segmentType.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/segmentInstance.hpp"
-#include "modules/utils/floatOps.hpp"
+#include <modules/utils/mathUtils.hpp>
+#include <geneticAlgorithm/environments/hyperLife/cellParts/segmentType.hpp>
+#include <geneticAlgorithm/environments/hyperLife/cellParts/cellPartInstance.hpp>
 
 float CellPartInstance::initialSize = 0.2;
 

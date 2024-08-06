@@ -4,10 +4,10 @@
 #include "SFML/Graphics.hpp"
 #include "vector"
 #include "CameraController.hpp"
-#include "modules/graphics/vertexManager.hpp"
-#include "geneticAlgorithm/environment.hpp"
-#include "geneticAlgorithm/geneticAlgorithm.hpp"
-#include "modules/graphics/UIManager.hpp"
+#include <modules/graphics/vertexManager.hpp>
+#include <geneticAlgorithm/environment.hpp>
+#include <geneticAlgorithm/geneticAlgorithm.hpp>
+#include <modules/graphics/UIManager.hpp>
 
 class Simulator {
 public:

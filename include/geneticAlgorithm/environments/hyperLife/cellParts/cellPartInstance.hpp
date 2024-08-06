@@ -1,7 +1,7 @@
 #ifndef CELL_PART_INSTANCE
 #define CELL_PART_INSTANCE
 
-#include "modules/verlet/point.hpp"
+#include <modules/verlet/point.hpp>
 
 class LifeForm;
 class SegmentInstance;
@@ -19,7 +19,7 @@ public:
     static float initialSize;
     float lastSize = initialSize;
     float size = initialSize;
-    float angle = 0, realAngle;
+    float angle = 0, realAngle{};
     float lastAngle = 0;
     float2 pointOnParent{};
     float2 rotatedPoint{};

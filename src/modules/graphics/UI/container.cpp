@@ -1,15 +1,23 @@
-#include "SFML/Graphics.hpp"
-#include "modules/graphics/UI/container.hpp"
+#include <SFML/Graphics.hpp>
+#include <modules/graphics/UI/container.hpp>
 #include "vector"
 #include "memory"
+#include <modules/utils/print.hpp>
 
-Container::Container(Direction direction, Alignment mainAlignment, Alignment crossAlignment)
-        : m_direction(direction), m_mainAlignment(mainAlignment), m_crossAlignment(crossAlignment) {}
+Container::Container(Size width, Size height, Direction direction, Alignment mainAlignment, Alignment crossAlignment)
+        : FlexItem(this, width, height),
+        m_direction(direction), m_mainAlignment(mainAlignment), m_crossAlignment(crossAlignment) {}
 
 void Container::addChild(UIElement* child, Size width, Size height) {
     m_children.emplace_back(std::make_unique<FlexItem>(child, width, height));
     updateLayout();
 }
+
+void Container::setParentSize(const sf::Vector2f& parentSize) {
+    m_parentSize = parentSize;
+    updateLayout();
+}
+
 
 void Container::removeChild(UIElement* child) {
     auto it = std::find_if(m_children.begin(), m_children.end(),

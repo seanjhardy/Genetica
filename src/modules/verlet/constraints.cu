@@ -1,5 +1,5 @@
-#include "modules/verlet/point.hpp"
-#include "modules/utils/floatOps.hpp"
+#include <modules/verlet/point.hpp>
+#include <modules/utils/floatOps.hpp>
 #include "cmath"
 #ifndef M_PI
     #define M_PI 3.14159265358979323846

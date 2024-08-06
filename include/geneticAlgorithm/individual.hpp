@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "vector"
-#include "modules/graphics/vertexManager.hpp"
+#include <modules/graphics/vertexManager.hpp>
 #include "environment.hpp"
 #include "species.hpp"
 #include "unordered_map"
@@ -31,7 +31,7 @@ public:
     virtual void mutate() = 0;
     virtual Individual& combine(Individual *partner) = 0;
     virtual Individual& clone(bool mutate) = 0;
-    virtual void init() = 0;
+    virtual void init() {};
     virtual void simulate(float dt) = 0;
     virtual void render(VertexManager& viewer) = 0;
 

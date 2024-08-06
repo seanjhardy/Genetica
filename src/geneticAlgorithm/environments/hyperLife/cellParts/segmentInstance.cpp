@@ -1,8 +1,8 @@
-#include "geneticAlgorithm/environments/hyperLife/cellParts/segmentInstance.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/cellPartSchematic.hpp"
-#include "geneticAlgorithm/environments/hyperLife/lifeform.hpp"
-#include "geneticAlgorithm/environments/hyperLife/cellParts/segmentType.hpp"
-#include "modules/utils/mathUtils.hpp"
+#include <geneticAlgorithm/environments/hyperLife/cellParts/segmentInstance.hpp>
+#include <geneticAlgorithm/environments/hyperLife/cellParts/cellPartSchematic.hpp>
+#include <geneticAlgorithm/environments/hyperLife/lifeform.hpp>
+#include <geneticAlgorithm/environments/hyperLife/cellParts/segmentType.hpp>
+#include <modules/utils/mathUtils.hpp>
 #include "../../../../modules/verlet/constraints.cu"
 #include "cmath"
 
@@ -18,7 +18,7 @@ SegmentInstance::SegmentInstance(LifeForm* lifeForm, CellPartSchematic* type, Se
     } else {
         float length = dynamic_cast<SegmentType*>(cellData->type)->length * size;
         startPoint->setPos(lifeForm->pos);
-        realAngle = getRandom() * M_PI * 2;
+        realAngle = Random::random() * M_PI * 2;
         endPoint->setPos(startPoint->pos + vec(realAngle) * length);
     }
 
@@ -34,7 +34,7 @@ void SegmentInstance::simulate(float dt) {
     calculatePosition(dt);
 
     for (auto& child : children ) {
-        child.simulate(dt);
+        child->simulate(dt);
     }
     float cellLength = dynamic_cast<SegmentType*>(cellData->type)->length * size;
     float cellWidth = (dynamic_cast<SegmentType*>(cellData->type)->startWidth +
@@ -117,7 +117,7 @@ void SegmentInstance::activateOutput(float dt, float signal) {
 
 void SegmentInstance::render(VertexManager& vertexManager) {
     for (auto& child : children) {
-        child.render(vertexManager);
+        child->render(vertexManager);
     }
 
     float startWidth = dynamic_cast<SegmentType*>(cellData->type)->startWidth;

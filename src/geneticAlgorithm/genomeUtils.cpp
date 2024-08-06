@@ -1,7 +1,7 @@
 #include <iostream>
 #include <utility>
-#include "geneticAlgorithm/genomeUtils.hpp"
-#include "modules/utils/mathUtils.hpp"
+#include <geneticAlgorithm/genomeUtils.hpp>
+#include <modules/utils/mathUtils.hpp>
 
 using namespace std;
 
@@ -124,14 +124,14 @@ string crossoverGene(string gene1, string gene2, int header, int cellDataSize, f
         // Randomly switch mode after the header, at intervals of "cellDataSize"
         // (when header is 0 and cellDataSize is 1, this is effectively the same as random switching)
         if (i >= headerSize and ((i - headerSize) % cellDataSize == 0)) {
-            crossover = getRandom() < crossoverChance;
-            parent = randomBool();
+            crossover = Random::random() < crossoverChance;
+            parent = Random::randomBool();
         }
 
         // Randomly combine both parents
         if (crossover) {
             if (i < gene1.size() && i < gene2.size()) {
-                childGene += randomBool() ? gene1[i] : gene2[i];
+                childGene += Random::randomBool() ? gene1[i] : gene2[i];
             } else if (i < gene1.size()) {
                 childGene += gene1[i];
             } else {

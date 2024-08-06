@@ -1,6 +1,6 @@
-#include "modules/graphics/UI/text.hpp"
-#include "SFML/Graphics.hpp"
-#include "modules/graphics/UI/UIElement.hpp"
+#include <modules/graphics/UI/text.hpp>
+#include <SFML/Graphics.hpp>
+#include <modules/graphics/UI/UIElement.hpp>
 
 TextElement::TextElement(const sf::Vector2f& position, const std::string& text) {
     if (!font.loadFromFile("arial.ttf")) {
