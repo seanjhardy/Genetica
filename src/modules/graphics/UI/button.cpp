@@ -30,20 +30,15 @@ Button::Button(const std::string& text, std::function<void()> onClick,
 
 void Button::onLayout() {
     if (shadow.getColor() != sf::Color::Transparent) {
-        shadowTexture.create(layout.width + shadow.getSize() * 2,
-                       layout.height + shadow.getSize() * 2);
-        sf::RoundedRectangleShape shadowRect = sf::RoundedRectangleShape(layout.getSize());
-        shadowRect.setPosition(sf::Vector2f(shadow.getSize(), shadow.getSize()));
-        shadowRect.setFillColor(sf::Color::Red);
-        shadowRect.setRadius(border.getRadius()[0]);
+        buttonShadow = sf::RoundedRectangleShape(layout.getSize() +
+          sf::Vector2f(shadow.getSize(), shadow.getSize()));
+        buttonShadow.setFillColor(shadow.getColor());
+        buttonShadow.setRadius(border.getRadius()[0]);
+        buttonShadow.setPosition(layout.getPosition() +
+                    sf::Vector2f(shadow.getOffset()[0] - shadow.getSize()/2,
+                                 shadow.getOffset()[1] - shadow.getSize()/2));
 
-        shadowTexture.clear(sf::Color::Transparent);
-        shadowTexture.draw(shadowRect);
-        shadowTexture.display();
-
-        buttonShadow = sf::Sprite(shadowTexture.getTexture());
-        buttonShadow.setPosition(layout.getPosition() + sf::Vector2f(-shadow.getSize() + shadow.getOffset()[0],
-                                                                     -shadow.getSize() + shadow.getOffset()[1]));
+        shader = ShaderManager::getShader("blur");
     }
 
     shape.setFillColor(backgroundColor);
@@ -71,6 +66,8 @@ void Button::onLayout() {
 
 void Button::draw(sf::RenderTarget& target) const {
     if (shadow.getColor() != sf::Color::Transparent) {
+        //shader->setUniform("radius", shadow.getSize());
+        //shader->setUniform("resolution", layout.getSize());
         target.draw(buttonShadow);
     }
     target.draw(shape);

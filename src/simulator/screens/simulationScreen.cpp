@@ -11,9 +11,8 @@ Screen *getSimulationScreen(Simulator *simulator) {
 
     // Define play button
     auto* playButton = new Button("", nullptr,
-               "flex: 1; height: 30px; border: 2px rgba(0,0,0,100) 5px; "
-               "font-size: 15px; padding: 5px; icon: pause; background: #0e3c42;"
-               "shadow: 10px rgb(0,0,0) 0px 5px;",
+               "flex: 1; height: 40px; border: 2px rgba(0,0,0,100) 5px; "
+               "font-size: 15px; padding: 5px; icon: pause; background: #0e3c42;",
                "icon: pauseHighlighted; background: #20868a; ");
     auto togglePaused = [simulator, playButton]() {
         if (simulator->getState() == Simulator::State::Paused) {
@@ -29,11 +28,11 @@ Screen *getSimulationScreen(Simulator *simulator) {
     playButton->setOnClick(togglePaused);
 
     auto* slowDownButton = new Button("", [simulator]() {simulator->setState(Simulator::State::Paused);},
-                                         "flex: 1; height: 30px; border: 2px rgba(0,0,0,100) 5px; "
+                                         "flex: 1; height: 40px; border: 2px rgba(0,0,0,100) 5px; "
                                          "font-size: 15px; padding: 5px; icon: slowDown; background: #0e3c42;",
                                          "icon: slowDownHighlighted; background: #20868a;");
     auto* fastForwardButton = new Button("", [simulator]() {simulator->setState(Simulator::State::Paused);},
-                                   "flex: 1; height: 30px; border: 2px rgba(0,0,0,100) 5px; "
+                                   "flex: 1; height: 40px; border: 2px rgba(0,0,0,100) 5px; "
                                    "font-size: 15px; padding: 5px; icon: fastForward; background: #0e3c42;",
                                    "icon: fastForwardHighlighted; background: #20868a;");
 
@@ -53,7 +52,7 @@ Screen *getSimulationScreen(Simulator *simulator) {
                                "align-row: center; align-col: end;");
 
     auto *bottomBar =
-      new Container("flex-direction: row; width: 100%; height: 100px;"
+      new Container("flex-direction: row; width: 100%; height: 150px;"
                     "align-row: center; align-col: center; background: #2f5b61; "
                     "border: 2px #438891 0px; padding: 5px; gap: 5px;");
 
@@ -71,7 +70,7 @@ Screen *getSimulationScreen(Simulator *simulator) {
                                   "align-row: center; align-col: start; background: #215057; "
                                   "border: 2px #215057 2px; padding: 5px; gap: 10px;", {
                       new Button("Create Random", []() {GeneticAlgorithm::get().getEnvironment()->createRandomIndividual();},
-                                 "flex: 1; height: 30px; border: 2px rgba(0,0,0,100) 5px; "
+                                 "flex: 1; height: 40px; border: 2px rgba(0,0,0,100) 5px; "
                                  "font-size: 15px; padding: 5px; background: #0e3c42;",
                                  "background: #20868a;")
                     }),

@@ -19,9 +19,9 @@ public:
     void setOnClick(function<void()> onClick);
 
     sf::RoundedRectangleShape shape;
-    sf::Sprite buttonShadow;
-    Shadow shadow = Shadow(0.1f, sf::Color::Transparent);
-    sf::RenderTexture shadowTexture;
+    sf::RoundedRectangleShape buttonShadow;
+    sf::Shader* shader;
+    Shadow shadow = Shadow(5, sf::Color(0, 0, 0, 50), 0, 3);
 
     sf::Color backgroundColor;
     sf::Color backgroundHoverColor;

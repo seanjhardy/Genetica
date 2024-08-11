@@ -11,13 +11,14 @@ void ShaderManager::init() {
     // Hardcoded map of key to file path
     std::unordered_map<std::string, std::string> shaderMappings = {
             // Icons
-            {"blur", "./assets/shaders/blur.frag"},
+            {"blur", "./assets/shaders/blur.glsl"},
     };
 
     for (const auto& pair : shaderMappings) {
         const std::string& key = pair.first;
         const std::string& filePath = pair.second;
         if (!shaders[key].loadFromFile(filePath, sf::Shader::Fragment)) {
+            shaders[key].loadFromFile("./assets/shaders/blur_vertex.glsl", sf::Shader::Vertex);
             std::cerr << "Failed to load texture from file: " << filePath << std::endl;
             continue; // Skip to next texture
         }
