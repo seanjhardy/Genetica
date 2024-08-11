@@ -452,7 +452,7 @@ SFML_SYSTEM_API Time& operator %=(Time& left, Time right);
 /// a number of seconds, milliseconds or microseconds.
 ///
 /// By using such a flexible interface, the API doesn't
-/// impose any fixed type or resolution for time values,
+/// impose any fixed partType or resolution for time values,
 /// and let the user choose its own favorite representation.
 ///
 /// Time values support the usual mathematical operations:

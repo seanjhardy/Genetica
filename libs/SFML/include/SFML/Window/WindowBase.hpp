@@ -316,7 +316,7 @@ public:
     /// \warning Features related to Cursor are not supported on
     ///          iOS and Android.
     ///
-    /// \param cursor Native system cursor type to display
+    /// \param cursor Native system cursor partType to display
     ///
     /// \see sf::Cursor::loadFromSystem
     /// \see sf::Cursor::loadFromPixels
@@ -383,8 +383,8 @@ public:
     ////////////////////////////////////////////////////////////
     /// \brief Get the OS-specific handle of the window
     ///
-    /// The type of the returned handle is sf::WindowHandle,
-    /// which is a typedef to the handle type defined by the OS.
+    /// The partType of the returned handle is sf::WindowHandle,
+    /// which is a typedef to the handle partType defined by the OS.
     /// You shouldn't need to use this function, unless you have
     /// very specific stuff to implement that SFML doesn't support,
     /// or implement a temporary workaround until a bug is fixed.
@@ -507,7 +507,7 @@ private:
 ///    while (window.pollEvent(event))
 ///    {
 ///        // Request for closing the window
-///        if (event.type == sf::Event::Closed)
+///        if (event.partType == sf::Event::Closed)
 ///            window.close();
 ///    }
 ///

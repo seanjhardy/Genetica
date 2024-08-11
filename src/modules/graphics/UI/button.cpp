@@ -1,37 +1,98 @@
 #include <SFML/Graphics.hpp>
-#include <modules/graphics/UI/UIElement.hpp>
+#include "modules/graphics/UI/utils/UIElement.hpp"
+#include <modules/graphics/spriteManager.hpp>
+#include <modules/graphics/fontManager.hpp>
+#include <modules/graphics/shaderManager.hpp>
 #include <modules/graphics/UI/button.hpp>
 #include <functional>
 #include <utility>
 
-Button::Button(const std::string& text, std::function<void()> onClick)
-        : onClick(std::move(onClick)) {
-    buttonShape.setSize(sf::Vector2f(bounds.width, bounds.height));
-    buttonShape.setFillColor(sf::Color::Blue);
+Button::Button(const std::string& text, std::function<void()> onClick,
+               const std::string& styleString, const std::string& styleOnHoverString)
+        : UIElement(styleString, styleOnHoverString), onClick(std::move(onClick)) {
+    propertySetters["background"] = [this](const string& v) {
+        backgroundColor = parseColor(v);
+    };
+    propertySetters["font-size"] = [this](const string& v) {
+        fontSize = parseValue(v);
+    };
+    propertySetters["icon"] = [this](const string& v) {
+        icon = *SpriteManager::getSprite(v);
+    };
+    propertySetters["shadow"] = [this](const string& v) {
+        shadow = parseShadow(v);
+    };
 
-    if (!font.loadFromFile("arial.ttf")) {
-        // Handle error
+    font = FontManager::getFont("russo");
+    buttonText = sf::Text(text, *font, fontSize);
+    setStyle(style);
+}
+
+void Button::onLayout() {
+    if (shadow.getColor() != sf::Color::Transparent) {
+        shadowTexture.create(layout.width + shadow.getSize() * 2,
+                       layout.height + shadow.getSize() * 2);
+        sf::RoundedRectangleShape shadowRect = sf::RoundedRectangleShape(layout.getSize());
+        shadowRect.setPosition(sf::Vector2f(shadow.getSize(), shadow.getSize()));
+        shadowRect.setFillColor(sf::Color::Red);
+        shadowRect.setRadius(border.getRadius()[0]);
+
+        shadowTexture.clear(sf::Color::Transparent);
+        shadowTexture.draw(shadowRect);
+        shadowTexture.display();
+
+        buttonShadow = sf::Sprite(shadowTexture.getTexture());
+        buttonShadow.setPosition(layout.getPosition() + sf::Vector2f(-shadow.getSize() + shadow.getOffset()[0],
+                                                                     -shadow.getSize() + shadow.getOffset()[1]));
     }
-    buttonText.setFont(font);
-    buttonText.setString(text);
-    buttonText.setCharacterSize(24);
+
+    shape.setFillColor(backgroundColor);
+    shape.setOutlineColor(border.getColor());
+    shape.setOutlineThickness(border.getStroke());
+    shape.setRadius(border.getRadius()[0]);
+    shape.setPosition(layout.getPosition());
+    shape.setSize(layout.getSize());
+
     buttonText.setFillColor(sf::Color::White);
-    buttonText.setPosition(bounds.left + 10, bounds.top + 10);
+    buttonText.setCharacterSize(fontSize);
+    buttonText.setOrigin(buttonText.getGlobalBounds().getSize() / 2.f + buttonText.getLocalBounds().getPosition());
+    buttonText.setPosition(layout.getPosition() + (layout.getSize() / 2.f));
+
+    // Scale the icon to fit within the layout size (preserving aspect ratio), and place in the center of the layout rect
+    if (icon.getTexture() != nullptr) {
+        float scale = std::min((layout.getSize().x - padding[0].getValue() - padding[2].getValue()) / icon.getTexture()->getSize().x,
+                               (layout.getSize().y - padding[1].getValue() - padding[3].getValue()) / icon.getTexture()->getSize().y);
+        icon.setScale(scale, scale);
+        sf::Vector2f iconSize = {icon.getTexture()->getSize().x * scale,
+                                 icon.getTexture()->getSize().y * scale};
+        icon.setPosition(layout.getPosition() + (layout.getSize() / 2.f) - iconSize / 2.f);
+    }
 }
 
 void Button::draw(sf::RenderTarget& target) const {
-    target.draw(buttonShape);
-    target.draw(buttonText);
+    if (shadow.getColor() != sf::Color::Transparent) {
+        target.draw(buttonShadow);
+    }
+    target.draw(shape);
+    if (buttonText.getString() != "") {
+        target.draw(buttonText);
+    }
+    if (icon.getTexture() != nullptr) {
+        target.draw(icon);
+    }
+}
+
+void Button::setOnClick(std::function<void()> onClick) {
+    this->onClick = std::move(onClick);
 }
 
 void Button::handleEvent(const sf::Event& event) {
     if (event.type == sf::Event::MouseButtonPressed) {
-        if (event.mouseButton.button == sf::Mouse::Left && contains({(float)event.mouseButton.x, (float)event.mouseButton.y})) {
-            if (onClick) onClick();
+        if (event.mouseButton.button == sf::Mouse::Left
+            && contains({(float)event.mouseButton.x, (float)event.mouseButton.y})) {
+            if (onClick) {
+                onClick();
+            }
         }
     }
-}
-
-bool Button::contains(const sf::Vector2f& point) const {
-    return bounds.contains(point);
 }

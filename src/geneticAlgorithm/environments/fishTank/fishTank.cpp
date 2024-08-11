@@ -53,17 +53,16 @@ std::pair<int, int> FishTank::get_random_pos() {
     return std::make_pair(x, y);
 }
 
-Point* FishTank::addPoint(float x, float y, float mass = 1.0f) {
+size_t FishTank::addPoint(float x, float y, float mass = 1.0f) {
     points.push_back(Point(x, y, mass));
-    points.syncToDevice();
-    return points.back();
+    return points.size() - 1;
 }
 
-void FishTank::addConnection(Point *a, Point *b, float distance) {
-    // Convert CPU pointers to GPU pointers
-    a = &points.deviceData()[a - &points.hostData()[0]];
-    b = &points.deviceData()[b - &points.hostData()[0]];
+Point* FishTank::getPoint(size_t index) {
+    return &points[index];
+}
 
+void FishTank::addConnection(size_t a, size_t b, float distance) {
     Connection conn(a, b, distance);
     connections.push_back(conn);
 }

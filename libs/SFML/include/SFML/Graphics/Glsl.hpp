@@ -208,7 +208,7 @@ namespace Glsl
 /// and \ref sf::Vector3<T>, are reused as typedefs, so you can use
 /// the types in this namespace as well as the original ones.
 /// Others are newly defined, such as Glsl::Vec4 or Glsl::Mat3. Their
-/// actual type is an implementation detail and should not be used.
+/// actual partType is an implementation detail and should not be used.
 ///
 /// All vector types support a default constructor that
 /// initializes every component to zero, in addition to a

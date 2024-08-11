@@ -16,22 +16,23 @@ __global__ void updatePointsKernel(Point* points, int numParticles, float dt, sf
 }
 
 
-__global__ void constrainDistancesKernel(Connection* connections, int numConnections) {
+__global__ void constrainDistancesKernel(Point* points, Connection* connections, int numConnections) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index < numConnections) {
         Connection& connection = connections[index];
-        constrainDistance(*connection.a, *connection.b, connection.distance, 0.9f);
+        constrainDistance(points[connection.a], points[connection.b], connection.distance, 0.9f);
     }
 }
 
-__global__ void constrainAnglesKernel(AngleConstraint* angles, int numAngles) {
+__global__ void constrainAnglesKernel(Point* points, AngleConstraint* angles, int numAngles) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index < numAngles) {
         AngleConstraint& angle = angles[index];
-        float targetAngle = angle.targetAngle + atan2(angle.b->pos.y - angle.a->pos.y, angle.b->pos.x - angle.a->pos.x);
-        constrainAngle(*angle.a, *angle.b, targetAngle, angle.stiffness);
+        float targetAngle = angle.targetAngle + atan2(points[angle.b].pos.y -
+        points[angle.a].pos.y, points[angle.b].pos.x - points[angle.a].pos.x);
+        constrainAngle(points[angle.a], points[angle.b], targetAngle, angle.stiffness);
     }
 }
 
@@ -66,10 +67,10 @@ void updatePoints(GPUVector<Point>& points,
                                                  numPoints, dt, d_bounds);
 
     numBlocks = (numConnections + blockSize - 1) / blockSize;
-    constrainAnglesKernel<<<numBlocks, blockSize>>>(angles.deviceData(),  numAngles);
+    constrainAnglesKernel<<<numBlocks, blockSize>>>(points.deviceData(), angles.deviceData(),  numAngles);
 
     numBlocks = (numConnections + blockSize - 1) / blockSize;
-    constrainDistancesKernel<<<numBlocks, blockSize>>>(connections.deviceData(), numConnections);
+    constrainDistancesKernel<<<numBlocks, blockSize>>>(points.deviceData(), connections.deviceData(), numConnections);
 
     /*int threadsPerBlock = 16;
     dim3 threadsPerBlockDim(threadsPerBlock, threadsPerBlock);

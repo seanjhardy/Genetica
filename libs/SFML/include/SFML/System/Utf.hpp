@@ -753,7 +753,7 @@ typedef Utf<32> Utf32;
 ///
 /// sf::Utf<X> functions are all static, these classes are not meant to
 /// be instantiated. All the functions are template, so that you
-/// can use any character / string type for a given encoding.
+/// can use any character / string partType for a given encoding.
 ///
 /// It has 3 specializations:
 /// \li sf::Utf<8> (typedef'd to sf::Utf8)

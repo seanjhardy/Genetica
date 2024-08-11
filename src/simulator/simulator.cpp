@@ -1,15 +1,19 @@
 // simulator.cpp
 #include "simulator/simulator.hpp"
 #include "simulator/screens/simulationScreen.hpp"
+#include <modules/utils/print.hpp>
 
 // Instantiate simulator
 Simulator::Simulator(Environment& env, int width, int height)
         : window(sf::VideoMode(width, height), env.getTitle()),
         state(State::Playing),
-        camera(CameraController(env.getBounds(), window)){
+        uiManager(&window),
+        camera(CameraController(env.getBounds(), &window)){
 
     print("Loading Environment: ", env.getTitle());
+}
 
+void Simulator::setup() {
     uiManager.addScreen("simulation", getSimulationScreen(this));
     uiManager.setCurrentScreen("simulation");
 }
@@ -27,12 +31,15 @@ void Simulator::run() {
                 window.close();
             }
             camera.updateEvent(event);
+            uiManager.handleEvent(event);
         }
+        uiManager.handleHover(static_cast<sf::Vector2f>(sf::Mouse::getPosition(window)));
+
         camera.update(deltaTime);
 
-        //if (state == State::Playing) {
-        //    GeneticAlgorithm::get().simulate(deltaTime);
-        //}
+        if (state == State::Playing) {
+            GeneticAlgorithm::get().simulate(deltaTime);
+        }
 
         std::clock_t now = std::clock();
         auto renderDelta = static_cast<double>(now - lastRenderTime);
@@ -41,11 +48,12 @@ void Simulator::run() {
 
             if (state != State::Fast) {
                 window.clear();
+
                 window.setView(camera.getView());
-                //GeneticAlgorithm::get().render(vertexManager);
+                GeneticAlgorithm::get().render(vertexManager);
                 vertexManager.draw(window);
 
-                window.setView(window.getDefaultView());
+                window.setView(camera.getWindowView());
                 uiManager.draw(window);
             }
             window.display();
@@ -55,6 +63,10 @@ void Simulator::run() {
 
 void Simulator::setState(State newState) {
     state = newState;
+}
+
+Simulator::State Simulator::getState() {
+    return state;
 }
 
 void Simulator::reset() {

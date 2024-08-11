@@ -10,28 +10,27 @@
 
 /**
  * A segment instance is a specific instantiation of a cell part, adding an endpoint to the base class,
- * as well as variables for its muscle position, growth state, and whether it is centered or detached.
+ * as well as variables for its muscle position, and whether it is centered or detached.
  */
 class SegmentInstance : public CellPartInstance {
 public:
     std::vector<CellPartInstance*> children;
-    Point* endPoint;
+    size_t endPoint;
     bool centered = false;
     bool detached = false;
     bool dead = false;
-    bool fullyGrown = false;
     float lastMuscle = 0.0;
 
     SegmentInstance(LifeForm* lifeForm, CellPartSchematic* type, SegmentInstance* parent);
 
     void simulate(float dt) override;
     void render(VertexManager& window) override;
-    void calculatePosition(float dt);
+    bool grow(float dt, float massChange) override;
+
     float2 getPointAtAngle(float angle);
     void activateOutput(float dt, float signal);
     float getEnergyContent() override;
     void detach();
-
 
     CellPartInstance* upcast(){
         return static_cast<CellPartInstance*>(this);

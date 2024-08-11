@@ -65,7 +65,7 @@ public:
     };
 
     ////////////////////////////////////////////////////////////
-    /// \brief Special type that can be passed to setUniform(),
+    /// \brief Special partType that can be passed to setUniform(),
     ///        and that represents the texture of the object being drawn
     ///
     /// \see setUniform(const std::string&, CurrentTextureType)
@@ -435,7 +435,7 @@ public:
     ///
     /// \a name is the name of the variable to change in the shader.
     /// The corresponding parameter in the shader must be a 2D texture
-    /// (\p sampler2D GLSL type).
+    /// (\p sampler2D GLSL partType).
     ///
     /// Example:
     /// \code
@@ -470,7 +470,7 @@ public:
     /// known in advance. The second argument must be
     /// sf::Shader::CurrentTexture.
     /// The corresponding parameter in the shader must be a 2D texture
-    /// (\p sampler2D GLSL type).
+    /// (\p sampler2D GLSL partType).
     ///
     /// Example:
     /// \code

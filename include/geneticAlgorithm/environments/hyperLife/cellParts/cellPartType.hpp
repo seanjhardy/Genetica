@@ -6,7 +6,7 @@
 
 /**
  * An abstract class representing the blueprint for building a cell part.
- * One cell part type can exist in multiple places on one lifeform, and can be represented
+ * One cell part partType can exist in multiple places on one lifeform, and can be represented
  * as a segment, or a protein.
  */
 class CellPartType {
@@ -16,11 +16,10 @@ public:
         PROTEIN,
     };
 
-    LifeForm* lifeForm;
     int id;
     Type type;
 
-    CellPartType(LifeForm* lifeForm, int id, Type type);
+    CellPartType(int id, Type type);
 
     virtual float getBuildCost() const = 0;
 

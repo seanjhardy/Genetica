@@ -56,7 +56,7 @@ public:
     Vector2(T X, T Y);
 
     ////////////////////////////////////////////////////////////
-    /// \brief Construct the vector from another type of vector
+    /// \brief Construct the vector from another partType of vector
     ///
     /// This constructor doesn't replace the copy constructor,
     /// it's called only when U != T.
@@ -269,8 +269,8 @@ typedef Vector2<float>        Vector2f;
 /// represent anything that has two dimensions: a size, a point,
 /// a velocity, etc.
 ///
-/// The template parameter T is the type of the coordinates. It
-/// can be any type that supports arithmetic operations (+, -, /, *)
+/// The template parameter T is the partType of the coordinates. It
+/// can be any partType that supports arithmetic operations (+, -, /, *)
 /// and comparisons (==, !=), for example int or float.
 ///
 /// You generally don't have to care about the templated form (sf::Vector2<T>),

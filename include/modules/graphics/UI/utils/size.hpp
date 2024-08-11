@@ -9,8 +9,8 @@ public:
     static Size Percent(float value) { return Size(Mode::Percent, value); }
     static Size Flex(float value = 1.0f) { return Size(Mode::Flex, value); }
 
-    Mode getMode() const { return m_mode; }
-    float getValue() const { return m_value; }
+    [[nodiscard]] Mode getMode() const { return m_mode; }
+    [[nodiscard]] float getValue() const { return m_value; }
 
 private:
     Size(Mode mode, float value) : m_mode(mode), m_value(value) {}

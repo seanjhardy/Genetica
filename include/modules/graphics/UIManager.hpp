@@ -10,12 +10,14 @@
 
 class UIManager {
 public:
+    UIManager(sf::RenderWindow* window);
     void addScreen(const std::string& name, Screen* screen);
     void draw(sf::RenderTarget& target) const;
     void handleEvent(const sf::Event& event);
+    void handleHover(const sf::Vector2f& position);
     void setCurrentScreen(const std::string& screen);
-
 private:
+    sf::RenderWindow* window;
     std::unordered_map<std::string, Screen*> screens;
     std::string currentScreen;
 

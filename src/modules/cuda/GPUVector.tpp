@@ -1,3 +1,5 @@
+#pragma once
+
 template<typename T>
 GPUVector<T>::GPUVector(size_t capacity) : size_(0), capacity_(capacity) {
     reserve(capacity);
@@ -76,6 +78,11 @@ void GPUVector<T>::pop_back() {
         --size_;
         h_data.pop_back();
     }
+}
+
+template<typename T>
+T& GPUVector<T>::operator[](size_t index) {
+    return h_data[index];
 }
 
 template <typename T>

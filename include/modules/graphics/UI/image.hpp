@@ -2,19 +2,19 @@
 #define IMAGE_ELEMENT
 
 #include "SFML/Graphics.hpp"
-#include <modules/graphics/UI/UIElement.hpp>
+#include "modules/graphics/UI/utils/UIElement.hpp"
 
 class ImageElement : public UIElement {
 public:
-    ImageElement(const sf::FloatRect& bounds, const std::string& imagePath);
+    ImageElement(const std::string &imagePath,
+                 const std::string& styleString,
+                 const std::string& styleOnHoverString);
     void draw(sf::RenderTarget& target) const override;
-    void handleEvent(const sf::Event&) override;
-    bool contains(const sf::Vector2f& point) const override;
+    void onLayout() override;
 
 private:
     sf::Texture texture;
     sf::Sprite sprite;
-    sf::FloatRect bounds;
 };
 
 #endif

@@ -4,7 +4,6 @@
 #include "cuda_runtime.h"
 #include "SFML/Graphics.hpp"
 #include "iostream"
-#include <modules/utils/print.hpp>
 #include <modules/graphics/vertexManager.hpp>
 
 struct Point {
@@ -35,16 +34,16 @@ struct Point {
 };
 
 struct Connection {
-    Point* a;
-    Point* b;
+    size_t a;
+    size_t b;
     float distance;
 };
 
 struct AngleConstraint {
-    Point* a;
-    Point* b;
-    Point* parentStart;
-    Point* parentEnd;
+    size_t a;
+    size_t b;
+    size_t parentStart;
+    size_t parentEnd;
     float targetAngle;
     float stiffness;
 };

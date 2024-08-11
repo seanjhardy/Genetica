@@ -1,7 +1,7 @@
 #include <geneticAlgorithm/environments/hyperLife/cellParts/cellPartType.hpp>
 
-CellPartType::CellPartType(LifeForm* lifeForm, int id, Type type)
-: lifeForm(lifeForm), id(id), type(type) {
+CellPartType::CellPartType(int id, Type type)
+: id(id), type(type) {
 
 };
 

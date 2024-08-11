@@ -24,7 +24,7 @@ void VertexManager::addCircle(const float2& center, float radius, const sf::Colo
 
 void VertexManager::addRectangle(const float2& p1, const float2& p2, const float2& p3, const float2& p4, const sf::Color& color) {
     addTriangle(p1, p2, p3, color);
-    addTriangle(p2, p3, p4, color);
+    addTriangle(p3, p4, p1, color);
 }
 
 void VertexManager::addFloatRect(const sf::FloatRect& rect, const sf::Color& color) {
@@ -59,9 +59,9 @@ void VertexManager::addLine(const float2 start, const float2 end, const sf::Colo
     vertices.append(sf::Vertex(sf::Vector2f(end.x + d.x, end.y + d.y), color));
     vertices.append(sf::Vertex(sf::Vector2f(end.x - d.x, end.y - d.y), color));
 
-    vertices.append(sf::Vertex(sf::Vector2f(end.x + d.x, end.y + d.y), color));
     vertices.append(sf::Vertex(sf::Vector2f(end.x - d.x, end.y - d.y), color));
     vertices.append(sf::Vertex(sf::Vector2f(start.x - d.x, start.y - d.y), color));
+    vertices.append(sf::Vertex(sf::Vector2f(start.x + d.x, start.y + d.y), color));
 }
 
 void VertexManager::clear() {

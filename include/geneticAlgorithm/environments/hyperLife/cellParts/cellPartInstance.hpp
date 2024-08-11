@@ -8,17 +8,17 @@ class SegmentInstance;
 class CellPartSchematic;
 
 /**
- * An abstract cell part instance, defining its size, angle, point and parent
+ * An abstract cell part instance, defining its growthFraction, angle, point and parent
  */
 class CellPartInstance {
 public:
     LifeForm* lifeForm;
     CellPartSchematic* cellData;
     SegmentInstance* parent;
-    Point* startPoint{};
-    static float initialSize;
-    float lastSize = initialSize;
-    float size = initialSize;
+    size_t startPoint{};
+    static float INITIAL_GROWTH_FRACTION;
+    float lastGrowthFraction = INITIAL_GROWTH_FRACTION;
+    float growthFraction = INITIAL_GROWTH_FRACTION;
     float angle = 0, realAngle{};
     float lastAngle = 0;
     float2 pointOnParent{};
@@ -31,8 +31,9 @@ public:
     CellPartInstance(LifeForm* lifeForm, CellPartSchematic* type, SegmentInstance* parent);
 
     virtual void simulate(float dt);
-
     virtual void render(VertexManager& vertexManager) = 0;
+
+    virtual bool grow(float dt, float massChange) = 0;
     virtual float getEnergyContent() = 0;
     void updatePointOnParent(float adjustedAngle);
 

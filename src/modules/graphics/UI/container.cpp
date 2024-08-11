@@ -1,47 +1,78 @@
-#include <SFML/Graphics.hpp>
 #include <modules/graphics/UI/container.hpp>
 #include "vector"
-#include "memory"
-#include <modules/utils/print.hpp>
+#include <utility>
 
-Container::Container(Size width, Size height, Direction direction, Alignment mainAlignment, Alignment crossAlignment)
-        : FlexItem(this, width, height),
-        m_direction(direction), m_mainAlignment(mainAlignment), m_crossAlignment(crossAlignment) {}
-
-void Container::addChild(UIElement* child, Size width, Size height) {
-    m_children.emplace_back(std::make_unique<FlexItem>(child, width, height));
-    updateLayout();
+Container::Container(const std::string& styleString, std::vector<UIElement*> childrenVector) :
+    UIElement(styleString, "") {
+    propertySetters["background"] = [this](const std::string& v) {
+        backgroundColor = parseColor(v);
+    };
+    propertySetters["flex-direction"] = [this](const std::string& v) {
+        flexDirection = parseDirection(v);
+    };
+    propertySetters["align-row"] = [this](const std::string& v) {
+        rowAlignment = parseAlignment(v);
+    };
+    propertySetters["align-col"] = [this](const std::string& v) {
+        columnAlignment = parseAlignment(v);
+    };
+    propertySetters["gap"] = [this](const std::string& v) {
+        gap = parseValue(v);
+    };
+    
+    setStyle(style);
+    shape.setFillColor(backgroundColor);
+    shape.setOutlineColor(border.getColor());
+    shape.setOutlineThickness(border.getStroke());
+    shape.setRadius(border.getRadius()[0]);
+    children = std::move(childrenVector);
 }
 
-void Container::setParentSize(const sf::Vector2f& parentSize) {
-    m_parentSize = parentSize;
-    updateLayout();
+void Container::addChild(UIElement* child) {
+    children.push_back(child);
 }
 
+void Container::onLayout() {
+    shape.setPosition(layout.getPosition());
+    shape.setSize(layout.getSize());
+    updateLayout();
+    for (auto& child : children) {
+        child->onLayout();
+    }
+}
 
 void Container::removeChild(UIElement* child) {
-    auto it = std::find_if(m_children.begin(), m_children.end(),
-                           [child](const auto& item) { return item->getElement() == child; });
-    if (it != m_children.end()) {
-        m_children.erase(it);
+    auto it = std::find_if(children.begin(), children.end(),
+                           [child](const auto& item) {
+        return item == child;
+    });
+    if (it != children.end()) {
+        children.erase(it);
         updateLayout();
     }
 }
 
 void Container::updateLayout() {
-    if (m_children.empty()) return;
+    if (children.empty()) return;
 
-    sf::Vector2f containerSize = shape.getSize();
-    float availableMainSize = (m_direction == Direction::Row ? containerSize.x : containerSize.y) - 2 * m_padding;
-    float availableCrossSize = (m_direction == Direction::Row ? containerSize.y : containerSize.x) - 2 * m_padding;
+    sf::Vector2f containerSize = layout.getSize();
+
+    float horizontalPadding = padding[0].getValue() + padding[2].getValue();
+    float verticalPadding = padding[1].getValue() + padding[3].getValue();
+    containerSize -= sf::Vector2f(horizontalPadding, verticalPadding);
+
+    float availableMainSize = (flexDirection == Direction::Row) ? containerSize.x : containerSize.y;
+    float availableCrossSize = (flexDirection == Direction::Row) ? containerSize.y : containerSize.x;
+
+    availableMainSize -= gap * (children.size() - 1);
 
     // First pass: calculate sizes for pixel and percent items, and count flex items
     float totalFixedMainSize = 0;
     int flexItemCount = 0;
     float totalFlexGrow = 0;
 
-    for (const auto& child : m_children) {
-        const Size& mainSize = (m_direction == Direction::Row) ? child->getWidth() : child->getHeight();
+    for (const auto& child : children) {
+        const Size& mainSize = (flexDirection == Direction::Row) ? child->width : child->height;
         switch (mainSize.getMode()) {
             case Size::Mode::Pixel:
                 totalFixedMainSize += mainSize.getValue();
@@ -51,21 +82,23 @@ void Container::updateLayout() {
                 break;
             case Size::Mode::Flex:
                 flexItemCount++;
-                totalFlexGrow += mainSize.getValue();
+                totalFlexGrow += std::max(0.0f, mainSize.getValue());
                 break;
         }
     }
 
-    totalFixedMainSize += m_gap * (m_children.size() - 1);
     float remainingMainSize = std::max(0.0f, availableMainSize - totalFixedMainSize);
     float flexUnit = (flexItemCount > 0) ? remainingMainSize / totalFlexGrow : 0;
 
     // Second pass: set sizes and positions
-    float currentMainPos = m_padding;
-    for (const auto& child : m_children) {
-        UIElement* element = child->getElement();
-        const Size& mainSize = (m_direction == Direction::Row) ? child->getWidth() : child->getHeight();
-        const Size& crossSize = (m_direction == Direction::Row) ? child->getHeight() : child->getWidth();
+    float currentMainPos = (flexDirection == Direction::Row) ?
+            layout.left + padding[0].getValue() :
+            layout.top + padding[1].getValue();
+
+    for (const auto& child : children) {
+        UIElement* element = child;
+        const Size& mainSize = (flexDirection == Direction::Row) ? child->width : child->height;
+        const Size& crossSize = (flexDirection == Direction::Row) ? child->height : child->width;
 
         float itemMainSize = 0;
         float itemCrossSize = 0;
@@ -79,7 +112,7 @@ void Container::updateLayout() {
                 itemMainSize = availableMainSize * mainSize.getValue() / 100.0f;
                 break;
             case Size::Mode::Flex:
-                itemMainSize = flexUnit * mainSize.getValue();
+                itemMainSize = flexUnit * std::max(0.0f, mainSize.getValue());
                 break;
         }
 
@@ -97,38 +130,46 @@ void Container::updateLayout() {
         }
 
         // Set element size
-        sf::Vector2f elementSize = (m_direction == Direction::Row)
+        sf::Vector2f elementSize = (flexDirection == Direction::Row)
                                    ? sf::Vector2f(itemMainSize, itemCrossSize)
                                    : sf::Vector2f(itemCrossSize, itemMainSize);
-        element->setSize(elementSize);
+        element->layout.width = elementSize.x;
+        element->layout.height = elementSize.y;
 
         // Set element position
-        float crossPos = m_padding;
-        switch (m_crossAlignment) {
+        Alignment& alignment = (flexDirection == Direction::Row) ? columnAlignment : rowAlignment;
+        float crossPos = (flexDirection == Direction::Row) ?
+                layout.top + padding[1].getValue() :
+                layout.left + padding[0].getValue();
+        switch (alignment) {
             case Alignment::Center:
                 crossPos += (availableCrossSize - itemCrossSize) / 2;
                 break;
             case Alignment::End:
-                crossPos += availableCrossSize - itemCrossSize;
+                crossPos += availableCrossSize - itemCrossSize -
+                        ((flexDirection == Direction::Row) ? padding[2].getValue() : padding[3].getValue());
                 break;
             default:
                 break;
         }
 
-        sf::Vector2f elementPos = (m_direction == Direction::Row)
+        sf::Vector2f elementPos = (flexDirection == Direction::Row)
                                   ? sf::Vector2f(currentMainPos, crossPos)
                                   : sf::Vector2f(crossPos, currentMainPos);
-        element->setPosition(elementPos);
-
-        currentMainPos += itemMainSize + m_gap;
+        element->layout.left = elementPos.x;
+        element->layout.top = elementPos.y;
+        currentMainPos += itemMainSize + gap;
     }
 
     // Apply main alignment
-    float totalChildrenSize = currentMainPos - m_gap - m_padding;
+    float mainPadding = (flexDirection == Direction::Row)
+            ? padding[0].getValue() + padding[2].getValue()
+            : padding[1].getValue() + padding[3].getValue();
+    float totalChildrenSize = currentMainPos - gap - mainPadding;
     float extraSpace = availableMainSize - totalChildrenSize;
 
     if (extraSpace > 0) {
-        switch (m_mainAlignment) {
+        switch (columnAlignment) {
             case Alignment::Center:
                 applyOffset(extraSpace / 2);
                 break;
@@ -148,74 +189,48 @@ void Container::updateLayout() {
 }
 
 void Container::applyOffset(float offset) {
-    for (auto& child : m_children) {
-        sf::Vector2f pos = child->getElement()->getPosition();
-        if (m_direction == Direction::Row) {
-            pos.x += offset;
+    for (auto& child : children) {
+        if (flexDirection == Direction::Row) {
+            child->layout.left += offset;
         } else {
-            pos.y += offset;
+            child->layout.top += offset;
         }
-        child->getElement()->setPosition(pos);
     }
 }
 
 void Container::distributeSpace(float space, bool includeEnds) {
-    int divisions = includeEnds ? m_children.size() + 1 : m_children.size() - 1;
+    int divisions = includeEnds ? children.size() + 1 : children.size() - 1;
     if (divisions <= 0) return;
 
     float gap = space / divisions;
     float currentOffset = includeEnds ? gap : 0;
 
-    for (auto& child : m_children) {
-        sf::Vector2f pos = child->getElement()->getPosition();
-        if (m_direction == Direction::Row) {
-            pos.x += currentOffset;
+    for (auto& child : children) {
+        if (flexDirection == Direction::Row) {
+            child->layout.left += currentOffset;
         } else {
-            pos.y += currentOffset;
+            child->layout.top += currentOffset;
         }
-        child->getElement()->setPosition(pos);
         currentOffset += gap;
     }
 }
 
-void Container::setDirection(Direction direction) {
-    m_direction = direction;
-    updateLayout();
-}
-
-void Container::setMainAlignment(Alignment alignment) {
-    m_mainAlignment = alignment;
-    updateLayout();
-}
-
-void Container::setCrossAlignment(Alignment alignment) {
-    m_crossAlignment = alignment;
-    updateLayout();
-}
-
-void Container::setPadding(float padding) {
-    m_padding = padding;
-    updateLayout();
-}
-
-void Container::setGap(float gap) {
-    m_gap = gap;
-    updateLayout();
-}
-
 void Container::draw(sf::RenderTarget& target) const {
     target.draw(shape);
-    for (const auto& child : m_children) {
-        child->getElement()->draw(target);
+    for (const auto& child : children) {
+        child->draw(target);
     }
 }
 
 void Container::handleEvent(const sf::Event& event) {
-    for (auto& child : m_children) {
-        child->getElement()->handleEvent(event);
+    for (auto& child : children) {
+        child->handleEvent(event);
     }
 }
 
-bool Container::contains(const sf::Vector2f& point) const {
-    return shape.getGlobalBounds().contains(point);
+void Container::handleHover(const sf::Vector2f& position) {
+    UIElement::handleHover(position);
+    for (auto& child : children) {
+        child->handleHover(position);
+    }
 }

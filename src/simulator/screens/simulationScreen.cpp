@@ -1,38 +1,86 @@
 #include <modules/graphics/UI/screen.hpp>
 #include <modules/graphics/UI/button.hpp>
 #include <modules/graphics/UI/text.hpp>
-#include <modules/graphics/UI/image.hpp>
-#include <modules/graphics/UI/container.hpp>
 #include "simulator/simulator.hpp"
 #include "simulator/screens/simulationScreen.hpp"
 
-Screen* getSimulationScreen(Simulator* simulator) {
+Screen *getSimulationScreen(Simulator *simulator) {
     auto screen = new Screen();
-    auto* root(new Container(Container::Direction::Column, Container::Alignment::Start,
-                             Container::Alignment::Center));
 
-    auto* container(new Container(Container::Direction::Row, Container::Alignment::Center,
-                                Container::Alignment::Center));
+    auto* infoLabel = new Label("", "font-size: 15px;");
 
-    // Add a child with fixed pixel size
-    auto pause = [&simulator]() {
-        simulator->setState(Simulator::State::Paused);
+    // Define play button
+    auto* playButton = new Button("", nullptr,
+               "flex: 1; height: 30px; border: 2px rgba(0,0,0,100) 5px; "
+               "font-size: 15px; padding: 5px; icon: pause; background: #0e3c42;"
+               "shadow: 10px rgb(0,0,0) 0px 5px;",
+               "icon: pauseHighlighted; background: #20868a; ");
+    auto togglePaused = [simulator, playButton]() {
+        if (simulator->getState() == Simulator::State::Paused) {
+            simulator->setState(Simulator::State::Playing);
+            playButton->overrideStyle("icon: pause;");
+            playButton->overrideStyleOnHover("icon: pauseHighlighted;");
+        } else {
+            simulator->setState(Simulator::State::Paused);
+            playButton->overrideStyle("icon: play;");
+            playButton->overrideStyleOnHover("icon: playHighlighted;");
+        }
     };
-    auto play = [&simulator]() {
-        simulator->setState(Simulator::State::Playing);
+    playButton->setOnClick(togglePaused);
+
+    auto* slowDownButton = new Button("", [simulator]() {simulator->setState(Simulator::State::Paused);},
+                                         "flex: 1; height: 30px; border: 2px rgba(0,0,0,100) 5px; "
+                                         "font-size: 15px; padding: 5px; icon: slowDown; background: #0e3c42;",
+                                         "icon: slowDownHighlighted; background: #20868a;");
+    auto* fastForwardButton = new Button("", [simulator]() {simulator->setState(Simulator::State::Paused);},
+                                   "flex: 1; height: 30px; border: 2px rgba(0,0,0,100) 5px; "
+                                   "font-size: 15px; padding: 5px; icon: fastForward; background: #0e3c42;",
+                                   "icon: fastForwardHighlighted; background: #20868a;");
+
+    auto createRandom = []() {
+        GeneticAlgorithm::get().getEnvironment()->createRandomIndividual();
     };
 
-    container->addChild(new Button(sf::FloatRect(0,0,50,50),
-                                  "Play", play),
-                       Size::Pixel(100), Size::Pixel(50));
-
-    // Add a child that flexes to fill available space
-    container->addChild(new Button(sf::FloatRect(0,0,50,50),
-                                  "Pause", pause), Size::Flex(1), Size::Flex(1));
+    auto* infoBox = new Container("flex-direction: column; width: 200px; height: 100%;"
+                                    "align-row: center; align-col: start; background: #215057; "
+                                    "border: 2px #215057 2px; padding: 5px; gap: 10px;", {
+        infoLabel,
+    });
 
 
-    root->addChild(container, Size::Percent(100), Size::Pixel(100));
+    auto *root = new Container("width: 100%; height: 100%;"
+                               "flex-direction: column; background: transparent;"
+                               "align-row: center; align-col: end;");
+
+    auto *bottomBar =
+      new Container("flex-direction: row; width: 100%; height: 100px;"
+                    "align-row: center; align-col: center; background: #2f5b61; "
+                    "border: 2px #438891 0px; padding: 5px; gap: 5px;");
+
+    auto* controlPanel =
+    new Container("flex-direction: column; width: 200px; height: 100%;"
+                  "align-row: center; align-col: start; background: #215057; "
+                  "border: 2px #215057 2px; padding: 5px; gap: 10px;", {
+                    new Container("flex-direction: row; width: 200px; flex: 1;"
+                                  "align-row: center; align-col: start; background: #215057; "
+                                  "border: 2px #215057 2px; padding: 5px; gap: 10px;", {
+                                    slowDownButton, playButton, fastForwardButton
+                                  }
+                    ),
+                    new Container("flex-direction: row; width: 200px; flex: 1;"
+                                  "align-row: center; align-col: start; background: #215057; "
+                                  "border: 2px #215057 2px; padding: 5px; gap: 10px;", {
+                      new Button("Create Random", []() {GeneticAlgorithm::get().getEnvironment()->createRandomIndividual();},
+                                 "flex: 1; height: 30px; border: 2px rgba(0,0,0,100) 5px; "
+                                 "font-size: 15px; padding: 5px; background: #0e3c42;",
+                                 "background: #20868a;")
+                    }),
+                  });
+
+    bottomBar->addChild(controlPanel);
+    bottomBar->addChild(infoBox);
+
+    root->addChild(bottomBar);
     screen->addElement(root);
-
     return screen;
 }

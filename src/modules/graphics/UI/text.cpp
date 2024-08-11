@@ -1,31 +1,34 @@
 #include <modules/graphics/UI/text.hpp>
 #include <SFML/Graphics.hpp>
-#include <modules/graphics/UI/UIElement.hpp>
+#include <modules/graphics/fontManager.hpp>
+#include "modules/graphics/UI/utils/UIElement.hpp"
 
-TextElement::TextElement(const sf::Vector2f& position, const std::string& text) {
-    if (!font.loadFromFile("arial.ttf")) {
-        // Handle error
-    }
-    textElement.setFont(font);
-    textElement.setString(text);
+Label::Label(const std::string& text,
+             const std::string& styleString)
+             : UIElement(styleString, ""){
+    propertySetters["font-size"] = [this](const string& v) {
+        fontSize = parseValue(v);
+    };
+
+    font = FontManager::getFont("russo");
+    textElement.setFont(*font);
     textElement.setCharacterSize(24);
+    textElement.setString(text);
     textElement.setFillColor(sf::Color::White);
-    textElement.setPosition(position);
+    setStyle(style);
 }
 
-void TextElement::draw(sf::RenderTarget& target) const {
+void Label::draw(sf::RenderTarget& target) const {
     target.draw(textElement);
 }
 
-void TextElement::handleEvent(const sf::Event&) {
-    // No event handling needed for static text
+void Label::onLayout() {
+    textElement.setCharacterSize((int)fontSize);
+    textElement.setFillColor(sf::Color::White);
+    textElement.setOrigin(textElement.getGlobalBounds().getSize() / 2.f + textElement.getLocalBounds().getPosition());
+    textElement.setPosition(layout.getPosition() + (layout.getSize() / 2.f));
 }
 
-bool TextElement::contains(const sf::Vector2f&) const {
-    return false;
-}
-
-void TextElement::setPosition(const sf::Vector2f& position) {
-    UIElement::setPosition(position);
-    textElement.setPosition(position);
+void Label::updateText(const std::string& text) {
+    textElement.setString(text);
 }

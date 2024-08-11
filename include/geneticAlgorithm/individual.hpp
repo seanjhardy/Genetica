@@ -5,8 +5,6 @@
 
 #include "vector"
 #include <modules/graphics/vertexManager.hpp>
-#include "environment.hpp"
-#include "species.hpp"
 #include "unordered_map"
 
 using namespace std;
@@ -16,6 +14,7 @@ using namespace std;
  * Individuals store their genome and are mutated, combined, and evaluated.
  */
 class Species;
+class Environment;
 
 class Individual {
 private:

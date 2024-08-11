@@ -55,7 +55,7 @@ public:
     VertexArray();
 
     ////////////////////////////////////////////////////////////
-    /// \brief Construct the vertex array with a type and an initial number of vertices
+    /// \brief Construct the vertex array with a partType and an initial number of vertices
     ///
     /// \param type        Type of primitives
     /// \param vertexCount Initial number of vertices in the array
@@ -137,7 +137,7 @@ public:
     void append(const Vertex& vertex);
 
     ////////////////////////////////////////////////////////////
-    /// \brief Set the type of primitives to draw
+    /// \brief Set the partType of primitives to draw
     ///
     /// This function defines how the vertices must be interpreted
     /// when it's time to draw them:
@@ -145,7 +145,7 @@ public:
     /// \li As lines
     /// \li As triangles
     /// \li As quads
-    /// The default primitive type is sf::Points.
+    /// The default primitive partType is sf::Points.
     ///
     /// \param type Type of primitive
     ///
@@ -153,9 +153,9 @@ public:
     void setPrimitiveType(PrimitiveType type);
 
     ////////////////////////////////////////////////////////////
-    /// \brief Get the type of primitives drawn by the vertex array
+    /// \brief Get the partType of primitives drawn by the vertex array
     ///
-    /// \return Primitive type
+    /// \return Primitive partType
     ///
     ////////////////////////////////////////////////////////////
     PrimitiveType getPrimitiveType() const;
@@ -202,7 +202,7 @@ private:
 /// \ingroup graphics
 ///
 /// sf::VertexArray is a very simple wrapper around a dynamic
-/// array of vertices and a primitives type.
+/// array of vertices and a primitives partType.
 ///
 /// It inherits sf::Drawable, but unlike other drawables it
 /// is not transformable.

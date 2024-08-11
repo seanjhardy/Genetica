@@ -44,7 +44,7 @@ class SFML_WINDOW_API Sensor
 public:
 
     ////////////////////////////////////////////////////////////
-    /// \brief Sensor type
+    /// \brief Sensor partType
     ///
     ////////////////////////////////////////////////////////////
     enum Type
@@ -74,7 +74,7 @@ public:
     ///
     /// All sensors are disabled by default, to avoid consuming too
     /// much battery power. Once a sensor is enabled, it starts
-    /// sending events of the corresponding type.
+    /// sending events of the corresponding partType.
     ///
     /// This function does nothing if the sensor is unavailable.
     ///
@@ -144,7 +144,7 @@ public:
 /// sf::Sensor::setEnabled(sf::Sensor::Gravity, true);
 ///
 /// // get the current value of gravity
-/// sf::Vector3f gravity = sf::Sensor::getValue(sf::Sensor::Gravity);
+/// sf::Vector3f gravity = sf::Sensor::getSize(sf::Sensor::Gravity);
 /// \endcode
 ///
 ////////////////////////////////////////////////////////////

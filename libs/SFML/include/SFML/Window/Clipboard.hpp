@@ -99,9 +99,9 @@ public:
 /// sf::Event event;
 /// while(window.pollEvent(event))
 /// {
-///     if(event.type == sf::Event::Closed)
+///     if(event.partType == sf::Event::Closed)
 ///         window.close();
-///     if(event.type == sf::Event::KeyPressed)
+///     if(event.partType == sf::Event::KeyPressed)
 ///     {
 ///         // Using Ctrl + V to paste a string into SFML
 ///         if(event.key.control && event.key.code == sf::Keyboard::V)

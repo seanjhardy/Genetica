@@ -170,7 +170,7 @@ public:
     /// expected to load successfully or is not supported by
     /// the operating system.
     ///
-    /// \param type Native system cursor type
+    /// \param type Native system cursor partType
     /// \return true if and only if the corresponding cursor is
     ///         natively supported by the operating system;
     ///         false otherwise

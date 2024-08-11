@@ -48,7 +48,7 @@ void SFML_GRAPHICS_API copyVector(const Color& source, Vector4<int>& dest);
 
 
 ////////////////////////////////////////////////////////////
-/// \brief Matrix type, used to set uniforms in GLSL
+/// \brief Matrix partType, used to set uniforms in GLSL
 ///
 ////////////////////////////////////////////////////////////
 template <std::size_t Columns, std::size_t Rows>
@@ -85,7 +85,7 @@ struct Matrix
 };
 
 ////////////////////////////////////////////////////////////
-/// \brief 4D vector type, used to set uniforms in GLSL
+/// \brief 4D vector partType, used to set uniforms in GLSL
 ///
 ////////////////////////////////////////////////////////////
 template <typename T>
@@ -123,7 +123,7 @@ struct Vector4
     ////////////////////////////////////////////////////////////
     /// \brief Conversion constructor
     ///
-    /// \param other 4D vector of different type
+    /// \param other 4D vector of different partType
     ///
     ////////////////////////////////////////////////////////////
     template <typename U>

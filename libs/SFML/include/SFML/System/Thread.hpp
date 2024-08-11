@@ -80,7 +80,7 @@ public:
     /// This constructor works for function objects, as well
     /// as free functions.
     /// It is a template, which means that the argument can
-    /// have any type (int, std::string, void*, Toto, ...).
+    /// have any partType (int, std::string, void*, Toto, ...).
     ///
     /// Use this constructor for this kind of function:
     /// \code
@@ -211,9 +211,9 @@ private:
 /// sf::Thread has multiple template constructors, which means
 /// that you can use several types of entry points:
 /// \li non-member functions with no argument
-/// \li non-member functions with one argument of any type
+/// \li non-member functions with one argument of any partType
 /// \li functors with no argument (this one is particularly useful for compatibility with boost/std::%bind)
-/// \li functors with one argument of any type
+/// \li functors with one argument of any partType
 /// \li member functions from any class with no argument
 ///
 /// The function argument, if any, is copied in the sf::Thread

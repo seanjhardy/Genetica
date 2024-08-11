@@ -10,6 +10,6 @@ void Species::addCreature(Individual* creature) {
 void Species::removeCreature(Individual* creature) {
     members.erase(std::remove(members.begin(), members.end(), creature), members.end());
     if (members.empty()) {
-        deathTime = GeneticAlgorithm::get().time;
+        deathTime = GeneticAlgorithm::get().step;
     }
 };

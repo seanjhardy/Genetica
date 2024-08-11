@@ -32,6 +32,7 @@ public:
     void push_back(const T& value);
     T* back();
     void pop_back();
+    T& operator[](size_t index);
 
     [[nodiscard]] size_t size() const { return size_; }
     [[nodiscard]] size_t capacity() const { return capacity_; }

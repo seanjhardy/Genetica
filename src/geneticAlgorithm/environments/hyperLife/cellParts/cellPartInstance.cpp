@@ -2,7 +2,7 @@
 #include <geneticAlgorithm/environments/hyperLife/cellParts/segmentType.hpp>
 #include <geneticAlgorithm/environments/hyperLife/cellParts/cellPartInstance.hpp>
 
-float CellPartInstance::initialSize = 0.2;
+float CellPartInstance::INITIAL_GROWTH_FRACTION = 0.1;
 
 CellPartInstance::CellPartInstance(LifeForm* lifeForm, CellPartSchematic* type, SegmentInstance* parent) :
 lifeForm(lifeForm), parent(parent), cellData(type), flipped(type->flipped){
@@ -12,20 +12,22 @@ lifeForm(lifeForm), parent(parent), cellData(type), flipped(type->flipped){
         depth = parent->depth + 1;
         flipped = parent->flipped;
     }
+    growthFraction = INITIAL_GROWTH_FRACTION;
     updatePointOnParent(getAdjustedAngleOnBody());
-    //lifeForm->addCellPartInstance(*this);
 }
 
 void CellPartInstance::simulate(float dt) {
+    Point* start = lifeForm->getEnv()->getPoint(startPoint);
+
     if(abs(realAngle - lastAngle) > 0.005 ||
-       abs(startPoint->pos.x - startPoint->prevPos.x) > 0.005 ||
-       abs(startPoint->pos.y - startPoint->prevPos.y) > 0.005){
+       abs(start->pos.x - start->prevPos.x) > 0.005 ||
+       abs(start->pos.y - start->prevPos.y) > 0.005){
         lastAngle = realAngle;
     }
 
     if (parent == nullptr) return;
 
-    if(parent->upcast()->size != parent->upcast()->lastSize) {
+    if(parent->growthFraction != parent->lastGrowthFraction) {
         updatePointOnParent(getAdjustedAngleOnBody());
     }
 }
@@ -34,24 +36,26 @@ void CellPartInstance::simulate(float dt) {
 void CellPartInstance::updatePointOnParent(float adjustedAngle) {
     if (parent == nullptr) return;
 
-    CellPartType* type = parent->upcast()->cellData->type;
+    CellPartType* type = parent->upcast()->cellData->partType;
 
-    float startWidth = dynamic_cast<SegmentType*>(type)->startWidth * parent->upcast()->size;
-    float endWidth = dynamic_cast<SegmentType*>(type)->endWidth * parent->upcast()->size;
-    float length = dynamic_cast<SegmentType*>(type)->length * parent->upcast()->size;
+    float startWidth = dynamic_cast<SegmentType*>(type)->startWidth * parent->growthFraction * lifeForm->size;
+    float endWidth = dynamic_cast<SegmentType*>(type)->endWidth * parent->growthFraction * lifeForm->size;
+    float length = dynamic_cast<SegmentType*>(type)->length * parent->growthFraction * lifeForm->size;
 
     pointOnParent = getPointOnSegment(length, startWidth, endWidth, adjustedAngle);
 }
 
 float2 CellPartInstance::getRotatedPoint() {
-    //Update point position if parent changes
-    if(abs(parent->upcast()->angle - parent->upcast()->lastAngle) > 0.005 ||
-       diff(parent->upcast()->startPoint->pos, parent->upcast()->startPoint->prevPos) > 0.005 ||
-       (rotatedPoint.x == 0 && rotatedPoint.y == 0) ||
-       parent->upcast()->size != parent->upcast()->lastSize){
+    Point* parentStart = lifeForm->getEnv()->getPoint(parent->startPoint);
 
-        rotatedPoint = rotate(pointOnParent, parent->upcast()->angle);
-        rotatedPoint += parent->upcast()->startPoint->pos;
+    //Update point position if parent changes
+    if(abs(parent->angle - parent->lastAngle) > 0.005 ||
+       diff(parentStart->pos, parentStart->prevPos) > 0.005 ||
+       (rotatedPoint.x == 0 && rotatedPoint.y == 0) ||
+       parent->growthFraction != parent->lastGrowthFraction){
+
+        rotatedPoint = rotate(pointOnParent, parent->angle);
+        rotatedPoint += parentStart->pos;
     }
     return rotatedPoint;
 }

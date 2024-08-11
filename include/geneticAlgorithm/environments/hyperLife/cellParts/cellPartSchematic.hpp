@@ -13,12 +13,12 @@ class CellPartType;
  */
 class CellPartSchematic {
 public:
-    CellPartType* type;
+    CellPartType* partType;
     int buildPriority;
     float angleOnBody, angleFromBody;
     bool flipped;
 
-    CellPartSchematic(CellPartType* type, bool isFlipped, int buildPriority,
+    CellPartSchematic(CellPartType* partType, bool isFlipped, int buildPriority,
                       float angleOnBody, float angleFromBody);
 };
 

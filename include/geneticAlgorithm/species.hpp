@@ -3,7 +3,6 @@
 
 #include <utility>
 #include "vector"
-#include "individual.hpp"
 
 class Individual;
 

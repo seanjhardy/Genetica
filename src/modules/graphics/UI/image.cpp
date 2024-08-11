@@ -1,24 +1,19 @@
 #include <SFML/Graphics.hpp>
-#include <modules/graphics/UI/UIElement.hpp>
+#include <modules/graphics/UI/utils/UIElement.hpp>
+#include <modules/graphics/SpriteManager.hpp>
 #include <modules/graphics/UI/image.hpp>
 
-ImageElement::ImageElement(const sf::FloatRect& bounds, const std::string& imagePath) : bounds(bounds) {
-    if (!texture.loadFromFile(imagePath)) {
-        // Handle error
-    }
-    sprite.setTexture(texture);
-    sprite.setPosition(bounds.left, bounds.top);
-    sprite.setScale(bounds.width / texture.getSize().x, bounds.height / texture.getSize().y);
+ImageElement::ImageElement(const std::string &imagePath,
+                           const std::string& styleString,
+                           const std::string& styleOnHoverString) : UIElement(styleString, styleOnHoverString){
+    sprite = *SpriteManager::getSprite(imagePath);
+}
+
+void ImageElement::onLayout() {
+    sprite.setPosition(layout.left, layout.top);
+    sprite.setScale(layout.width / texture.getSize().x, layout.height / texture.getSize().y);
 }
 
 void ImageElement::draw(sf::RenderTarget& target) const {
     target.draw(sprite);
-}
-
-void ImageElement::handleEvent(const sf::Event&) {
-    // No event handling needed for images
-}
-
-bool ImageElement::contains(const sf::Vector2f& point) const  {
-    return bounds.contains(point);
 }

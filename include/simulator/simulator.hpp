@@ -20,7 +20,9 @@ public:
     explicit Simulator(Environment& environment, int width, int height);
     void run();
     void reset();
+    void setup();
     void setState(State newState);
+    State getState();
 
 private:
     int time = 0;
@@ -30,7 +32,7 @@ private:
 
     sf::RenderWindow window{};
     VertexManager vertexManager{};
-    UIManager uiManager{};
+    UIManager uiManager;
 
     CameraController camera;
     State state;

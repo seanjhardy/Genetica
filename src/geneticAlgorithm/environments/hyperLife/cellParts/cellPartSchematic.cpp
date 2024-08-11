@@ -2,7 +2,7 @@
 
 CellPartSchematic::CellPartSchematic(CellPartType* type, bool isFlipped, int buildPriority,
                                      float angleOnBody, float angleFromBody):
-                           type(type), buildPriority(buildPriority),
-                           angleOnBody(angleOnBody), angleFromBody(angleFromBody),
-                           flipped(isFlipped) {
+  partType(type), buildPriority(buildPriority),
+  angleOnBody(angleOnBody), angleFromBody(angleFromBody),
+  flipped(isFlipped) {
 }

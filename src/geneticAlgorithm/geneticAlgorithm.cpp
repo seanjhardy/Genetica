@@ -8,16 +8,20 @@ GeneticAlgorithm& GeneticAlgorithm::get(){
 };
 
 void GeneticAlgorithm::simulate(float dt) {
-    if (time == 0) this->reset();
+    if (step == 0) this->reset();
     environment->simulate(dt);
-    time++;
+    for (Individual* individual : population) {
+        individual->simulate(dt);
+    }
+    realTime += dt;
+    step++;
 };
 
 void GeneticAlgorithm::render(VertexManager& vertexManager) {
     environment->render(vertexManager);
 
-    for (Individual* lifeForm : population) {
-        lifeForm->render(vertexManager);
+    for (Individual* individual : population) {
+        individual->render(vertexManager);
     }
 };
 
@@ -109,6 +113,20 @@ string GeneticAlgorithm::mutateGene(unordered_map<int, string> genome,
     return mutatedGene;
 }
 
+unordered_map<int, string> GeneticAlgorithm::createRandomGenome() {
+    // Create random genome
+    unordered_map<int, string> genome;
+    int num_chromosomes = (int)Random::random(15, MAX_CHROMOSOMES);
+    for (int i = 0; i < num_chromosomes; i++) {
+        string chromosome;
+        int size = Random::random(LifeForm::HEADER_SIZE, MAX_CHROMOSOME_SIZE);
+        for (int j = 0; j < size; j++) {
+            chromosome += Random::randomBase();
+        }
+        genome.insert({nextGeneID(), chromosome});
+    }
+    return genome;
+}
 
 void GeneticAlgorithm::addIndividual(Individual* individual) {
     population.push_back(individual);
@@ -122,6 +140,14 @@ void GeneticAlgorithm::reset() {
     geneID = 0;
     lifeFormID = 0;
 }
+
+void GeneticAlgorithm::setEnvironment(Environment& env) {
+    environment = &env;
+}
+Environment* GeneticAlgorithm::getEnvironment() const {
+    return environment;
+}
+
 int GeneticAlgorithm::nextIndividualID() {
     return lifeFormID++;
 }

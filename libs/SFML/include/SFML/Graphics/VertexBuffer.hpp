@@ -75,7 +75,7 @@ public:
     ////////////////////////////////////////////////////////////
     /// \brief Construct a VertexBuffer with a specific PrimitiveType
     ///
-    /// Creates an empty vertex buffer and sets its primitive type to \p type.
+    /// Creates an empty vertex buffer and sets its primitive partType to \p partType.
     ///
     /// \param type Type of primitive
     ///
@@ -95,8 +95,8 @@ public:
     ////////////////////////////////////////////////////////////
     /// \brief Construct a VertexBuffer with a specific PrimitiveType and usage specifier
     ///
-    /// Creates an empty vertex buffer and sets its primitive type
-    /// to \p type and usage to \p usage.
+    /// Creates an empty vertex buffer and sets its primitive partType
+    /// to \p partType and usage to \p usage.
     ///
     /// \param type  Type of primitive
     /// \param usage Usage specifier
@@ -238,12 +238,12 @@ public:
     unsigned int getNativeHandle() const;
 
     ////////////////////////////////////////////////////////////
-    /// \brief Set the type of primitives to draw
+    /// \brief Set the partType of primitives to draw
     ///
     /// This function defines how the vertices must be interpreted
     /// when it's time to draw them.
     ///
-    /// The default primitive type is sf::Points.
+    /// The default primitive partType is sf::Points.
     ///
     /// \param type Type of primitive
     ///
@@ -251,9 +251,9 @@ public:
     void setPrimitiveType(PrimitiveType type);
 
     ////////////////////////////////////////////////////////////
-    /// \brief Get the type of primitives drawn by the vertex buffer
+    /// \brief Get the partType of primitives drawn by the vertex buffer
     ///
-    /// \return Primitive type
+    /// \return Primitive partType
     ///
     ////////////////////////////////////////////////////////////
     PrimitiveType getPrimitiveType() const;
@@ -268,7 +268,7 @@ public:
     /// to be updated with new data for the usage specifier to
     /// take effect.
     ///
-    /// The default primitive type is sf::VertexBuffer::Stream.
+    /// The default primitive partType is sf::VertexBuffer::Stream.
     ///
     /// \param usage Usage specifier
     ///
@@ -351,7 +351,7 @@ private:
 /// \ingroup graphics
 ///
 /// sf::VertexBuffer is a simple wrapper around a dynamic
-/// buffer of vertices and a primitives type.
+/// buffer of vertices and a primitives partType.
 ///
 /// Unlike sf::VertexArray, the vertex data is stored in
 /// graphics memory.

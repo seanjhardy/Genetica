@@ -105,7 +105,7 @@ private:
 /// To create a non-copyable class, simply inherit from
 /// sf::NonCopyable.
 ///
-/// The type of inheritance (public or private) doesn't matter,
+/// The partType of inheritance (public or private) doesn't matter,
 /// the copy constructor and assignment operator are declared private
 /// in sf::NonCopyable so they will end up being inaccessible in both
 /// cases. Thus you can use a shorter syntax for inheriting from it

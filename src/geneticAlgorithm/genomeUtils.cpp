@@ -1,7 +1,6 @@
 #include <iostream>
 #include <utility>
 #include <geneticAlgorithm/genomeUtils.hpp>
-#include <modules/utils/mathUtils.hpp>
 
 using namespace std;
 
@@ -9,6 +8,9 @@ using namespace std;
 // READ BASES
 // =====================================
 
+/**
+ * Reads the first base from the gene and removes it from the gene
+ */
 int readBase(string& rna) {
     if (rna.empty()) {
         return -1;
@@ -18,36 +20,51 @@ int readBase(string& rna) {
     return base;
 }
 
+/**
+ * Reads the base linearly, adding up each bases contribution to the total
+ * Used for most functions as it is differentiable and linear
+ */
 float readBaseRange(string& rna, int length) {
     float result = 0;
     for (int i = 0; i < length; i++) {
         result += (float) readBase(rna);
     }
-    return result / (4.0f * (float) length);
+    return result / (3.0f * (float) length);
 }
 
+/**
+ * Turns the base range into a unique number by taking
+ * 0.25 * first base + 0.25^2 * second base + 0.25^3 * third base + ...base
+ * Used for things like part IDs since they're non-differentiable
+ */
 float readUniqueBaseRange(string& rna, int length) {
     float result = 0;
-
-    //inclusive
     for(int i = 0; i < length; i++){
         result += float(readBase(rna) * pow(0.25f, i + 1));
     }
     return result;
 }
 
+/**
+ * Essentially extreme base ranges (either all 3s or all 0s) take extreme values whereas most are average
+ * Exponential tail ends of the distribution, slighly weighted to smaller values ~0.35 on average
+ * Used for things like size where we want nonlinear effects at the tail ends so it gets harder
+ * to make progress to extreme values
+ */
 float readExpBaseRange(string& gene, int length) {
     float result = readBaseRange(gene, length);
-    result = pow(1.45f * result - 0.6f, 3.0f) + result / 5.0f + 0.2f;
+    result = pow(1.45f * result - 0.6f, 3.0f) + result / 5.0f + 0.25f;
     return result;
 }
 
 float compareGeneBases(string gene1, string gene2) {
+    string& gene1Cpy = gene1;
+    string& gene2Cpy = gene2;
     int baseDiff = 0;
     int maxLength = max(gene1.length(), gene2.length());
     for (int i = 0; i < maxLength; i++) {
-        int base1 = readBase(gene1);
-        int base2 = readBase(gene2);
+        int base1 = readBase(gene1Cpy);
+        int base2 = readBase(gene2Cpy);
         baseDiff += (base1 != base2);
     }
     return baseDiff;

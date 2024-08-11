@@ -5,10 +5,11 @@
 #include <geneticAlgorithm/environment.hpp>
 #include "random"
 #include <modules/verlet/point.hpp>
-#include <geneticAlgorithm/environments/fishTank/fish.hpp>
 #include <modules/cuda/GPUVector.hpp>
 #include <modules/graphics/vertexManager.hpp>
 #include <geneticAlgorithm/environments/fishTank/rock.hpp>
+
+class Fish;
 
 class FishTank : public Environment {
 public:
@@ -17,8 +18,9 @@ public:
     void render(VertexManager& window) override;
     void reset() override;
 
-    Point* addPoint(float x, float y, float mass);
-    void addConnection(Point* a, Point* b, float distance);
+    size_t addPoint(float x, float y, float mass);
+    Point* getPoint(size_t index);
+    void addConnection(size_t a, size_t b, float distance);
     std::pair<int, int> get_random_pos();
 
 private:

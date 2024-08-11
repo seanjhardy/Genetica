@@ -51,11 +51,9 @@ private:
 public:
     static GeneticAlgorithm& get();
 
-    int time = 0;
+    int step = 0;
+    double realTime = 0;
 
-    void setEnvironment(Environment& env) {
-        this->environment = &env;
-    }
     void simulate(float dt);
     void render(VertexManager& vertexManager);
     void reset();
@@ -63,8 +61,12 @@ public:
     void addIndividual(Individual* individual);
     unordered_map<int, string> mutate(const unordered_map<int, string>& genome,
                                       int headerSize, int cellDataSize);
-    string mutateGene(unordered_map<int, string> genome, int key, string gene,
+    [[nodiscard]] string mutateGene(unordered_map<int, string> genome, int key, string gene,
                       int headerSize, int cellDataSize) const;
+    unordered_map<int, string> createRandomGenome();
+
+    void setEnvironment(Environment& env);
+    [[nodiscard]] Environment* getEnvironment() const;
 
     int nextIndividualID();
     int nextGeneID();

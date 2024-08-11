@@ -6,17 +6,19 @@
 
 class CameraController {
 public:
-    CameraController(sf::FloatRect bounds, sf::RenderWindow& window);
+    CameraController(sf::FloatRect bounds, sf::RenderWindow* window);
 
     void update(float deltaTime);
     void updateEvent(const sf::Event& event);
 
     sf::View getView();
+    sf::View getWindowView();
 
 private:
     std::unordered_map<sf::Keyboard::Key, bool> keyStates;
-    sf::RenderWindow& window;
+    sf::RenderWindow* window;
     sf::View view;
+    sf::View windowView;
     float zoomLevel;
     sf::Vector2f position;
     float moveSpeed;

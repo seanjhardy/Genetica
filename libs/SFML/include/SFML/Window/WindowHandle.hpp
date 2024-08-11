@@ -78,7 +78,7 @@ namespace sf
 /// \typedef sf::WindowHandle
 /// \ingroup window
 ///
-/// Define a low-level window handle type, specific to
+/// Define a low-level window handle partType, specific to
 /// each platform.
 ///
 /// Platform        | Type

@@ -7,6 +7,7 @@
 #include "vector"
 #include <modules/graphics/vertexManager.hpp>
 #include <modules/utils/print.hpp>
+#include <geneticAlgorithm/individual.hpp>
 
 /**
  * Environment is an abstract class which provides a wrapper for the simulation to run.
@@ -23,6 +24,8 @@ public:
     virtual void simulate(float deltaTime) = 0;
     virtual void render(VertexManager& window) = 0;
     virtual void reset() = 0;
+
+    virtual Individual& createRandomIndividual() = 0;
 
     [[nodiscard]] char* getTitle() const {
         char* result = new char[MAX_TITLE_LENGTH];

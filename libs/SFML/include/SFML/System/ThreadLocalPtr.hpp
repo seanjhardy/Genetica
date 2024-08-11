@@ -74,7 +74,7 @@ public:
 
     ////////////////////////////////////////////////////////////
     /// \brief Conversion operator to implicitly convert the
-    ///        pointer to its raw pointer type (T*)
+    ///        pointer to its raw pointer partType (T*)
     ///
     /// \return Pointer to the actual object
     ///
@@ -114,7 +114,7 @@ public:
 /// \class sf::ThreadLocalPtr
 /// \ingroup system
 ///
-/// sf::ThreadLocalPtr is a type-safe wrapper for storing
+/// sf::ThreadLocalPtr is a partType-safe wrapper for storing
 /// pointers to thread-local variables. A thread-local
 /// variable holds a different value for each different
 /// thread, unlike normal variables that are shared.

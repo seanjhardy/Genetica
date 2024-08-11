@@ -1,44 +1,36 @@
 #ifndef CONTAINER
 #define CONTAINER
 
-#include "SFML/Graphics.hpp"
-#include "UIElement.hpp"
-#include "utils/flexItem.hpp"
+#include <SFML/Graphics.hpp>
+#include <modules/graphics/UI/utils/roundedRectangleShape.hpp>
+#include "modules/graphics/UI/utils/UIElement.hpp"
 #include "utils/size.hpp"
 #include "vector"
 #include "memory"
 
-class Container : public UIElement, public FlexItem {
+class Container : public UIElement {
 public:
-    enum class Direction { Row, Column };
-    enum class Alignment { Start, Center, End, SpaceBetween, SpaceAround };
-
-    explicit Container(Direction direction = Direction::Row,
-                       Alignment mainAlignment = Alignment::Start,
-                       Alignment crossAlignment = Alignment::Start);
-    void addChild(UIElement* child, Size width, Size height);
+    explicit Container(const std::string& style = "", std::vector<UIElement*> children = {});
+    void addChild(UIElement* child);
     void removeChild(UIElement* child);
 
-    void setDirection(Direction direction);
-    void setMainAlignment(Alignment alignment);
-    void setCrossAlignment(Alignment alignment);
-    void setPadding(float padding);
-    void setGap(float gap);
     void draw(sf::RenderTarget& target) const override;
     void handleEvent(const sf::Event& event) override;
-    bool contains(const sf::Vector2f& point) const override;
+    void handleHover(const sf::Vector2f& position) override;
+    void onLayout() override;
+
+    sf::RoundedRectangleShape shape;
+    std::vector<UIElement*> children;
+    Direction flexDirection = Direction::Row;
+    Alignment rowAlignment = Alignment::Start;
+    Alignment columnAlignment = Alignment::Start;
+    sf::Color backgroundColor = sf::Color::Transparent;
+    float gap = 0;
 
 private:
     void updateLayout();
     void applyOffset(float offset);
     void distributeSpace(float space, bool includeEnds);
-
-    std::vector<std::unique_ptr<FlexItem>> m_children;
-    Direction m_direction;
-    Alignment m_mainAlignment;
-    Alignment m_crossAlignment;
-    float m_padding = 0;
-    float m_gap = 0;
 };
 
 #endif

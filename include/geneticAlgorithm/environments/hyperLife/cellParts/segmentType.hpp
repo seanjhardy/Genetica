@@ -18,22 +18,11 @@ public:
     float boneDensity{}, muscleStrength{}, fatSize{};
     sf::Color color;
 
-    SegmentType(LifeForm* lifeForm, int id)
-    : CellPartType(lifeForm, id, Type::SEGMENT) {};
+    explicit SegmentType(int id);
 
-    void addChild(CellPartSchematic child) {
-        children.push_back(child);
-    }
+    void addChild(CellPartSchematic child);
 
-    [[nodiscard]] float getBuildCost() const override {
-        float buildCost = 1.0f
-                + 0.2f * (bone ? 1.0f : 0.0f) * boneDensity
-                + 0.5f * (muscle ? 1.0f : 0.0f) * muscleStrength
-                + 0.01f * (nerve ? 1.0f : 0.0f)
-                + 0.01f * (fat ? 1.0f : 0.0f) * fatSize;
-        buildCost *= length * (startWidth + endWidth) / 2;
-        return buildCost;
-    };
+    [[nodiscard]] float getBuildCost() const override;
 
     CellPartType* upcast() {
         return static_cast<CellPartType*>(this);

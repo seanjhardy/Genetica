@@ -2,19 +2,20 @@
 #define TEXT_ELEMENT
 
 #include "SFML/Graphics.hpp"
-#include <modules/graphics/UI/UIElement.hpp>
+#include "modules/graphics/UI/utils/UIElement.hpp"
 
-class TextElement : public UIElement {
+class Label : public UIElement {
 public:
-    TextElement(const sf::Vector2f& position, const std::string& text);
+    Label(const std::string& text, const std::string& styleString);
     void draw(sf::RenderTarget& target) const override;
-    void handleEvent(const sf::Event&) override;
-    bool contains(const sf::Vector2f&) const override;
-    void setPosition(const sf::Vector2f& position);
+    void onLayout() override;
+    void updateText(const std::string& text);
 
 private:
     sf::Text textElement;
-    sf::Font font;
+    sf::Font* font;
+    float fontSize = 20;
+    function<void(string)> update;
 };
 
 #endif

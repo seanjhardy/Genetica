@@ -28,7 +28,7 @@ Fish::Fish(FishTank* fishTank, float x, float y)
     };
 
     for (int i = 0; i < points.size(); ++i) {
-        Point *p = fishTank->addPoint(points[i].x, points[i].y, points[i].z);
+        size_t p = fishTank->addPoint(points[i].x, points[i].y, points[i].z);
         body.push_back(p);
         if (i > 0) {
             fishTank->addConnection(p, body[i - 1], 15);
@@ -38,8 +38,7 @@ Fish::Fish(FishTank* fishTank, float x, float y)
 
 void Fish::set_position(float x, float y) {
     for (int i = 0; i < body.size(); ++i) {
-        body[i]->pos = make_float2(x - 15.0f * i, y);
-        body[i]->prevPos = body[i]->pos;
+        getEnv()->getPoint(body[i])->setPos(make_float2(x - 15.0f * i, y));
     }
 }
 
@@ -80,51 +79,58 @@ void Fish::simulate(float dt) {
     dir_change_avg = dir_change_avg * 0.9 + dir_change * 0.1;
     dir += dir_change * dt;
 
-    body[0]->force += accel * vec(dir);
+    getEnv()->getPoint(body[0])->force += accel * vec(dir);
 }
 
 void Fish::render(VertexManager &viewer) {
     auto finColour = interpolate(colour, sf::Color(255, 255, 255), 0.3f);
     auto bodyFinColour = interpolate(colour, sf::Color(0, 0, 0), 0.4f);
 
-    float a2 = body[1]->angleTo(*body[0]);
-    float a3 = body[2]->angleTo(*body[1]);
-    float a4 = body[3]->angleTo(*body[2]);
+    Point* body0 = getEnv()->getPoint(body[0]);
+    Point* body1 = getEnv()->getPoint(body[0]);
+    Point* body2 = getEnv()->getPoint(body[0]);
+    Point* body3 = getEnv()->getPoint(body[0]);
 
-    float2 midPos = body[0]->pos + vec(dir);
+    float a2 = body1->angleTo(*body0);
+    float a3 = body2->angleTo(*body1);
+    float a4 = body3->angleTo(*body2);
 
-    float2 p1 = midPos - body[0]->pos;
-    float2 p2 = body[2]->pos - body[3]->pos;
+    float2 midPos = body0->pos + vec(dir);
+
+    float2 p1 = midPos - body0->pos;
+    float2 p2 = body2->pos - body3->pos;
     float skew = clockwiseAngleDiff(p1, p2);
 
     float headToMid = angleDiff(dir, a3);
     float totalCurvature = angleDiff(dir, a4);
 
-    drawVentralFins(viewer, body[0]->pos, a2, body[0]->mass, finColour, skew);
+    drawVentralFins(viewer, body0->pos, a2, body0->mass, finColour, skew);
 
-    float angle = std::atan2(body[1]->pos.y - body[2]->pos.y, body[1]->pos.x - body[2]->pos.x);
-    drawVentralFins(viewer, (body[2]->pos + body[1]->pos) * 0.5f, angle, body[2]->mass * 1.2f, finColour, skew);
+    float angle = std::atan2(body1->pos.y - body2->pos.y, body1->pos.x - body2->pos.x);
+    drawVentralFins(viewer, (body2->pos + body1->pos) * 0.5f, angle, body2->mass * 1.2f, finColour, skew);
 
     // Construct body polygon from body points
     for (size_t i = 0; i < body.size(); ++i) {
-        body[i]->render(viewer, colour);
+        Point* bodyi = getEnv()->getPoint(body[i]);
+        Point* bodyi1 = getEnv()->getPoint(body[i + 1]);
+        bodyi->render(viewer, colour);
 
         if (i + 1 >= body.size()) continue;
-        auto poly1 = findPerpendicularPoints(*body[i], *body[i + 1], body[i]->mass, body[i + 1]->mass);
+        auto poly1 = findPerpendicularPoints(*bodyi, *bodyi1, bodyi->mass, bodyi1->mass);
         viewer.addPolygon(poly1, sf::Color(colour));
     }
 
     std::vector<float2> dorsalFinPoints = {
-            make_float2((body[0]->pos.x + body[1]->pos.x) * 0.5f,
-                        (body[0]->pos.y + body[1]->pos.y) * 0.5f),
-            body[1]->pos, body[2]->pos
+            make_float2((body0->pos.x + body1->pos.x) * 0.5f,
+                        (body0->pos.y + body1->pos.y) * 0.5f),
+            body1->pos, body2->pos
     };
 
 
-    angle = body[3]->angleTo(*body[2]) + M_PI;
+    angle = body3->angleTo(*body2) + M_PI;
     float tailWidth = 0.5f - std::clamp(std::abs(totalCurvature * 0.3f), 0.0f, 0.3f);
 
-    std::vector<float2> tailFinPoints = {body[2]->pos * 0.6f + body[3]->pos * 0.4f};
+    std::vector<float2> tailFinPoints = {body2->pos * 0.6f + body3->pos * 0.4f};
 
     tailFinPoints.emplace_back(tailFinPoints[0].x + cos(angle + tailWidth) * 10,
                                tailFinPoints[0].y + sin(angle + tailWidth) * 10);
@@ -138,9 +144,9 @@ void Fish::render(VertexManager &viewer) {
     viewer.addPolygon(tailFinPoints, finColour);
 
     // Eyes
-    float2 eye1 = body[0]->pos + vec(a2 + M_PI * 0.5f + 0.3f) * size * 0.7f;
+    float2 eye1 = body0->pos + vec(a2 + M_PI * 0.5f + 0.3f) * size * 0.7f;
     viewer.addCircle(eye1, size * 0.5f, sf::Color(255, 255, 255));
-    float2 eye2 = body[0]->pos + vec(a2 - M_PI * 0.5f - 0.3f) * size * 0.7f;
+    float2 eye2 = body0->pos + vec(a2 - M_PI * 0.5f - 0.3f) * size * 0.7f;
     viewer.addCircle(eye2, size * 0.5f, sf::Color(255, 255, 255));
 
     float2 iris = vec(a2 + dir_change_avg * 10) * size * 0.25;
@@ -166,6 +172,10 @@ void Fish::drawVentralFins(VertexManager &viewer, float2 pos, float angle, float
                           pos + vec(angle - deg90 * (2 + 0.5f * skewRight)) * finSize * 3,
                           pos + vec(angle - deg90 * (1.5f + 0.3f * skewRight)) * finSize * 5
                       }, finColour);
+}
+
+FishTank *Fish::getEnv() {
+    return dynamic_cast<FishTank *>(Individual::getEnv());
 }
 
 #endif

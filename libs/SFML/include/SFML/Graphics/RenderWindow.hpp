@@ -236,7 +236,7 @@ private:
 ///    while (window.pollEvent(event))
 ///    {
 ///        // Request for closing the window
-///        if (event.type == sf::Event::Closed)
+///        if (event.partType == sf::Event::Closed)
 ///            window.close();
 ///    }
 ///

@@ -79,7 +79,7 @@ public:
     Rect(const Vector2<T>& position, const Vector2<T>& size);
 
     ////////////////////////////////////////////////////////////
-    /// \brief Construct the rectangle from another type of rectangle
+    /// \brief Construct the rectangle from another partType of rectangle
     ///
     /// This constructor doesn't replace the copy constructor,
     /// it's called only when U != T.
@@ -244,7 +244,7 @@ typedef Rect<float> FloatRect;
 /// This means that sf::IntRect(0, 0, 1, 1) and sf::IntRect(1, 1, 1, 1)
 /// don't intersect.
 ///
-/// sf::Rect is a template and may be used with any numeric type, but
+/// sf::Rect is a template and may be used with any numeric partType, but
 /// for simplicity the instantiations used by SFML are typedef'd:
 /// \li sf::Rect<int> is sf::IntRect
 /// \li sf::Rect<float> is sf::FloatRect

@@ -7,11 +7,11 @@
 #include <modules/verlet/point.hpp>
 #include <geneticAlgorithm/environment.hpp>
 #include <geneticAlgorithm/individual.hpp>
+#include <geneticAlgorithm/environments/fishTank/fishTank.hpp>
 
 #ifndef M_PI
     #define M_PI 3.14159265358979323846
 #endif
-class FishTank;
 
 class Fish : public Individual {
 public:
@@ -32,7 +32,8 @@ public:
     Individual& combine(Individual *partner) override { return (Individual &) *this; };
     Individual& clone(bool mutate) override {return (Individual &) *this; };
 
-    std::vector<Point*> body{};
+    FishTank* getEnv() override;
+    std::vector<size_t> body{};
 
     float dir_change;
     float dir_change_avg;
