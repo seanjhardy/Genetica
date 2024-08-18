@@ -2,25 +2,28 @@
 
 // main.cpp
 #include "simulator/simulator.hpp"
-#include <geneticAlgorithm/environments/fishTank/fishTank.hpp>
-#include <geneticAlgorithm/environments/hyperLife/hyperLife.hpp>
+#include "geneticAlgorithm/environment.hpp"
 #include "SFML/Graphics.hpp"
 #include "stdexcept"
 #include <modules/graphics/fontManager.hpp>
 #include <modules/graphics/spriteManager.hpp>
 #include <modules/graphics/shaderManager.hpp>
+#include <modules/graphics/styleManager.hpp>
+#include <modules/utils/fastMath.hpp>
 
 int main() {
     try {
         print("Genetica v0.1");
 
         // Initialising systems
+        Styles::init();
+        FastMath::init();
         SpriteManager::init();
         ShaderManager::init();
         FontManager::init();
 
         // Set up genetic algorithm with a given environment
-        HyperLife env({0, 0, 1000, 1000});
+        Environment env(sf::FloatRect(0, 0, 1000, 1000));
         GeneticAlgorithm::get().setEnvironment(env);
 
         // Set up simulation

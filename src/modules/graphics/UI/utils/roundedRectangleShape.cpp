@@ -93,7 +93,7 @@ namespace sf
             case 3: center.x = mySize.x - myRadius; center.y = mySize.y - myRadius; break;
         }
 
-        return sf::Vector2f(myRadius*cos(deltaAngle*(index-centerIndex)*pi/180)+center.x,
-                            -myRadius*sin(deltaAngle*(index-centerIndex)*pi/180)+center.y);
+        return {myRadius*cosf(deltaAngle*(index-centerIndex)*pi/180)+center.x,
+                            -myRadius*sinf(deltaAngle*(index-centerIndex)*pi/180)+center.y};
     }
 } // namespace sf

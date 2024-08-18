@@ -101,7 +101,7 @@ public:
 /// its events. Compared to the TouchBegan, TouchMoved
 /// and TouchEnded events, sf::Touch can retrieve the
 /// state of the touches at any time (you don't need to store and
-/// update a boolean on your side in order to know if a touch is down),
+/// resize a boolean on your side in order to know if a touch is down),
 /// and you always get the real state of the touches, even if they
 /// happen when your window is out of focus and no event is triggered.
 ///

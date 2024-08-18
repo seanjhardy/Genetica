@@ -6,10 +6,11 @@
 ImageElement::ImageElement(const std::string &imagePath,
                            const std::string& styleString,
                            const std::string& styleOnHoverString) : UIElement(styleString, styleOnHoverString){
-    sprite = *SpriteManager::getSprite(imagePath);
+    sprite = *SpriteManager::get(imagePath);
 }
 
 void ImageElement::onLayout() {
+    UIElement::onLayout();
     sprite.setPosition(layout.left, layout.top);
     sprite.setScale(layout.width / texture.getSize().x, layout.height / texture.getSize().y);
 }

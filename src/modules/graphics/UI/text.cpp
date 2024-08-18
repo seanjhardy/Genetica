@@ -1,34 +1,36 @@
-#include <modules/graphics/UI/text.hpp>
 #include <SFML/Graphics.hpp>
 #include <modules/graphics/fontManager.hpp>
-#include "modules/graphics/UI/utils/UIElement.hpp"
+#include <modules/graphics/UI/text.hpp>
 
-Label::Label(const std::string& text,
-             const std::string& styleString)
+Text::Text(const std::string& text,
+           const std::string& styleString)
              : UIElement(styleString, ""){
     propertySetters["font-size"] = [this](const string& v) {
         fontSize = parseValue(v);
     };
 
-    font = FontManager::getFont("russo");
-    textElement.setFont(*font);
-    textElement.setCharacterSize(24);
-    textElement.setString(text);
-    textElement.setFillColor(sf::Color::White);
+    font = FontManager::get("russo");
+    labelElement.setFont(*font);
+    labelElement.setCharacterSize(24);
+    labelElement.setString(text);
+    labelElement.setFillColor(sf::Color::White);
     setStyle(style);
 }
 
-void Label::draw(sf::RenderTarget& target) const {
-    target.draw(textElement);
+void Text::draw(sf::RenderTarget& target) const {
+    target.draw(labelElement);
 }
 
-void Label::onLayout() {
-    textElement.setCharacterSize((int)fontSize);
-    textElement.setFillColor(sf::Color::White);
-    textElement.setOrigin(textElement.getGlobalBounds().getSize() / 2.f + textElement.getLocalBounds().getPosition());
-    textElement.setPosition(layout.getPosition() + (layout.getSize() / 2.f));
+void Text::onLayout() {
+    UIElement::onLayout();
+    labelElement.setCharacterSize((int)fontSize);
+    labelElement.setFillColor(sf::Color::White);
+    labelElement.setOrigin(labelElement.getGlobalBounds().getSize() / 2.f + labelElement.getLocalBounds().getPosition());
+    labelElement.setPosition(layout.getPosition() + (layout.getSize() / 2.f));
 }
 
-void Label::updateText(const std::string& text) {
-    textElement.setString(text);
+void Text::setText(const std::string& text) {
+    labelElement.setString(text);
+    labelElement.setOrigin(labelElement.getGlobalBounds().getSize() / 2.f + labelElement.getLocalBounds().getPosition());
+    labelElement.setPosition(layout.getPosition() + (layout.getSize() / 2.f));
 }

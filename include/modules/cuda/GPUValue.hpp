@@ -30,7 +30,9 @@ public:
     void syncToHost();
     void syncToDevice();
 
-    const std::vector<T>& hostData() const { return h_data; }
+    const T& hostData() const { return h_data; }
 };
+
+#include "../../../src/modules/cuda/GPUValue.tpp"
 
 #endif

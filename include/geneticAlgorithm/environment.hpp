@@ -1,47 +1,54 @@
-// environment.hpp
-#ifndef ENVIRONMENT
-#define ENVIRONMENT
+// dot_environment.hpp
+#ifndef HYPERLIFE_HPP
+#define HYPERLIFE_HPP
 
-#include "SFML/Graphics.hpp"
-#include "utility"
 #include "vector"
-#include <modules/graphics/vertexManager.hpp>
-#include <modules/utils/print.hpp>
-#include <geneticAlgorithm/individual.hpp>
+#include "random"
+#include "modules/verlet/point.hpp"
+#include "modules/cuda/GPUVector.hpp"
+#include "modules/cuda/GPUValue.hpp"
+#include "modules/graphics/vertexManager.hpp"
+#include "modules/quadtree/quadtree.hpp"
+
+class LifeForm;
 
 /**
- * Environment is an abstract class which provides a wrapper for the simulation to run.
+ * A 2D top-down simulation of multi-cellular organisms with modular neural networks.
+ * The simulation is based on the Verlet integration method.
  */
 class Environment {
-public:
-    static const int MAX_TITLE_LENGTH = 64;
-    Environment(const std::string& str, const sf::FloatRect& bounds) : bounds(bounds) {
-        title = str;
-    }
-
-    virtual ~Environment() = default;
-
-    virtual void simulate(float deltaTime) = 0;
-    virtual void render(VertexManager& window) = 0;
-    virtual void reset() = 0;
-
-    virtual Individual& createRandomIndividual() = 0;
-
-    [[nodiscard]] char* getTitle() const {
-        char* result = new char[MAX_TITLE_LENGTH];
-        // Copy the input string into the myString array
-        strcpy_s(result, title.size() + 1, title.c_str());
-        // Ensure null termination
-        result[MAX_TITLE_LENGTH - 1] = '\0';
-        return result;
-    }
-    [[nodiscard]] sf::FloatRect getBounds() const { return bounds; }
-    float dt = 0.0f;
-
-protected:
+private:
     std::string title;
-    sf::FloatRect bounds;
-    int time = 0;
+    GPUValue<sf::FloatRect> bounds;
+
+    GPUVector<Point> points = GPUVector<Point>();
+    GPUVector<Connection> connections = GPUVector<Connection>();
+    GPUVector<ParentChildLink> parentChildLinks = GPUVector<ParentChildLink>();
+    Quadtree quadtree;
+    bool quadTreeVisible = false;
+
+public:
+    explicit Environment(sf::FloatRect bounds);
+    void simulate(float deltaTime);
+    void render(VertexManager& window);
+    void reset();
+    LifeForm& createRandomLifeForm();
+
+    int addPoint(float x, float y, float mass);
+    Point* getPoint(int index);
+    ParentChildLink* getParentChildLink(int index);
+    void addConnection(int a, int b, float distance);
+    int addParentChildLink(int a, int b,
+                         int parentStart, int parentEnd,
+                         float2 pointOnParent,
+                         float targetAngle, float stiffness);
+    GPUVector<ParentChildLink>& getParentChildLinks() { return parentChildLinks; }
+
+    [[nodiscard]] char* getTitle() const;
+    [[nodiscard]] sf::FloatRect getBounds() const;
+    void toggleQuadTreeVisible();
+    bool isQuadTreeVisible() const;
+
 };
 
 #endif

@@ -145,21 +145,21 @@ public:
     /// \brief Copy the current contents of the window to an image
     ///
     /// \deprecated
-    /// Use a sf::Texture and its sf::Texture::update(const Window&)
+    /// Use a sf::Texture and its sf::Texture::resize(const Window&)
     /// function and copy its contents into an sf::Image instead.
     /// \code
     /// sf::Vector2u windowSize = window.getSize();
     /// sf::Texture texture;
     /// texture.create(windowSize.x, windowSize.y);
-    /// texture.update(window);
+    /// texture.resize(window);
     /// sf::Image screenshot = texture.copyToImage();
     /// \endcode
     ///
     /// This is a slow operation, whose main purpose is to make
-    /// screenshots of the application. If you want to update an
+    /// screenshots of the application. If you want to resize an
     /// image with the contents of the window and then use it for
     /// drawing, you should rather use a sf::Texture and its
-    /// update(Window&) function.
+    /// resize(Window&) function.
     /// You can also draw things directly to a texture with the
     /// sf::RenderTexture class.
     ///

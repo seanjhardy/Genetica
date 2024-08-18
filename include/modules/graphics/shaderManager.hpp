@@ -11,7 +11,7 @@ public:
     static void init();
 
     // Gets a shader by its key
-    static sf::Shader* getShader(const std::string& key);
+    static sf::Shader* get(const std::string& key);
 
 private:
     static std::unordered_map<std::string, sf::Texture> textures;

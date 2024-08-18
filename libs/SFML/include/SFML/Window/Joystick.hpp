@@ -185,7 +185,7 @@ public:
 /// its events. Compared to the JoystickMoved, JoystickButtonPressed
 /// and JoystickButtonReleased events, sf::Joystick can retrieve the
 /// state of axes and buttons of joysticks at any time
-/// (you don't need to store and update a boolean on your side
+/// (you don't need to store and resize a boolean on your side
 /// in order to know if a button is pressed or released), and you
 /// always get the real state of joysticks, even if they are
 /// moved, pressed or released when your window is out of focus
@@ -197,12 +197,12 @@ public:
 /// \li 8 axes per joystick (sf::Joystick::AxisCount)
 ///
 /// Unlike the keyboard or mouse, the state of joysticks is sometimes
-/// not directly available (depending on the OS), therefore an update()
-/// function must be called in order to update the current state of
+/// not directly available (depending on the OS), therefore an resize()
+/// function must be called in order to resize the current state of
 /// joysticks. When you have a window with event handling, this is done
 /// automatically, you don't need to call anything. But if you have no
 /// window, or if you want to check joysticks state before creating one,
-/// you must call sf::Joystick::update explicitly.
+/// you must call sf::Joystick::resize explicitly.
 ///
 /// Usage example:
 /// \code

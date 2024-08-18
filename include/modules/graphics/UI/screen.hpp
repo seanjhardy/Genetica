@@ -11,10 +11,15 @@ public:
     void addElement(UIElement* element);
     void draw(sf::RenderTarget& target) const;
     void handleEvent(const sf::Event& event);
-    void update(const sf::Vector2u& size);
-    void handleHover(const sf::Vector2f& position);
+    void resize(const sf::Vector2u& size);
+    void update(float dt, const sf::Vector2f& position);
+    void addFunction(const function<void()>& function);
+    std::vector<UIElement*> getElements();
+    void reset();
+
 private:
     std::vector<UIElement*> elements;
+    std::vector<function<void()>> functions;
 };
 
 #endif

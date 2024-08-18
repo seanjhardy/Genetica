@@ -1,16 +1,16 @@
 #ifndef GENETIC_ALGORITHM
 #define GENETIC_ALGORITHM
 
-#include "vector"
-#include "individual.hpp"
+#include <vector>
+#include <geneticAlgorithm/environment.hpp>
+#include <geneticAlgorithm/species.hpp>
 
 using namespace std;
 
 /**
  * Genetic Algorithm class
- * Maintains population of individuals and species
+ * Maintains population of lifeforms and species
  */
-//TODO: Convert to abstract class and implement different mutation rates for each environment
 class GeneticAlgorithm {
 private:
 
@@ -40,8 +40,8 @@ private:
     float deleteBaseChance = 0.00005f;
     float crossoverCellDataChance = 0.2f;// 0 = mix bases, 1 = use one parent
 
-    Environment* environment{};
-    vector<Individual*> population{};
+    Environment* env{};
+    vector<LifeForm*> population{};
     vector<Species*> species{};
     vector<Species*> ancestors{};
     int speciesID = 0;
@@ -52,13 +52,12 @@ public:
     static GeneticAlgorithm& get();
 
     int step = 0;
-    double realTime = 0;
 
     void simulate(float dt);
     void render(VertexManager& vertexManager);
     void reset();
 
-    void addIndividual(Individual* individual);
+    void addLifeForm(LifeForm* lifeform);
     unordered_map<int, string> mutate(const unordered_map<int, string>& genome,
                                       int headerSize, int cellDataSize);
     [[nodiscard]] string mutateGene(unordered_map<int, string> genome, int key, string gene,
@@ -66,9 +65,12 @@ public:
     unordered_map<int, string> createRandomGenome();
 
     void setEnvironment(Environment& env);
-    [[nodiscard]] Environment* getEnvironment() const;
+    [[nodiscard]] Environment* getEnv() const;
 
-    int nextIndividualID();
+    vector<LifeForm*> getPopulation();
+    vector<Species*> getSpecies();
+
+    int nextLifeFormID();
     int nextGeneID();
     int nextSpeciesID();
 };

@@ -2,6 +2,8 @@
 #include "simulator/simulator.hpp"
 #include "simulator/screens/simulationScreen.hpp"
 #include <modules/utils/print.hpp>
+#include <sstream>
+#include <iomanip>
 
 // Instantiate simulator
 Simulator::Simulator(Environment& env, int width, int height)
@@ -11,6 +13,8 @@ Simulator::Simulator(Environment& env, int width, int height)
         camera(CameraController(env.getBounds(), &window)){
 
     print("Loading Environment: ", env.getTitle());
+
+    vertexManager.setCamera(&camera);
 }
 
 void Simulator::setup() {
@@ -33,16 +37,18 @@ void Simulator::run() {
             camera.updateEvent(event);
             uiManager.handleEvent(event);
         }
-        uiManager.handleHover(static_cast<sf::Vector2f>(sf::Mouse::getPosition(window)));
+        uiManager.update(deltaTime, static_cast<sf::Vector2f>(sf::Mouse::getPosition(window)));
 
         camera.update(deltaTime);
 
         if (state == State::Playing) {
-            GeneticAlgorithm::get().simulate(deltaTime);
+            realTime += deltaTime * speed;
+            GeneticAlgorithm::get().simulate(deltaTime * speed);
         }
 
         std::clock_t now = std::clock();
         auto renderDelta = static_cast<double>(now - lastRenderTime);
+        // Avoid re-rendering over 60fps
         if (renderDelta >= FRAME_INTERVAL) {
             lastRenderTime = now;
 
@@ -69,6 +75,38 @@ Simulator::State Simulator::getState() {
     return state;
 }
 
+sf::RenderWindow& Simulator::getWindow() {
+    return window;
+}
+
+void Simulator::speedUp() {
+    speed *= 1.5;
+}
+
+void Simulator::slowDown() {
+    speed /= 1.5;
+}
+
 void Simulator::reset() {
     GeneticAlgorithm::get().reset();
+}
+
+std::string Simulator::getTimeString() const {
+    float time = realTime;
+    int hours = time / 3600;
+    time -= hours * 3600;
+    int minutes = time / 60;
+    time -= minutes * 60;
+    int seconds = time;
+
+    std::ostringstream oss;
+    oss << std::setw(2) << std::setfill('0') << hours << ":"
+        << std::setw(2) << std::setfill('0') << minutes << ":"
+        << std::setw(2) << std::setfill('0') << seconds;
+
+    return oss.str();
+}
+
+float Simulator::getSpeed() const {
+    return speed;
 }

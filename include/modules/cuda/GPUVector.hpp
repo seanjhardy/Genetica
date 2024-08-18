@@ -33,6 +33,7 @@ public:
     T* back();
     void pop_back();
     T& operator[](size_t index);
+    void update(size_t i, T value);
 
     [[nodiscard]] size_t size() const { return size_; }
     [[nodiscard]] size_t capacity() const { return capacity_; }

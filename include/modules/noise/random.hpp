@@ -18,8 +18,7 @@ public:
     }
 
     static float random(float min = 0.0, float max = 1.0) {
-        float randomValue = static_cast <float> (rand()) /(static_cast <float> (RAND_MAX));
-        return (max - min) * randomValue + min;
+        return (max - min) * dist(rng) + min;
     }
 
     static std::string randomBase() {
@@ -37,6 +36,7 @@ public:
     static std::mt19937 rng;
     static uint64_t m_rand;
     static uint8_t m_bits_left;
+    static std::uniform_real_distribution<double> dist;
 private:
     static void refreshRandom() {
         m_rand = std::uniform_int_distribution<uint64_t>{}(rng);

@@ -1,6 +1,7 @@
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <modules/noise/random.hpp>
-#include <geneticAlgorithm/genomeUtils.hpp>
+#include "modules/utils/genomeUtils.hpp"
+#include "geneticAlgorithm/sequencer.hpp"
 
 GeneticAlgorithm& GeneticAlgorithm::get(){
     static GeneticAlgorithm geneticAlgorithm;
@@ -9,19 +10,18 @@ GeneticAlgorithm& GeneticAlgorithm::get(){
 
 void GeneticAlgorithm::simulate(float dt) {
     if (step == 0) this->reset();
-    environment->simulate(dt);
-    for (Individual* individual : population) {
-        individual->simulate(dt);
+    env->simulate(dt);
+    for (LifeForm* lifeform : population) {
+        lifeform->simulate(dt);
     }
-    realTime += dt;
     step++;
 };
 
 void GeneticAlgorithm::render(VertexManager& vertexManager) {
-    environment->render(vertexManager);
+    env->render(vertexManager);
 
-    for (Individual* individual : population) {
-        individual->render(vertexManager);
+    for (LifeForm* lifeform : population) {
+        lifeform->render(vertexManager);
     }
 };
 
@@ -114,12 +114,15 @@ string GeneticAlgorithm::mutateGene(unordered_map<int, string> genome,
 }
 
 unordered_map<int, string> GeneticAlgorithm::createRandomGenome() {
+    if (true) {
+        return plantGenome();
+    }
     // Create random genome
     unordered_map<int, string> genome;
-    int num_chromosomes = (int)Random::random(15, MAX_CHROMOSOMES);
+    int num_chromosomes = (int)Random::random(2, 5);
     for (int i = 0; i < num_chromosomes; i++) {
         string chromosome;
-        int size = Random::random(LifeForm::HEADER_SIZE, MAX_CHROMOSOME_SIZE);
+        int size = LifeForm::HEADER_SIZE + LifeForm::CELL_DATA_SIZE * Random::random(0, 3);
         for (int j = 0; j < size; j++) {
             chromosome += Random::randomBase();
         }
@@ -128,11 +131,12 @@ unordered_map<int, string> GeneticAlgorithm::createRandomGenome() {
     return genome;
 }
 
-void GeneticAlgorithm::addIndividual(Individual* individual) {
-    population.push_back(individual);
+void GeneticAlgorithm::addLifeForm(LifeForm* lifeform) {
+    population.push_back(lifeform);
 }
 
 void GeneticAlgorithm::reset() {
+    env->reset();
     population.clear();
     species.clear();
     ancestors.clear();
@@ -141,14 +145,22 @@ void GeneticAlgorithm::reset() {
     lifeFormID = 0;
 }
 
-void GeneticAlgorithm::setEnvironment(Environment& env) {
-    environment = &env;
+void GeneticAlgorithm::setEnvironment(Environment& environment) {
+    env = &environment;
 }
-Environment* GeneticAlgorithm::getEnvironment() const {
-    return environment;
+Environment* GeneticAlgorithm::getEnv() const {
+    return env;
 }
 
-int GeneticAlgorithm::nextIndividualID() {
+vector<LifeForm*> GeneticAlgorithm::getPopulation() {
+    return population;
+}
+
+vector<Species*> GeneticAlgorithm::getSpecies() {
+    return species;
+}
+
+int GeneticAlgorithm::nextLifeFormID() {
     return lifeFormID++;
 }
 

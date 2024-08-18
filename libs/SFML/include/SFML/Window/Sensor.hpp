@@ -113,7 +113,7 @@ public:
 /// time and directly, without having to deal with a window and
 /// its events. Compared to the SensorChanged event, sf::Sensor
 /// can retrieve the state of a sensor at any time (you don't need to
-/// store and update its current value on your side).
+/// store and resize its current value on your side).
 ///
 /// Depending on the OS and hardware of the device (phone, tablet, ...),
 /// some sensor types may not be available. You should always check

@@ -120,7 +120,7 @@ public:
     ///
     /// \param font New font
     ///
-    /// \see getFont
+    /// \see get
     ///
     ////////////////////////////////////////////////////////////
     void setFont(const Font& font);

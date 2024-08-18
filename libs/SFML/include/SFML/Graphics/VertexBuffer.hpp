@@ -159,7 +159,7 @@ public:
     ///
     /// \param vertices Array of vertices to copy to the buffer
     ///
-    /// \return True if the update was successful
+    /// \return True if the resize was successful
     ///
     ////////////////////////////////////////////////////////////
     bool update(const Vertex* vertices);
@@ -182,7 +182,7 @@ public:
     /// is updated.
     ///
     /// If \p offset is not 0 and \p offset + \p vertexCount is greater
-    /// than the size of the currently created buffer, the update fails.
+    /// than the size of the currently created buffer, the resize fails.
     ///
     /// No additional check is performed on the size of the vertex
     /// array, passing invalid arguments will lead to undefined
@@ -192,7 +192,7 @@ public:
     /// \param vertexCount Number of vertices to copy
     /// \param offset      Offset in the buffer to copy to
     ///
-    /// \return True if the update was successful
+    /// \return True if the resize was successful
     ///
     ////////////////////////////////////////////////////////////
     bool update(const Vertex* vertices, std::size_t vertexCount, unsigned int offset);
@@ -262,7 +262,7 @@ public:
     /// \brief Set the usage specifier of this vertex buffer
     ///
     /// This function provides a hint about how this vertex buffer is
-    /// going to be used in terms of data update frequency.
+    /// going to be used in terms of data resize frequency.
     ///
     /// After changing the usage specifier, the vertex buffer has
     /// to be updated with new data for the usage specifier to
@@ -371,7 +371,7 @@ private:
 /// the application. This allows the user to take full control of data
 /// transfers between system and graphics memory if they need to.
 ///
-/// In special cases, the user can make use of multiple threads to update
+/// In special cases, the user can make use of multiple threads to resize
 /// vertex data in multiple distinct regions of the buffer simultaneously.
 /// This might make sense when e.g. the position of multiple objects has to
 /// be recalculated very frequently. The computation load can be spread
@@ -398,7 +398,7 @@ private:
 /// ...
 /// sf::VertexBuffer triangles(sf::Triangles);
 /// triangles.create(15);
-/// triangles.update(vertices);
+/// triangles.resize(vertices);
 /// ...
 /// window.draw(triangles);
 /// \endcode

@@ -475,12 +475,12 @@ SFML_SYSTEM_API Time& operator %=(Time& left, Time right);
 /// \endcode
 ///
 /// \code
-/// void update(sf::Time elapsed)
+/// void resize(sf::Time elapsed)
 /// {
 ///    position += speed * elapsed.asSeconds();
 /// }
 ///
-/// update(sf::milliseconds(100));
+/// resize(sf::milliseconds(100));
 /// \endcode
 ///
 /// \see sf::Clock

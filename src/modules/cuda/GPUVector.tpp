@@ -6,9 +6,10 @@ GPUVector<T>::GPUVector(size_t capacity) : size_(0), capacity_(capacity) {
 }
 
 template<typename T>
-GPUVector<T>::GPUVector(const std::vector<T>& host_vector) : h_data(host_vector), size_(host_vector.size()), capacity_(host_vector.size()) {
-    cudaMalloc(&d_data, capacity_ * sizeof(T));
-    cudaMemcpy(d_data, h_data.data(), size_ * sizeof(T), cudaMemcpyHostToDevice);
+GPUVector<T>::GPUVector(const std::vector<T>& host_vector) :
+h_data(host_vector), size_(host_vector.size()), capacity_(host_vector.size()*2) {
+    h_data = host_vector;
+    reallocateDevice(capacity_);
 }
 
 template<typename T>
@@ -23,10 +24,8 @@ template<typename T>
 void GPUVector<T>::reallocateDevice(size_t new_capacity) {
     T* new_d_data;
     cudaMalloc(&new_d_data, new_capacity * sizeof(T));
-    if (d_data) {
-        cudaMemcpy(new_d_data, d_data, size_ * sizeof(T), cudaMemcpyDeviceToDevice);
-        cudaFree(d_data);
-    }
+    cudaMemcpy(new_d_data, h_data.data(), size_ * sizeof(T), cudaMemcpyDeviceToDevice);
+    cudaFree(d_data);
     d_data = new_d_data;
     capacity_ = new_capacity;
 }
@@ -83,6 +82,12 @@ void GPUVector<T>::pop_back() {
 template<typename T>
 T& GPUVector<T>::operator[](size_t index) {
     return h_data[index];
+}
+
+template<typename T>
+void GPUVector<T>::update(size_t i, T value) {
+    h_data[i] = value;
+    cudaMemcpy(d_data + i, &value, sizeof(T), cudaMemcpyHostToDevice);
 }
 
 template <typename T>

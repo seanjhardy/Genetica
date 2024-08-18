@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector_types.h>
 #include "SFML/Graphics.hpp"
 #include "iostream"
 #include "unordered_map"
@@ -10,6 +11,8 @@ public:
 
     void update(float deltaTime);
     void updateEvent(const sf::Event& event);
+    float getZoom() const;
+    bool isCircleVisible(const float2 &point, float r);
 
     sf::View getView();
     sf::View getWindowView();

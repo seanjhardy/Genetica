@@ -11,7 +11,7 @@ public:
     static void init();
 
     // Gets a sprite by its key
-    static sf::Sprite* getSprite(const std::string& key);
+    static sf::Sprite* get(const std::string& key);
 
 private:
     static std::unordered_map<std::string, sf::Texture> textures;

@@ -1,5 +1,6 @@
 #include "simulator/CameraController.hpp"
 #include "cmath"
+#include "vector_types.h"
 
 CameraController::CameraController(sf::FloatRect bounds,
                                    sf::RenderWindow* window)
@@ -124,6 +125,27 @@ void CameraController::updateView() {
     view.setCenter(position);
     windowView.setSize(windowSize);
     windowView.setCenter(windowSize / 2.0f);
+}
+
+// Check if a point is within "r" distance of the bounds
+bool CameraController::isCircleVisible(const float2& point, float r) {
+    // Get the current view bounds
+    sf::Vector2f viewCenter = view.getCenter();
+    sf::Vector2f viewSize = view.getSize();
+
+    // Calculate the bounds of the view, shrunk by r
+    float left = viewCenter.x - viewSize.x / 2.0f - r;
+    float right = viewCenter.x + viewSize.x / 2.0f + r;
+    float top = viewCenter.y - viewSize.y / 2.0f - r;
+    float bottom = viewCenter.y + viewSize.y / 2.0f + r;
+
+    // Check if the point is within these bounds
+    return (point.x >= left && point.x <= right &&
+            point.y >= top && point.y <= bottom);
+}
+
+float CameraController::getZoom() const {
+    return zoomLevel;
 }
 
 sf::View CameraController::getView() {

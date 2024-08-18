@@ -17,18 +17,25 @@ Button::Button(const std::string& text, std::function<void()> onClick,
         fontSize = parseValue(v);
     };
     propertySetters["icon"] = [this](const string& v) {
-        icon = *SpriteManager::getSprite(v);
+        icon = *SpriteManager::get(v);
     };
     propertySetters["shadow"] = [this](const string& v) {
         shadow = parseShadow(v);
     };
 
-    font = FontManager::getFont("russo");
+    font = FontManager::get("russo");
     buttonText = sf::Text(text, *font, fontSize);
     setStyle(style);
 }
 
+Button::Button(std::function<void()> onClick, const std::string& styleString, const std::string& styleOnHoverString)
+        : Button("", std::move(onClick), styleString, styleOnHoverString) {}
+
+Button::Button(const std::string& styleString, const std::string& styleOnHoverString)
+        : Button("", nullptr, styleString, styleOnHoverString) {}
+
 void Button::onLayout() {
+    UIElement::onLayout();
     if (shadow.getColor() != sf::Color::Transparent) {
         buttonShadow = sf::RoundedRectangleShape(layout.getSize() +
           sf::Vector2f(shadow.getSize(), shadow.getSize()));
@@ -38,7 +45,7 @@ void Button::onLayout() {
                     sf::Vector2f(shadow.getOffset()[0] - shadow.getSize()/2,
                                  shadow.getOffset()[1] - shadow.getSize()/2));
 
-        shader = ShaderManager::getShader("blur");
+        shader = ShaderManager::get("blur");
     }
 
     shape.setFillColor(backgroundColor);

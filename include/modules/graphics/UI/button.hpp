@@ -13,6 +13,9 @@ class Button : public UIElement {
 public:
     Button(const string& text,
            function<void()> onClick, const std::string& styleString = "", const std::string& styleOnHoverString = "");
+    Button(function<void()> onClick, const std::string& styleString = "", const std::string& styleOnHoverString = "");
+    Button(const std::string& styleString, const std::string& styleOnHoverString = "");
+
     void draw(sf::RenderTarget& target) const override;
     void handleEvent(const sf::Event& event) override;
     void onLayout() override;
@@ -21,9 +24,9 @@ public:
     sf::RoundedRectangleShape shape;
     sf::RoundedRectangleShape buttonShadow;
     sf::Shader* shader;
-    Shadow shadow = Shadow(5, sf::Color(0, 0, 0, 50), 0, 3);
+    Shadow shadow = Shadow(0, sf::Color(0, 0, 0, 0), 0, 0);
 
-    sf::Color backgroundColor;
+    sf::Color backgroundColor = sf::Color::Transparent;
     sf::Color backgroundHoverColor;
     sf::Text buttonText;
     sf::Font* font;

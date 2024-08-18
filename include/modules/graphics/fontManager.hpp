@@ -11,7 +11,7 @@ public:
     static void init();
 
     // Gets a font by its key
-    static sf::Font* getFont(const std::string& key);
+    static sf::Font* get(const std::string& key);
 
 private:
     static std::unordered_map<std::string, sf::Font> fonts;

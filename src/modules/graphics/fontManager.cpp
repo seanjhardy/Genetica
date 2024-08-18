@@ -26,7 +26,7 @@ void FontManager::init() {
     }
 }
 
-sf::Font* FontManager::getFont(const std::string &key) {
+sf::Font* FontManager::get(const std::string &key) {
     auto it = fonts.find(key);
     if (it != fonts.end()) {
         return &it->second;

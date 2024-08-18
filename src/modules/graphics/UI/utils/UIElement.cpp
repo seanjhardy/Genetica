@@ -18,7 +18,7 @@ void UIElement::setStyle(std::unordered_map<std::string, std::string> styleProps
     }
 }
 
-void UIElement::handleHover(const sf::Vector2f &position) {
+void UIElement::update(const float dt, const sf::Vector2f &position) {
     if (!hovered && contains(position)) {
         hovered = true;
         restyle();
@@ -27,14 +27,27 @@ void UIElement::handleHover(const sf::Vector2f &position) {
         hovered = false;
         restyle();
     }
+    if (animation != nullptr && !animation->completed) {
+        animation->update(dt);
+    }
 }
 
 void UIElement::restyle() {
     if (hovered) {
         setStyle(style);
         setStyle(styleOnHover);
+        if (animation) {
+            animation->fromValue = 0;
+            animation->toValue = 1;
+            animation->reset();
+        }
     } else {
         setStyle(style);
+        if (animation) {
+            animation->fromValue = 1;
+            animation->toValue = 0;
+            animation->reset();
+        }
     }
     onLayout();
 }
@@ -57,3 +70,20 @@ void UIElement::overrideStyleOnHover(const std::string& s) {
     }
     restyle();
 }
+
+void UIElement::onLayout() {
+    layout = base_layout;
+    layout.left += margin[0].getValue();
+    layout.top += margin[1].getValue();
+    layout.width -= margin[0].getValue() + margin[2].getValue();
+    layout.height -= margin[1].getValue() + margin[3].getValue();
+
+    if (transform.getValue() != 1) {
+        float newWidth = base_layout.width * transform.getValue();
+        float newHeight = base_layout.height * transform.getValue();
+        layout.left += (layout.width - newWidth) / 2;
+        layout.top += (layout.height - newHeight) / 2;
+        layout.width = newWidth;
+        layout.height = newHeight;
+    }
+};

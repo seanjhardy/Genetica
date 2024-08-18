@@ -33,6 +33,8 @@ void Container::addChild(UIElement* child) {
 }
 
 void Container::onLayout() {
+    UIElement::onLayout();
+
     shape.setPosition(layout.getPosition());
     shape.setSize(layout.getSize());
     updateLayout();
@@ -133,8 +135,8 @@ void Container::updateLayout() {
         sf::Vector2f elementSize = (flexDirection == Direction::Row)
                                    ? sf::Vector2f(itemMainSize, itemCrossSize)
                                    : sf::Vector2f(itemCrossSize, itemMainSize);
-        element->layout.width = elementSize.x;
-        element->layout.height = elementSize.y;
+        element->base_layout.width = elementSize.x;
+        element->base_layout.height = elementSize.y;
 
         // Set element position
         Alignment& alignment = (flexDirection == Direction::Row) ? columnAlignment : rowAlignment;
@@ -156,8 +158,8 @@ void Container::updateLayout() {
         sf::Vector2f elementPos = (flexDirection == Direction::Row)
                                   ? sf::Vector2f(currentMainPos, crossPos)
                                   : sf::Vector2f(crossPos, currentMainPos);
-        element->layout.left = elementPos.x;
-        element->layout.top = elementPos.y;
+        element->base_layout.left = elementPos.x;
+        element->base_layout.top = elementPos.y;
         currentMainPos += itemMainSize + gap;
     }
 
@@ -191,9 +193,9 @@ void Container::updateLayout() {
 void Container::applyOffset(float offset) {
     for (auto& child : children) {
         if (flexDirection == Direction::Row) {
-            child->layout.left += offset;
+            child->base_layout.left += offset;
         } else {
-            child->layout.top += offset;
+            child->base_layout.top += offset;
         }
     }
 }
@@ -207,9 +209,9 @@ void Container::distributeSpace(float space, bool includeEnds) {
 
     for (auto& child : children) {
         if (flexDirection == Direction::Row) {
-            child->layout.left += currentOffset;
+            child->base_layout.left += currentOffset;
         } else {
-            child->layout.top += currentOffset;
+            child->base_layout.top += currentOffset;
         }
         currentOffset += gap;
     }
@@ -228,9 +230,9 @@ void Container::handleEvent(const sf::Event& event) {
     }
 }
 
-void Container::handleHover(const sf::Vector2f& position) {
-    UIElement::handleHover(position);
+void Container::update(float dt, const sf::Vector2f& position) {
+    UIElement::update(dt, position);
     for (auto& child : children) {
-        child->handleHover(position);
+        child->update(dt, position);
     }
 }

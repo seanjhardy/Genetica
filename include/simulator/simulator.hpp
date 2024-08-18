@@ -22,10 +22,17 @@ public:
     void reset();
     void setup();
     void setState(State newState);
+    void speedUp();
+    void slowDown();
+
+    std::string getTimeString() const;
+    float getSpeed() const;
     State getState();
+    sf::RenderWindow& getWindow();
 
 private:
-    int time = 0;
+    double realTime = 0;
+    float speed = 1.0;
     int MAX_FRAMERATE = 60;
     double FRAME_INTERVAL = CLOCKS_PER_SEC / MAX_FRAMERATE;
     std::clock_t lastRenderTime = std::clock();

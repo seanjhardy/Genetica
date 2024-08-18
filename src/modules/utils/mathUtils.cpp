@@ -27,7 +27,8 @@ std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& po
 }
 
 float getVelocity(const Point& point) {
-    return std::sqrt(std::pow(point.pos.x - point.prevPos.x, 2) + std::pow(point.pos.y - point.prevPos.y, 2));
+    float2 d = point.pos - point.prevPos;
+    return std::sqrt(sum(d * d));
 }
 
 sf::Color interpolate(const sf::Color c1, const sf::Color c2, float x) {
@@ -60,7 +61,7 @@ float clockwiseAngleDiff(const float2& p1, const float2& p2) {
 
 std::vector<std::pair<int, int>> bezier(int x0, int y0, int x1, int y1, int x2, int y2, int num_points) {
     auto bezierInterpolation = [](float t, int p0, int p1, int p2) {
-        float x = std::pow(1 - t, 2) * p0 + 2 * (1 - t) * t * p1 + std::pow(t, 2) * p2;
+        float x = (1 - t)* (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
         return static_cast<int>(x);
     };
 

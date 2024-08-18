@@ -7,15 +7,18 @@ void Screen::addElement(UIElement* element) {
 }
 
 void Screen::draw(sf::RenderTarget& target) const {
+    for (const auto& function : functions) {
+        function();
+    }
     for (const auto& element : elements) {
         element->draw(target);
     }
 }
 
-void Screen::update(const sf::Vector2u& size) {
+void Screen::resize(const sf::Vector2u& size) {
     for (auto& element : elements) {
-        element->layout.width = size.x;
-        element->layout.height = size.y;
+        element->base_layout.width = size.x;
+        element->base_layout.height = size.y;
         element->onLayout();
     }
 }
@@ -26,11 +29,23 @@ void Screen::handleEvent(const sf::Event& event) {
     }
 }
 
-void Screen::handleHover(const sf::Vector2f& position) {
+void Screen::update(const float dt, const sf::Vector2f& position) {
     for (auto& element : elements) {
         if (element->contains(position)) {
-            element->handleHover(position);
+            element->update(dt, position);
             return;
         }
     }
+}
+
+std::vector<UIElement*> Screen::getElements() {
+    return elements;
+}
+
+void Screen::reset() {
+    elements.clear();
+}
+
+void Screen::addFunction(const function<void()>& function) {
+    functions.push_back(function);
 }

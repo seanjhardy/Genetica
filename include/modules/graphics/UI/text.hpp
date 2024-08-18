@@ -1,21 +1,20 @@
-#ifndef TEXT_ELEMENT
-#define TEXT_ELEMENT
+#ifndef LABEL
+#define LABEL
 
 #include "SFML/Graphics.hpp"
 #include "modules/graphics/UI/utils/UIElement.hpp"
 
-class Label : public UIElement {
+class Text : public UIElement {
 public:
-    Label(const std::string& text, const std::string& styleString);
+    Text(const std::string& text, const std::string& styleString);
     void draw(sf::RenderTarget& target) const override;
     void onLayout() override;
-    void updateText(const std::string& text);
+    void setText(const std::string& text);
 
 private:
-    sf::Text textElement;
+    sf::Text labelElement;
     sf::Font* font;
     float fontSize = 20;
-    function<void(string)> update;
 };
 
 #endif

@@ -34,18 +34,20 @@ struct Point {
 };
 
 struct Connection {
-    size_t a;
-    size_t b;
+    int a;
+    int b;
     float distance;
 };
 
-struct AngleConstraint {
-    size_t a;
-    size_t b;
-    size_t parentStart;
-    size_t parentEnd;
+struct ParentChildLink {
+    int startPoint;
+    int endPoint;
+    int parentStartPoint;
+    int parentEndPoint;
+    float2 pointOnParent;
     float targetAngle;
     float stiffness;
 };
+
 
 #endif

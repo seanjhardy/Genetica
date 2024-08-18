@@ -40,6 +40,10 @@ void SpriteManager::init() {
             {"fastForwardHighlighted", "./assets/icons/fast_forward_highlighted.png"},
             {"slowDown", "./assets/icons/slow_down.png"},
             {"slowDownHighlighted", "./assets/icons/slow_down_highlighted.png"},
+            {"map", "./assets/icons/map.png"},
+            {"mapHighlighted", "./assets/icons/map_highlighted.png"},
+            {"quadtree", "./assets/icons/quadtree.png"},
+            {"quadtreeHighlighted", "./assets/icons/quadtree_highlighted.png"},
             // Textures
             {"default", "./assets/textures/default.png"},
             {"dnaBanner", "./assets/textures/dna_banner.png"},
@@ -65,7 +69,7 @@ void SpriteManager::init() {
     }
 }
 
-sf::Sprite* SpriteManager::getSprite(const std::string& key) {
+sf::Sprite* SpriteManager::get(const std::string& key) {
     auto it = sprites.find(key);
     if (it != sprites.end()) {
         return &it->second;

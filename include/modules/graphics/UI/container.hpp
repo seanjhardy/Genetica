@@ -16,7 +16,7 @@ public:
 
     void draw(sf::RenderTarget& target) const override;
     void handleEvent(const sf::Event& event) override;
-    void handleHover(const sf::Vector2f& position) override;
+    void update(float dt, const sf::Vector2f& position) override;
     void onLayout() override;
 
     sf::RoundedRectangleShape shape;

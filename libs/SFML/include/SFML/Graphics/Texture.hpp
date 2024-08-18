@@ -262,7 +262,7 @@ public:
     /// \a height arguments, and it must contain 32-bits RGBA pixels.
     ///
     /// No additional check is performed on the size of the pixel
-    /// array or the bounds of the area to update, passing invalid
+    /// array or the bounds of the area to resize, passing invalid
     /// arguments will lead to an undefined behavior.
     ///
     /// This function does nothing if \a pixels is null or if the
@@ -646,7 +646,7 @@ private:
 /// Being stored in the graphics card memory has some drawbacks.
 /// A texture cannot be manipulated as freely as a sf::Image,
 /// you need to prepare the pixels first and then upload them
-/// to the texture in a single operation (see Texture::update).
+/// to the texture in a single operation (see Texture::resize).
 ///
 /// sf::Texture makes it easy to convert from/to sf::Image, but
 /// keep in mind that these calls require transfers between
@@ -707,9 +707,9 @@ private:
 /// {
 ///     ...
 ///
-///     // update the texture
+///     // resize the texture
 ///     sf::Uint8* pixels = ...; // get a fresh chunk of pixels (the next frame of a movie, for example)
-///     texture.update(pixels);
+///     texture.resize(pixels);
 ///
 ///     // draw it
 ///     window.draw(sprite);

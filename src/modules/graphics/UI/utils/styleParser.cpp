@@ -1,6 +1,8 @@
 #include <modules/graphics/UI/utils/size.hpp>
 #include <modules/graphics/UI/utils/styleParser.hpp>
 #include <modules/graphics/UI/utils/shadow.hpp>
+#include <modules/graphics/UI/utils/transform.hpp>
+#include <modules/utils/stringUtils.hpp>
 #include <sstream>
 #include <unordered_map>
 #include <string>
@@ -8,26 +10,6 @@
 #include <regex>
 
 using namespace std;
-
-// Function to trim leading and trailing spaces from a string
-std::string trimSpaces(const std::string& str) {
-    // Lambda function to check if a character is a whitespace
-    auto isSpace = [](char ch) { return std::isspace(static_cast<unsigned char>(ch)); };
-
-    // Find the first non-whitespace character
-    auto start = std::find_if_not(str.begin(), str.end(), isSpace);
-
-    // If the entire string is whitespace
-    if (start == str.end()) {
-        return "";
-    }
-
-    // Find the last non-whitespace character
-    auto end = std::find_if_not(str.rbegin(), str.rend(), isSpace).base();
-
-    // Create a new string with trimmed spaces
-    return {start, end};
-}
 
 unordered_map<string, string> parseStyleString(const string& styleString) {
     unordered_map<string, string> result;
@@ -38,8 +20,12 @@ unordered_map<string, string> parseStyleString(const string& styleString) {
     while (getline(ss, token, ';')) {
         smatch match;
         if (regex_search(token, match, keyValuePattern)) {
-            result.insert({trimSpaces(match[1].str()),
-                           trimSpaces(match[2].str())});
+            if (result.contains(match[1].str())) {
+                result[match[1].str()] = trimSpaces(match[2].str());
+            } else {
+                result.insert({trimSpaces(match[1].str()),
+                               trimSpaces(match[2].str())});
+            }
         }
     }
     return result;
@@ -62,7 +48,7 @@ float parseValue(const string& value) {
 }
 
 //Takes in a string of format <value>px or <value>px <value>px <value>px <value>px
-std::vector<Size> parseMultiValue(const string& value) {
+void parseMultiValue(const string& value, Size (&result)[4]) {
     std::istringstream ss(value);
     std::string token;
     std::vector<Size> values;
@@ -72,13 +58,20 @@ std::vector<Size> parseMultiValue(const string& value) {
 
     switch (values.size()) {
         case 1:
-            return std::vector<Size>({values[0], values[0], values[0], values[0]});
+            result[0] = result[1] = result[2] = result[3] = values[0];
+            break;
         case 2:
-            return std::vector<Size>({values[0], values[1], values[0], values[1]});
+            result[0] = result[2] = values[0];
+            result[1] = result[3] = values[1];
+            break;
         case 3:
-            return std::vector<Size>({values[0], values[1], values[2], values[1]});
+            result[0] = values[0];
+            result[1] = result[3] = values[1];
+            result[2] = values[2];
+            break;
         default:
-            return std::vector<Size>({Size::Pixel(0), Size::Pixel(0), Size::Pixel(0), Size::Pixel(0)});
+            result[0] = result[1] = result[2] = result[3] = Size::Pixel(0);
+            break;
     }
 }
 
@@ -146,8 +139,11 @@ Border parseBorder(const string& borderStr) {
                   radii[2], radii[3]);
 }
 
-Shadow parseShadow(const string& borderStr) {
-    istringstream iss(borderStr);
+Shadow parseShadow(const string& shadowStr) {
+    if (shadowStr == "none") {
+        return Shadow(0, sf::Color::Transparent);
+    }
+    istringstream iss(shadowStr);
     vector<string> tokens;
     string token;
 
@@ -155,14 +151,14 @@ Shadow parseShadow(const string& borderStr) {
         tokens.push_back(token);
     }
 
-    int blur = 0;
+    int blur = -1;
     sf::Color color;
     vector<int> offset;
 
     for (const auto& t : tokens) {
         if (t.find("px") != string::npos) {
             int value = stoi(t.substr(0, t.find("px")));
-            if (blur == 0) {
+            if (blur == -1) {
                 blur = value;
             } else {
                 offset.push_back(value);
@@ -176,7 +172,6 @@ Shadow parseShadow(const string& borderStr) {
     while (offset.size() < 2) {
         offset.push_back(offset.empty() ? 0 : offset[0]);
     }
-
     return Shadow(blur, color, offset[0], offset[1]);
 }
 
@@ -202,4 +197,21 @@ Alignment parseAlignment(const string& value) {
         return Alignment::SpaceAround;
     }
     return Alignment::Start; // Default
+}
+
+Transform parseTransform(const string& value) {
+    istringstream iss(value);
+    vector<string> tokens;
+    string token;
+
+    while (iss >> token) {
+        tokens.push_back(token);
+    }
+
+    for (const auto& t : tokens) {
+        if (t.find("scale") != string::npos) {
+            float scale = stof(t.substr(t.find("(") + 1, t.find(")") - t.find("(") - 1));
+            return Transform::Scale(scale);
+        }
+    }
 }

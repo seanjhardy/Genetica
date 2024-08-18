@@ -2,9 +2,9 @@
 #define SPECIES
 
 #include <utility>
-#include "vector"
+#include <vector>
 
-class Individual;
+class LifeForm;
 
 /**
  * Species are collections of individuals with similar genetic makeup that can interbreed.
@@ -12,16 +12,16 @@ class Individual;
 class Species {
 private:
     Species* parent{};
-    std::vector<Individual*> members{};
-    Individual* mascot;
+    std::vector<LifeForm*> members{};
+    LifeForm* mascot;
     int originTime = 0;
     int deathTime = -1;
 
 public:
-    Species(Species* parent, Individual* mascot, int originTime) :
+    Species(Species* parent, LifeForm* mascot, int originTime) :
     parent(parent), mascot(mascot), originTime(originTime) {};
 
-    void addCreature(Individual* creature);
-    void removeCreature(Individual* creature);
+    void addCreature(LifeForm* creature);
+    void removeCreature(LifeForm* creature);
 };
 #endif

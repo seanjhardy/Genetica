@@ -25,7 +25,7 @@ void ShaderManager::init() {
     }
 }
 
-sf::Shader* ShaderManager::getShader(const std::string &key) {
+sf::Shader* ShaderManager::get(const std::string &key) {
     auto it = shaders.find(key);
     if (it != shaders.end()) {
         return &it->second;

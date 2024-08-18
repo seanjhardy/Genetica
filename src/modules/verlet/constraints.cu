@@ -1,5 +1,6 @@
 #include <modules/verlet/point.hpp>
 #include <modules/utils/floatOps.hpp>
+#include <modules/utils/print.hpp>
 #include "cmath"
 #ifndef M_PI
     #define M_PI 3.14159265358979323846
@@ -10,19 +11,18 @@ __host__ __device__ inline void constrainDistance(Point& point1, Point& point2, 
     float deltaDistance = factor * (distance - currentDistance);
 
     if (currentDistance == 0) {
-        currentDistance += 1e-8f; // Avoid division by zero
+        currentDistance += 1e-5f; // Avoid division by zero
     }
 
-    if (std::abs(deltaDistance) < 0.001) {
+    if (std::abs(deltaDistance) < 0.01) {
         return; // No significant change needed
     }
 
     float2 delta = (point2.pos - point1.pos) * deltaDistance / currentDistance;
 
     float massRatio = point1.mass / (point1.mass + point2.mass);
-
-    point1.pos -= delta * (1 - massRatio);
-    point2.pos += delta * massRatio;
+    point1.pos -= delta * (1 - massRatio) * 0.01;
+    point2.pos += delta * massRatio * 0.01;
 }
 
 __host__ __device__ inline void constrainAngle(Point& point1, Point& point2, float targetAngle, float stiffness) {
@@ -34,10 +34,10 @@ __host__ __device__ inline void constrainAngle(Point& point1, Point& point2, flo
 
 __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect bounds) {
     float updateDist = 0.0f;
-    float minMax[4] = {bounds.left + point.mass,
-                       bounds.width - point.mass,
-                       bounds.top + point.mass,
-                       bounds.height - point.mass};
+    float minMax[4] = {bounds.left + point.mass / 2,
+                       bounds.width - point.mass / 2,
+                       bounds.top + point.mass / 2,
+                       bounds.height - point.mass / 2};
 
     if (point.pos.x < minMax[0]) {
         updateDist += std::abs(point.pos.x - minMax[0]);

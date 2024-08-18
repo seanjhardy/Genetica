@@ -5,10 +5,9 @@
 #include <modules/utils/floatOps.hpp>
 
  __host__ __device__ float2 Point::getVelocity() const {
-    float x_vel = pos.x - prevPos.x;
-    float y_vel = pos.y - prevPos.y;
-    float speed = sqrtf(x_vel * x_vel + y_vel * y_vel);
-    float dir = atan2f(y_vel, x_vel);
+    float2 d = pos - prevPos;
+    float speed = sqrtf(sum(d*d));
+    float dir = atan2f(d.y, d.x);
     return make_float2(speed, dir);
 }
 
@@ -16,9 +15,7 @@ __host__ __device__ void Point::update(float dt) {
     float2 velocity = pos - prevPos;
     float2 accel = force / mass;
 
-    //float2 friction = velocity * pow(0.9, dt);
-    float2 newPosition = pos + velocity * pow(0.9, dt) + accel * dt * dt;
-
+    float2 newPosition = pos + velocity * 0.9 + accel * dt * dt;
     prevPos = pos;
     pos = newPosition;
 
@@ -32,13 +29,12 @@ __host__ __device__ void Point::setPos(float2 newPos) {
 
 __host__ __device__ float Point::distanceTo(const Point& other) const {
     float2 d = pos - other.pos;
-    return sqrtf(d.x * d.x + d.y * d.y);
+    return sqrtf(sum(d*d));
 }
 
 __host__ __device__ float Point::angleTo(const Point& other) const{
     return atan2f(other.pos.y - pos.y, other.pos.x - pos.x);
 }
-
 
 __host__ __device__ void Point::rotate(const float2& origin, float angle) {
     float2 d = pos - origin;

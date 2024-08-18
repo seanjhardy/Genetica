@@ -4,6 +4,7 @@
 #include <modules/graphics/UI/utils/size.hpp>
 #include <modules/graphics/UI/utils/border.hpp>
 #include <modules/graphics/UI/utils/shadow.hpp>
+#include <modules/graphics/UI/utils/animation.hpp>
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <sstream>
@@ -13,6 +14,8 @@
 #include <regex>
 #include <functional>
 #include <memory>
+
+class Transform;
 
 using namespace std;
 
@@ -26,8 +29,9 @@ float parseValue(const string& value);
 Border parseBorder(const string& value);
 Shadow parseShadow(const string& value);
 sf::Color parseColor(const string& value);
-vector<Size> parseMultiValue(const string& value);
+void parseMultiValue(const string& value, Size (&result)[4]);
 Direction parseDirection(const string& value);
 Alignment parseAlignment(const string& value);
+Transform parseTransform(const string& value);
 
 #endif
