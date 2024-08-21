@@ -6,6 +6,7 @@
 #include <modules/utils/floatOps.hpp>
 #include <modules/utils/fastMath.hpp>
 #include <modules/utils/print.hpp>
+#include <modules/graphics/fontManager.hpp>
 
 #ifndef M_PI
     #define M_PI 3.14159
@@ -117,6 +118,16 @@ void VertexManager::addLine(const float2 start, const float2 end, const sf::Colo
     vertices.append(sf::Vertex(sf::Vector2f(start.x + d.x, start.y + d.y), color));
 }
 
+void VertexManager::addText(const std::string text, const float2& pos, float size, const sf::Color& color) {
+    sf::Text label;
+    label.setFont(*FontManager::get("russo"));
+    label.setString(text);
+    label.setCharacterSize(size);
+    label.setFillColor(color);
+    label.setPosition(pos.x, pos.y);
+    labels.push_back(label);
+}
+
 int VertexManager::getCircleLOD(float radius) {
     // Linearly interpolate between 3 points and 30 points based on apparent size from 10 pixels to over 100 pixels wide
     int value = 4 + 30*std::clamp(getSizeInView(radius) / 100.0f, 0.0f, 1.0f);
@@ -129,10 +140,14 @@ float VertexManager::getSizeInView(float size) {
 
 void VertexManager::clear() {
     vertices.clear();
+    labels.clear();
 }
 
 void VertexManager::draw(sf::RenderTarget& target) {
     target.draw(vertices, states);
+    for (auto& label : labels) {
+        target.draw(label);
+    }
     // Automatically clear the vertexArray after drawing
     clear();
 }

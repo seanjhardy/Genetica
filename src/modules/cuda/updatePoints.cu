@@ -1,10 +1,10 @@
-#include <modules/verlet/point.hpp>
-#include "../verlet/constraints.cu"
+#include <modules/physics/point.hpp>
+#include "../physics/constraints.cu"
 #include "cuda_runtime.h"
 #include "modules/utils/print.hpp"
 #include <modules/cuda/updatePoints.hpp>
 #include <SFML/Graphics.hpp>
-#include <geneticAlgorithm/entities/rock.hpp>
+#include "simulator/entities/rock.hpp"
 
 __global__ void updatePointsKernel(Point *points, int numParticles, float dt, sf::FloatRect *bounds) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -22,13 +22,11 @@ __global__ void constrainDistancesKernel(Point *points, Connection *connections,
 
     if (index < numConnections) {
         Connection &connection = connections[index];
-        if (connection.a < numPoints && connection.b < numPoints) {
-            constrainDistance(points[connection.a], points[connection.b], connection.distance, 0.2f);
-        }
+        constrainDistance(points[connection.a], points[connection.b], connection.distance, 0.2f);
     }
 }
 
-__global__ void updateParentChildLinkKernel(Point *points, ParentChildLink *angles, int numAngles) {
+__global__ void updateParentChildLinkKernel(Point *points, ParentChildLink *angles, int numAngles, float dt) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index < numAngles) {
@@ -37,8 +35,8 @@ __global__ void updateParentChildLinkKernel(Point *points, ParentChildLink *angl
                                                     points[pcl.parentStartPoint].pos.y,
                                                     points[pcl.parentEndPoint].pos.x -
                                                     points[pcl.parentStartPoint].pos.x);
-        //constrainAngle(points[pcl.startPoint], points[pcl.endPoint], parentAngle + pcl.targetAngle, pcl.stiffness);
-        points[pcl.startPoint].pos = points[pcl.parentStartPoint].pos + rotate(pcl.pointOnParent, parentAngle);
+        //constrainAngle(points[pcl.startPoint], points[pcl.endPoint], parentAngle + pcl.targetAngle, pcl.stiffness, dt);
+        //points[pcl.startPoint].pos = points[pcl.parentStartPoint].pos + rotate(pcl.pointOnParent, parentAngle);
     }
 }
 
@@ -70,7 +68,7 @@ void updatePoints(GPUVector<Point> &points,
 
     numBlocks = (numParentChildLinks + blockSize - 1) / blockSize;
     updateParentChildLinkKernel<<<numBlocks, blockSize>>>(points.deviceData(), parentChildLinks.deviceData(),
-                                                          numParentChildLinks);
+                                                          numParentChildLinks, dt);
 
 
     numBlocks = (numConnections + blockSize - 1) / blockSize;

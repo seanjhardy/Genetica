@@ -3,7 +3,8 @@
 #include "modules/utils/mathUtils.hpp"
 #include "modules/utils/GUIUtils.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
-#include "../../modules/verlet/constraints.cu"
+#include "../../modules/physics/constraints.cu"
+#include <simulator/simulator.hpp>
 #include "cmath"
 
 SegmentInstance::SegmentInstance(LifeForm* lifeForm, CellPartSchematic* type, SegmentInstance* parent)
@@ -16,18 +17,18 @@ SegmentInstance::SegmentInstance(LifeForm* lifeForm, CellPartSchematic* type, Se
         realAngle = Random::random() * M_PI * 2;
     }
 
-    float length = dynamic_cast<SegmentType*>(cellData->partType)->length
+    float length = dynamic_cast<SegmentType*>(schematic->type)->length
       * CellPartInstance::INITIAL_GROWTH_FRACTION * lifeForm->size;
-    float startWidth = dynamic_cast<SegmentType*>(cellData->partType)->startWidth
+    float startWidth = dynamic_cast<SegmentType*>(schematic->type)->startWidth
       * CellPartInstance::INITIAL_GROWTH_FRACTION * lifeForm->size;
-    float endWidth = dynamic_cast<SegmentType*>(cellData->partType)->startWidth
+    float endWidth = dynamic_cast<SegmentType*>(schematic->type)->startWidth
       * CellPartInstance::INITIAL_GROWTH_FRACTION * lifeForm->size;
 
     Point* start = lifeForm->getEnv()->getPoint(startPoint);
     start->mass = startWidth;
 
     endPos = start->pos + vec(realAngle) * length;
-    endPoint = lifeForm->getEnv()->addPoint(endPos.x, endPos.y, endWidth);
+    endPoint = lifeForm->getEnv()->addPoint(lifeForm->entityID, endPos.x, endPos.y, endWidth);
     constrainPosition(*lifeForm->getEnv()->getPoint(startPoint), lifeForm->getEnv()->getBounds());
     constrainPosition(*lifeForm->getEnv()->getPoint(endPoint), lifeForm->getEnv()->getBounds());
 
@@ -35,7 +36,7 @@ SegmentInstance::SegmentInstance(LifeForm* lifeForm, CellPartSchematic* type, Se
         ParentChildLink* pcl = lifeForm->getEnv()->getParentChildLink(parentChildLink);
         pcl->endPoint = endPoint;
         pcl->targetAngle = getAdjustedAngleFromBody() + getAdjustedAngleOnBody();
-        float stiffness = 0.1f + dynamic_cast<SegmentType*>(cellData->partType)->boneDensity * 0.5f;
+        float stiffness = 0.1f + dynamic_cast<SegmentType*>(schematic->type)->boneDensity * 0.5f;
         stiffness = min(stiffness, 0.99f);
         pcl->stiffness = stiffness;
         lifeForm->getEnv()->getParentChildLinks().update(parentChildLink, *pcl);
@@ -48,15 +49,15 @@ void SegmentInstance::simulate(float dt) {
     for (auto& child : children ) {
         child->simulate(dt);
     }
-    float cellLength = dynamic_cast<SegmentType*>(cellData->partType)->length * growthFraction * lifeForm->size;
-    float cellWidth = (dynamic_cast<SegmentType*>(cellData->partType)->startWidth +
-                       dynamic_cast<SegmentType*>(cellData->partType)->endWidth) * 0.5f * growthFraction * lifeForm->size;
+    float cellLength = dynamic_cast<SegmentType*>(schematic->type)->length * growthFraction * lifeForm->size;
+    float cellWidth = (dynamic_cast<SegmentType*>(schematic->type)->startWidth +
+                       dynamic_cast<SegmentType*>(schematic->type)->endWidth) * 0.5f * growthFraction * lifeForm->size;
     Point* start = lifeForm->getEnv()->getPoint(startPoint);
     Point* end = lifeForm->getEnv()->getPoint(endPoint);
     realAngle = start->angleTo(*end);
 
-    if (growthFraction != 1 && GeneticAlgorithm::get().step % 5 == 0) {
-        float length = dynamic_cast<SegmentType*>(cellData->partType)->length;
+    if (growthFraction != 1 && Simulator::get().getStep() % 5 == 0) {
+        float length = dynamic_cast<SegmentType*>(schematic->type)->length;
         constrainDistance(*start, *end, length * growthFraction * lifeForm->size);
     }
 
@@ -71,9 +72,9 @@ bool SegmentInstance::grow(float dt, float massChange) {
     Point* start = lifeForm->getEnv()->getPoint(startPoint);
     Point* end = lifeForm->getEnv()->getPoint(endPoint);
 
-    float startWidth = (dynamic_cast<SegmentType*>(cellData->partType)->startWidth);
-    float endWidth = (dynamic_cast<SegmentType*>(cellData->partType)->endWidth);
-    float length = dynamic_cast<SegmentType*>(cellData->partType)->length;
+    float startWidth = (dynamic_cast<SegmentType*>(schematic->type)->startWidth);
+    float endWidth = (dynamic_cast<SegmentType*>(schematic->type)->endWidth);
+    float length = dynamic_cast<SegmentType*>(schematic->type)->length;
     float avgWidth = (startWidth + endWidth) * 0.5f;
 
     // Don't ask me how I got this equation :skull:
@@ -85,23 +86,23 @@ bool SegmentInstance::grow(float dt, float massChange) {
     deltaGrowth = newGrowthFraction - growthFraction;
     // Multiplied out all growthFraction terms
     // Using a minimum cost so lifeforms can't spam tiny parts without incurring a small activation cost
-    float growthEnergyCost = cellData->partType->getBuildCost() * LifeForm::BUILD_COST_SCALE * avgWidth * length * deltaGrowth;
+    float growthEnergyCost = schematic->type->getBuildCost() * LifeForm::BUILD_COST_SCALE * avgWidth * length * deltaGrowth;
 
-    if (lifeForm->energy > growthEnergyCost) {
-        lastGrowthFraction = growthFraction;
-        growthFraction = newGrowthFraction;
-        lifeForm->energy -= growthEnergyCost;
-        // Calculate the growthFraction of each point based on gene, segment growthFraction %, and lifeform growthFraction
-        start->mass = startWidth * growthFraction * lifeForm->size;
-        end->mass = endWidth * growthFraction * lifeForm->size;
+    if (lifeForm->energy < growthEnergyCost) {
+        return false;
     }
+
+    lastGrowthFraction = growthFraction;
+    growthFraction = newGrowthFraction;
+    lifeForm->energy -= growthEnergyCost;
+    // Calculate the growthFraction of each point based on gene, segment growthFraction %, and lifeform growthFraction
+    start->mass = startWidth * growthFraction * lifeForm->size;
+    end->mass = endWidth * growthFraction * lifeForm->size;
 
     // Continue building if not done
     if (growthFraction != 1) return false;
 
-    float cellLength = dynamic_cast<SegmentType*>(cellData->partType)->length * growthFraction * lifeForm->size;
-    start->mass = startWidth * growthFraction * lifeForm->size;
-    end->mass = endWidth * growthFraction * lifeForm->size;
+    float cellLength = dynamic_cast<SegmentType*>(schematic->type)->length * 1.0f * lifeForm->size;
     lifeForm->getEnv()->addConnection(startPoint, endPoint, cellLength);
     // Return true if fully built
     return true;
@@ -110,7 +111,7 @@ bool SegmentInstance::grow(float dt, float massChange) {
 float2 SegmentInstance::getPointAtAngle(float angle) {
     Point* start = lifeForm->getEnv()->getPoint(startPoint);
     Point* end = lifeForm->getEnv()->getPoint(endPoint);
-    float length = (dynamic_cast<SegmentType*>(cellData->partType)->length) * growthFraction * lifeForm->size;
+    float length = (dynamic_cast<SegmentType*>(schematic->type)->length) * growthFraction * lifeForm->size;
 
     float2 point = getPointOnSegment(length, start->mass/2, end->mass/2, angle);
 
@@ -133,7 +134,7 @@ void SegmentInstance::activateOutput(float dt, float signal) {
     float forceWidthRatio = length / width - std::abs(end->mass - start->mass) * 0.2f;
 
     float muscleStrength = 0.02f
-            * dynamic_cast<SegmentType*>(cellData->partType)->muscleStrength
+            * dynamic_cast<SegmentType*>(schematic->type)->muscleStrength
             * signal * (flipped ? -1.0f : 1.0f) * dt;
 
     float energyCost = 0.05f * abs(muscleStrength) * growthFraction;
@@ -169,16 +170,16 @@ void SegmentInstance::render(VertexManager& vertexManager) {
 
     float startRadius = start->mass / 2;
     float endRadius = end->mass / 2;
-    float length = dynamic_cast<SegmentType*>(cellData->partType)->length;
+    float length = dynamic_cast<SegmentType*>(schematic->type)->length;
 
     // Automatically cull small segments
     if ((startRadius < 0.5f && endRadius < 0.5f) || length < 0.5f) return;
 
-    sf::Color color = dynamic_cast<SegmentType*>(cellData->partType)->color;
+    sf::Color color = dynamic_cast<SegmentType*>(schematic->type)->color;
     float lineWidth = min((startRadius + endRadius) * 0.5f, length) * growthFraction * lifeForm->size * 0.5f;
 
-    float boneDensity = dynamic_cast<SegmentType*>(cellData->partType)->boneDensity
-            * dynamic_cast<SegmentType*>(cellData->partType)->bone;
+    float boneDensity = dynamic_cast<SegmentType*>(schematic->type)->boneDensity
+            * dynamic_cast<SegmentType*>(schematic->type)->bone;
 
     if (boneDensity > 0 and parent != nullptr) {
         float boneAngle = 40 * M_PI / 180;
@@ -198,8 +199,8 @@ void SegmentInstance::render(VertexManager& vertexManager) {
     }
     vertexManager.addSegment(start->pos, end->pos, start->mass, end->mass, realAngle, color);
 
-    float muscleStrength = dynamic_cast<SegmentType*>(cellData->partType)->muscleStrength
-                        * dynamic_cast<SegmentType*>(cellData->partType)->muscle;
+    float muscleStrength = dynamic_cast<SegmentType*>(schematic->type)->muscleStrength
+                        * dynamic_cast<SegmentType*>(schematic->type)->muscle;
 
     if (muscleStrength > 0 && false) {
         sf::Color muscleColour = sf::Color(255, 125, 125);
@@ -228,7 +229,7 @@ void SegmentInstance::render(VertexManager& vertexManager) {
 }
 
 float SegmentInstance::getEnergyContent() {
-    auto* type = dynamic_cast<SegmentType*>(cellData->partType);
+    auto* type = dynamic_cast<SegmentType*>(schematic->type);
     float energyContent = type->getBuildCost()
       * LifeForm::BUILD_COST_SCALE
       * growthFraction * lifeForm->size

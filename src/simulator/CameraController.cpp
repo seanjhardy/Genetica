@@ -9,8 +9,7 @@ CameraController::CameraController(sf::FloatRect bounds,
           position(bounds.left + bounds.width/2,
                    bounds.top + bounds.height/2),
           moveSpeed(1000.0f),
-          sceneBounds(bounds),
-          zoomSpeed(1.0f) {
+          sceneBounds(bounds){
     view = window->getDefaultView();
     windowView = window->getDefaultView();
 }
@@ -142,6 +141,10 @@ bool CameraController::isCircleVisible(const float2& point, float r) {
     // Check if the point is within these bounds
     return (point.x >= left && point.x <= right &&
             point.y >= top && point.y <= bottom);
+}
+
+sf::Vector2f CameraController::getCoords(const sf::Vector2f& screenSpacePos) {
+    return window->mapPixelToCoords(sf::Vector2i(screenSpacePos), view);
 }
 
 float CameraController::getZoom() const {

@@ -1,10 +1,11 @@
-#include <geneticAlgorithm/environment.hpp>
-#include "geneticAlgorithm/entities/lifeform.hpp"
+#include "simulator/environment.hpp"
+#include "simulator/entities/lifeform.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <modules/cuda/updatePoints.hpp>
+#include <modules/utils/print.hpp>
+#include <simulator/simulator.hpp>
 
 Environment::Environment(sf::FloatRect bounds) :
-    title("HyperLife"),
     bounds(bounds),
     quadtree({bounds.left + bounds.width / 2, bounds.top + bounds.height / 2},
                                                  {bounds.width, bounds.height}) {
@@ -37,13 +38,39 @@ void Environment::render(VertexManager& vertexManager) {
 };
 
 LifeForm& Environment::createRandomLifeForm() {
-    unordered_map<int, string> genome = GeneticAlgorithm::get().createRandomGenome();
+    map<int, string> genome = Simulator::get().getGA().createRandomGenome();
     auto* lifeForm = new LifeForm(this, {Random::random(bounds.hostData().width),
                                           Random::random(bounds.hostData().height)},
                                    genome);
     lifeForm->energy = 100;
-    GeneticAlgorithm::get().addLifeForm(lifeForm);
+    Simulator::get().getGA().addLifeForm(lifeForm);
     return *lifeForm;
+}
+
+int Environment::handleEvent(const sf::Event& event, const sf::Vector2f mousePos) {
+    if (event.type == sf::Event::MouseButtonPressed) {
+        if (event.mouseButton.button == sf::Mouse::Left) {
+            // Find the nearest point in the quadtree (within a radius of 10)
+            heldPoint = quadtree.findNearestPoint({mousePos.x, mousePos.y}, 20);
+
+        }
+    }
+    if (event.type == sf::Event::MouseButtonReleased) {
+        if (event.mouseButton.button == sf::Mouse::Left) {
+            heldPoint = nullptr;
+        }
+    }
+    if (heldPoint) {
+        return heldPoint->entityID;
+    } else {
+        return -1;
+    }
+}
+
+void Environment::update(const sf::Vector2f& mousePos) {
+    if (heldPoint != nullptr) {
+        heldPoint->setPos({mousePos.x, mousePos.y});
+    }
 }
 
 void Environment::reset() {
@@ -53,9 +80,9 @@ void Environment::reset() {
     quadtree.reset();
 };
 
-int Environment::addPoint(float x, float y, float mass) {
+int Environment::addPoint(int id, float x, float y, float mass) {
     //Add a point to the "points" vector and return a pointer to it
-    points.push_back(Point(x, y, mass));
+    points.push_back(Point(id, x, y, mass));
     quadtree.insert(points.back());
     return points.size() - 1;
 }
@@ -80,15 +107,6 @@ int Environment::addParentChildLink(int a, int b, int parentStart, int parentEnd
     return parentChildLinks.size() - 1;
 }
 
-char* Environment::getTitle() const {
-    char* result = new char[title.size() + 1];
-    // Copy the input string into the myString array
-    strcpy_s(result, title.size() + 1, title.c_str());
-    // Ensure null termination
-    result[title.size()] = '\0';
-    return result;
-}
-
 sf::FloatRect Environment::getBounds() const {
     return bounds.hostData();
 }
@@ -99,4 +117,8 @@ void Environment::toggleQuadTreeVisible() {
 
 bool Environment::isQuadTreeVisible() const {
     return quadTreeVisible;
+}
+
+Quadtree* Environment::getQuadtree() {
+    return &quadtree;
 }

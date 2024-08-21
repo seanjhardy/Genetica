@@ -1,7 +1,7 @@
 #ifndef CELL_PART_INSTANCE
 #define CELL_PART_INSTANCE
 
-#include "modules/verlet/point.hpp"
+#include "modules/physics/point.hpp"
 
 class LifeForm;
 class SegmentInstance;
@@ -13,7 +13,7 @@ class CellPartSchematic;
 class CellPartInstance {
 public:
     LifeForm* lifeForm;
-    CellPartSchematic* cellData;
+    CellPartSchematic* schematic;
     SegmentInstance* parent;
     int startPoint{};
     int parentChildLink{};

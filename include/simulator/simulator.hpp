@@ -5,9 +5,10 @@
 #include "vector"
 #include "CameraController.hpp"
 #include <modules/graphics/vertexManager.hpp>
-#include <geneticAlgorithm/environment.hpp>
+#include "environment.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <modules/graphics/UIManager.hpp>
+#include "simulator/entities/entity.hpp"
 
 class Simulator {
 public:
@@ -16,8 +17,34 @@ public:
         Playing,
         Fast,
     };
+private:
+    // Time and framerate
+    double realTime = 0;
+    float speed = 1.0;
+    int step = 0;
+    int MAX_FRAMERATE = 60;
+    double FRAME_INTERVAL = CLOCKS_PER_SEC / MAX_FRAMERATE;
+    std::clock_t lastRenderTime = std::clock();
 
-    explicit Simulator(Environment& environment, int width, int height);
+    // Rendering
+    sf::RenderWindow window{};
+    VertexManager vertexManager{};
+    UIManager uiManager;
+
+    // Simulation state
+    CameraController camera;
+    State state;
+    Environment env;
+    GeneticAlgorithm geneticAlgorithm;
+
+    int entityID = 0;
+
+    // Singleton class functions
+    Simulator();
+    Simulator(Simulator const&);              // Don't Implement
+    void operator=(Simulator const&); // Don't implement
+
+public:
     void run();
     void reset();
     void setup();
@@ -25,22 +52,17 @@ public:
     void speedUp();
     void slowDown();
 
+    int nextEntityID();
+
     std::string getTimeString() const;
     float getSpeed() const;
+    int getStep() const;
     State getState();
     sf::RenderWindow& getWindow();
 
-private:
-    double realTime = 0;
-    float speed = 1.0;
-    int MAX_FRAMERATE = 60;
-    double FRAME_INTERVAL = CLOCKS_PER_SEC / MAX_FRAMERATE;
-    std::clock_t lastRenderTime = std::clock();
+    Environment& getEnv();
+    GeneticAlgorithm& getGA();
+    Entity* selectedEntity = nullptr;
 
-    sf::RenderWindow window{};
-    VertexManager vertexManager{};
-    UIManager uiManager;
-
-    CameraController camera;
-    State state;
+    static Simulator& get();
 };

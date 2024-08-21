@@ -12,13 +12,13 @@ Container *getSettings(Simulator *simulator, Screen *screen, Container *root) {
     auto *quadTreeButton = new Button(Styles::get("miniBtn") + "icon: quadtree;",
                                       Styles::get("btnHover") + "icon: quadtreeHighlighted;");
 
-    auto toggleQuadTree = [quadTreeButton]() {
-        if (GeneticAlgorithm::get().getEnv()->isQuadTreeVisible()) {
-            GeneticAlgorithm::get().getEnv()->toggleQuadTreeVisible();
+    auto toggleQuadTree = [simulator, quadTreeButton]() {
+        if (simulator->getEnv().isQuadTreeVisible()) {
+            simulator->getEnv().toggleQuadTreeVisible();
             quadTreeButton->overrideStyle("icon: quadtree;");
             quadTreeButton->overrideStyleOnHover("icon: quadtreeHighlighted;");
         } else {
-            GeneticAlgorithm::get().getEnv()->toggleQuadTreeVisible();
+            simulator->getEnv().toggleQuadTreeVisible();
             quadTreeButton->overrideStyle("icon: map;");
             quadTreeButton->overrideStyleOnHover("icon: mapHighlighted;");
         }
@@ -100,11 +100,10 @@ Screen *getSimulationScreen(Simulator *simulator) {
                                     }
                       ),
                       new Button("Create Random",
-                                 []() { GeneticAlgorithm::get().getEnv()->createRandomLifeForm(); },
+                                 [simulator]() {simulator->getEnv().createRandomLifeForm(); },
                                  Styles::get("mainBtn") + "width: 100%;", Styles::get("mainBtnHover")),
-
                       new Button("Reset",
-                                 []() { GeneticAlgorithm::get().reset(); },
+                                 [simulator]() {simulator->reset(); },
                                  Styles::get("mainBtn") + "width: 100%;", Styles::get("mainBtnHover")),
                     });
 
@@ -117,10 +116,10 @@ Screen *getSimulationScreen(Simulator *simulator) {
     root->addChild(bottomBar);
     screen->addFunction([simulator, infoLabel]() {
         infoLabel->setText("\nTime: " + simulator->getTimeString() +
-                           "\nStep: " + std::to_string(GeneticAlgorithm::get().step) +
+                           "\nStep: " + std::to_string(simulator->getStep()) +
                            "\nSpeed: " + std::format("{:.2f}", simulator->getSpeed()) +
-                           "\nLifeForms: " + std::to_string(GeneticAlgorithm::get().getPopulation().size()) +
-                           "\nSpecies: " + std::to_string(GeneticAlgorithm::get().getSpecies().size())
+                           "\nLifeForms: " + std::to_string(simulator->getGA().getPopulation().size()) +
+                           "\nSpecies: " + std::to_string(simulator->getGA().getSpecies().size())
         );
     });
     screen->addElement(root);

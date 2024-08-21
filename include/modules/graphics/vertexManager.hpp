@@ -14,6 +14,7 @@
 class VertexManager {
 private:
     sf::VertexArray vertices;
+    std::vector<sf::Text> labels;
     sf::RenderStates states;
 
 public:
@@ -27,6 +28,7 @@ public:
     void addPolygon(const std::vector<float2>& points, const sf::Color& color);
     void addLine(const float2 start, const float2 end, const sf::Color& color, const float thickness = 1.0f);
     void addSegment(float2 p1, float2 p2, float r1, float r2, float angle, const sf::Color& color);
+    void addText(const std::string text, const float2& pos, float size = 24, const sf::Color& color = sf::Color::White);
 
     float getSizeInView(float size);
     int getCircleLOD(float radius);

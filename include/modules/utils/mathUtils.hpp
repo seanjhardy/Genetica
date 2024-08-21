@@ -1,7 +1,7 @@
 #ifndef MATHUTILS_HPP
 #define MATHUTILS_HPP
 
-#include <modules/verlet/point.hpp>
+#include <modules/physics/point.hpp>
 #include <modules/utils/floatOps.hpp>
 
 std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& point2, float r1, float r2);

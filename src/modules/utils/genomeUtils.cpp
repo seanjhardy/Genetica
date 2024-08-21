@@ -27,6 +27,7 @@ int readBase(string& rna) {
 float readBaseRange(string& rna, int length) {
     float result = 0;
     for (int i = 0; i < length; i++) {
+
         result += (float) readBase(rna);
     }
     return result / (3.0f * (float) length);
@@ -100,10 +101,10 @@ float getCompatibility(LifeForm* a, LifeForm* b, float geneDifferenceScalar, flo
 // CROSSOVER
 // =====================================
 
-unordered_map<int, string> crossover(const unordered_map<int, string>& parent1,
-                                     const unordered_map<int, string>& parent2,
-                                     int header, int cellDataSize, float crossoverChance) {
-    std::unordered_map<int, string> childGenome;
+map<int, string> crossover(const map<int, string>& parent1,
+                             const map<int, string>& parent2,
+                             int header, int cellDataSize, float crossoverChance) {
+    std::map<int, string> childGenome;
     for (auto& [key, value]: parent1) {
         if (parent2.contains(key)) {
             if (key == 0) {

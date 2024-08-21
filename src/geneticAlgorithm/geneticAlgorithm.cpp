@@ -2,42 +2,33 @@
 #include <modules/noise/random.hpp>
 #include "modules/utils/genomeUtils.hpp"
 #include "geneticAlgorithm/sequencer.hpp"
-
-GeneticAlgorithm& GeneticAlgorithm::get(){
-    static GeneticAlgorithm geneticAlgorithm;
-    return geneticAlgorithm;
-};
+#include <simulator/simulator.hpp>
 
 void GeneticAlgorithm::simulate(float dt) {
-    if (step == 0) this->reset();
-    env->simulate(dt);
     for (LifeForm* lifeform : population) {
         lifeform->simulate(dt);
     }
-    step++;
 };
 
 void GeneticAlgorithm::render(VertexManager& vertexManager) {
-    env->render(vertexManager);
-
     for (LifeForm* lifeform : population) {
         lifeform->render(vertexManager);
     }
 };
 
-unordered_map<int, string> GeneticAlgorithm::mutate(const unordered_map<int, string>& genome,
-                                                    int headerSize, int cellDataSize) {
-    unordered_map<int, string> mutatedGenome;
+map<int, string> GeneticAlgorithm::mutate(const map<int, string>& genome,
+                                            int headerSize, int cellDataSize) {
+    map<int, string> mutatedGenome;
     // Clone genes
     for (auto& [key, value]: genome) {
         mutatedGenome.insert({key, value});
-        if (Random::random() < cloneGeneChance) {
+        if (Random::random() < cloneChromosomeChance) {
             mutatedGenome.insert({nextGeneID(), value});
         }
     }
     // Insert new genes
     float insertRandom = Random::random();
-    if (insertRandom < insertGeneChance) {
+    if (insertRandom < insertChromosomeChance) {
         string newChromosome;
         int size = Random::random(headerSize, MAX_CHROMOSOME_SIZE);
         for(int i = 0; i < size; i++) {
@@ -67,7 +58,7 @@ unordered_map<int, string> GeneticAlgorithm::mutate(const unordered_map<int, str
     return mutatedGenome;
 }
 
-string GeneticAlgorithm::mutateGene(unordered_map<int, string> genome,
+string GeneticAlgorithm::mutateGene(map<int, string> genome,
                                     const int key, string gene,
                                     int headerSize, int cellDataSize) const {
     string mutatedGene = gene;
@@ -89,7 +80,7 @@ string GeneticAlgorithm::mutateGene(unordered_map<int, string> genome,
 
         if (i >= headerSize && adjustedIndex % cellDataSize == 0) {
             // Insert new section
-            if (Random::random() < insertGeneChance) {
+            if (Random::random() < insertChromosomeChance) {
                 for (int j = 0; i < cellDataSize; j++) {
                     mutatedGene += rand() % 4;
                 }
@@ -113,12 +104,12 @@ string GeneticAlgorithm::mutateGene(unordered_map<int, string> genome,
     return mutatedGene;
 }
 
-unordered_map<int, string> GeneticAlgorithm::createRandomGenome() {
+map<int, string> GeneticAlgorithm::createRandomGenome() {
     if (true) {
         return plantGenome();
     }
     // Create random genome
-    unordered_map<int, string> genome;
+    map<int, string> genome;
     int num_chromosomes = (int)Random::random(2, 5);
     for (int i = 0; i < num_chromosomes; i++) {
         string chromosome;
@@ -136,20 +127,11 @@ void GeneticAlgorithm::addLifeForm(LifeForm* lifeform) {
 }
 
 void GeneticAlgorithm::reset() {
-    env->reset();
     population.clear();
     species.clear();
     ancestors.clear();
     speciesID = 0;
     geneID = 0;
-    lifeFormID = 0;
-}
-
-void GeneticAlgorithm::setEnvironment(Environment& environment) {
-    env = &environment;
-}
-Environment* GeneticAlgorithm::getEnv() const {
-    return env;
 }
 
 vector<LifeForm*> GeneticAlgorithm::getPopulation() {
@@ -158,10 +140,6 @@ vector<LifeForm*> GeneticAlgorithm::getPopulation() {
 
 vector<Species*> GeneticAlgorithm::getSpecies() {
     return species;
-}
-
-int GeneticAlgorithm::nextLifeFormID() {
-    return lifeFormID++;
 }
 
 int GeneticAlgorithm::nextGeneID() {

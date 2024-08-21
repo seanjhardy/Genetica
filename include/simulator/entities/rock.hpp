@@ -1,13 +1,16 @@
 #ifndef ROCK
 #define ROCK
-#include <SFML/Graphics.hpp>
-#include <modules/verlet/point.hpp>
-#include <modules/utils/floatOps.hpp>
+#include "SFML/Graphics.hpp"
+#include "modules/physics/point.hpp"
+#include "modules/utils/floatOps.hpp"
+#include "entity.hpp"
 
-class Rock : public Point {
+class Rock : public Entity {
 public:
 
-    Rock(float x, float y, float m = 1.0f) : Point(x, y, m) {}
+    Rock(float x, float y, float m = 1.0f) : Entity({x,y}) {
+        mass = m;
+    }
 
     void render(VertexManager& viewer) {
         float r = mass / 2;

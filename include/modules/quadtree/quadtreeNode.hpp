@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <vector_types.h>
-#include <modules/verlet/point.hpp>
+#include <modules/physics/point.hpp>
 
 class Quadtree;
 
@@ -12,13 +12,13 @@ private:
     static const int MAX_POINTS = 4;
     static const int MAX_DEPTH = 12;
 
-    float2 center;
-    float2 halfDimension;
     float looseBoundary = 0.2f;
     int depth;
 
-    std::vector<Point*> points;
     std::unique_ptr<QuadtreeNode> children[4];
+    float2 center;
+    float2 halfDimension;
+    std::vector<Point*> points;
 
 public:
     QuadtreeNode(float2 center, float2 halfDimension, int depth = 0);
@@ -30,18 +30,14 @@ public:
 
     std::vector<Point*> queryRange(float2 rangeMin, float2 rangeMax);
     std::vector<Point*> queryCircle(float2 center, float radius);
-
-
+    void findNearestPoint(float2 position, Point*& nearestPoint, float& nearestDistanceSquared);
+    bool overlapsSearch(float2 position, float distanceSquared);
 private:
     [[nodiscard]] bool inBoundary(float2 position) const;
-
-    bool isSubdivided();
-
     void subdivide() ;
-
     [[nodiscard]] bool intersects(float2 rangeMin, float2 rangeMax) const;
-
     static bool inRange(float2 position, float2 rangeMin, float2 rangeMax);
+    bool isSubdivided();
 };
 
 #endif

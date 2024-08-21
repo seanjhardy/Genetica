@@ -5,14 +5,18 @@
 #include <sstream>
 #include <iomanip>
 
+Simulator& Simulator::get(){
+    static Simulator simulator;
+    return simulator;
+};
+
 // Instantiate simulator
-Simulator::Simulator(Environment& env, int width, int height)
-        : window(sf::VideoMode(width, height), env.getTitle()),
+Simulator::Simulator()
+      : env(sf::FloatRect(0, 0, 1000, 1000)),
+        window(sf::VideoMode(600, 800), "Genetica"),
         state(State::Playing),
         uiManager(&window),
         camera(CameraController(env.getBounds(), &window)){
-
-    print("Loading Environment: ", env.getTitle());
 
     vertexManager.setCamera(&camera);
 }
@@ -20,6 +24,7 @@ Simulator::Simulator(Environment& env, int width, int height)
 void Simulator::setup() {
     uiManager.addScreen("simulation", getSimulationScreen(this));
     uiManager.setCurrentScreen("simulation");
+    Simulator::reset();
 }
 
 // Run simulation step
@@ -30,20 +35,27 @@ void Simulator::run() {
         float deltaTime = elapsed.asSeconds(); // Convert elapsed time to seconds
 
         sf::Event event{};
+        sf::Vector2f mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
                 window.close();
             }
+            // Handle discrete events (e.g. key press, mouse click)
             camera.updateEvent(event);
             uiManager.handleEvent(event);
+            env.handleEvent(event, camera.getCoords(mousePos));
         }
-        uiManager.update(deltaTime, static_cast<sf::Vector2f>(sf::Mouse::getPosition(window)));
-
+        // Handle continuous events (e.g. holding down a key/hovering over a UI element)
+        uiManager.update(deltaTime, mousePos);
+        env.update(camera.getCoords(mousePos));
         camera.update(deltaTime);
 
+        // Update simulation state
         if (state == State::Playing) {
             realTime += deltaTime * speed;
-            GeneticAlgorithm::get().simulate(deltaTime * speed);
+            env.simulate(speed);
+            geneticAlgorithm.simulate(speed);
+            step += 1;
         }
 
         std::clock_t now = std::clock();
@@ -55,10 +67,13 @@ void Simulator::run() {
             if (state != State::Fast) {
                 window.clear();
 
+                // Render simulation
                 window.setView(camera.getView());
-                GeneticAlgorithm::get().render(vertexManager);
+                env.render(vertexManager);
+                geneticAlgorithm.render(vertexManager);
                 vertexManager.draw(window);
 
+                // Render UI
                 window.setView(camera.getWindowView());
                 uiManager.draw(window);
             }
@@ -79,6 +94,14 @@ sf::RenderWindow& Simulator::getWindow() {
     return window;
 }
 
+Environment& Simulator::getEnv() {
+    return env;
+}
+
+GeneticAlgorithm& Simulator::getGA() {
+    return geneticAlgorithm;
+}
+
 void Simulator::speedUp() {
     speed *= 1.5;
 }
@@ -88,7 +111,8 @@ void Simulator::slowDown() {
 }
 
 void Simulator::reset() {
-    GeneticAlgorithm::get().reset();
+    env.reset();
+    geneticAlgorithm.reset();
 }
 
 std::string Simulator::getTimeString() const {
@@ -109,4 +133,8 @@ std::string Simulator::getTimeString() const {
 
 float Simulator::getSpeed() const {
     return speed;
+}
+
+int Simulator::getStep() const {
+    return step;
 }

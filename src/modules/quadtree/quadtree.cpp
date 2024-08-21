@@ -16,6 +16,17 @@ std::vector<Point*> Quadtree::queryCircle(float2 center, float radius) {
     return root.queryCircle(center, radius);
 }
 
+Point* Quadtree::findNearestPoint(float2 position, float maxDistance) {
+    float maxDistanceSquared = maxDistance * maxDistance;
+    Point* nearestPoint = nullptr;
+
+    root.findNearestPoint(position, nearestPoint, maxDistanceSquared);
+
+    return nearestPoint;
+}
+
+
+
 void Quadtree::update() {
     root.update(this);
 }

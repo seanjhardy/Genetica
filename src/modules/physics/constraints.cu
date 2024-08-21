@@ -1,4 +1,4 @@
-#include <modules/verlet/point.hpp>
+#include <modules/physics/point.hpp>
 #include <modules/utils/floatOps.hpp>
 #include <modules/utils/print.hpp>
 #include "cmath"
@@ -25,11 +25,11 @@ __host__ __device__ inline void constrainDistance(Point& point1, Point& point2, 
     point2.pos += delta * massRatio * 0.01;
 }
 
-__host__ __device__ inline void constrainAngle(Point& point1, Point& point2, float targetAngle, float stiffness) {
+__host__ __device__ inline void constrainAngle(Point& point1, Point& point2, float targetAngle, float stiffness, float dt) {
     float length = point1.distanceTo(point2);
     float2 newPos = point1.pos + vec(targetAngle) * length;
-    point2.prevPos += (newPos - point2.pos) * stiffness * 0.99;
-    point2.pos += (newPos - point2.pos) * stiffness;
+    point2.prevPos += (newPos - point2.pos) * stiffness * dt * 0.99;
+    point2.pos += (newPos - point2.pos) * stiffness * dt;
 }
 
 __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect bounds) {

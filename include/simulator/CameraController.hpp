@@ -13,6 +13,7 @@ public:
     void updateEvent(const sf::Event& event);
     float getZoom() const;
     bool isCircleVisible(const float2 &point, float r);
+    sf::Vector2f getCoords(const sf::Vector2f& screenPos);
 
     sf::View getView();
     sf::View getWindowView();
@@ -25,9 +26,7 @@ private:
     float zoomLevel;
     sf::Vector2f position;
     float moveSpeed;
-    float zoomSpeed;
     sf::FloatRect sceneBounds;
-    sf::FloatRect cameraBounds;
 
     void zoom(float delta, const sf::Vector2i& mousePos);
     void updateView();

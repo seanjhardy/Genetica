@@ -7,7 +7,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
-#include <modules/verlet/point.hpp>
+#include <modules/physics/point.hpp>
 #include <modules/graphics/UI/utils/size.hpp>
 #include <modules/graphics/UI/utils/styleParser.hpp>
 

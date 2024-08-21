@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <vector_types.h>
-#include <modules/verlet/point.hpp>
+#include <modules/physics/point.hpp>
 #include "quadtreeNode.hpp"
 
 class Quadtree {
@@ -20,6 +20,7 @@ public:
 
     std::vector<Point*> queryRange(float2 rangeMin, float2 rangeMax);
     std::vector<Point*> queryCircle(float2 center, float radius);
+    Point* findNearestPoint(float2 position, float maxDistance);
 };
 
 #endif

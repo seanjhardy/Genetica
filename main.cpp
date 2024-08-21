@@ -2,7 +2,7 @@
 
 // main.cpp
 #include "simulator/simulator.hpp"
-#include "geneticAlgorithm/environment.hpp"
+#include "simulator/environment.hpp"
 #include "SFML/Graphics.hpp"
 #include "stdexcept"
 #include <modules/graphics/fontManager.hpp>
@@ -13,7 +13,7 @@
 
 int main() {
     try {
-        print("Genetica v0.1");
+        print("Starting Genetica v0.1");
 
         // Initialising systems
         Styles::init();
@@ -22,14 +22,9 @@ int main() {
         ShaderManager::init();
         FontManager::init();
 
-        // Set up genetic algorithm with a given environment
-        Environment env(sf::FloatRect(0, 0, 1000, 1000));
-        GeneticAlgorithm::get().setEnvironment(env);
-
         // Set up simulation
-        Simulator simulator(env, 800, 600);
-        simulator.setup();
-        simulator.run();
+        Simulator::get().setup();
+        Simulator::get().run();
 
     } catch (const std::runtime_error& error) {
         std::cerr << "Error: " << error.what() << std::endl;

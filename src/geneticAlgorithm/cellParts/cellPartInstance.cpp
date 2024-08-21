@@ -4,7 +4,7 @@
 float CellPartInstance::INITIAL_GROWTH_FRACTION = 0.1;
 
 CellPartInstance::CellPartInstance(LifeForm* lifeForm, CellPartSchematic* type, SegmentInstance* parent) :
-lifeForm(lifeForm), parent(parent), cellData(type), flipped(type->flipped){
+  lifeForm(lifeForm), parent(parent), schematic(type), flipped(type->flipped){
     float2 startPos;
 
     if (parent == nullptr) {
@@ -13,7 +13,7 @@ lifeForm(lifeForm), parent(parent), cellData(type), flipped(type->flipped){
     } else {
         depth = parent->depth + 1;
         flipped = parent->flipped;
-        CellPartType* type = parent->upcast()->cellData->partType;
+        CellPartType* type = parent->upcast()->schematic->type;
 
         float startWidth = dynamic_cast<SegmentType*>(type)->startWidth * lifeForm->size;
         float endWidth = dynamic_cast<SegmentType*>(type)->endWidth * lifeForm->size;
@@ -25,7 +25,7 @@ lifeForm(lifeForm), parent(parent), cellData(type), flipped(type->flipped){
     }
 
     angle = getAdjustedAngleFromBody() + getAdjustedAngleOnBody();
-    startPoint = lifeForm->getEnv()->addPoint(startPos.x, startPos.y, 1);
+    startPoint = lifeForm->getEnv()->addPoint(lifeForm->entityID, startPos.x, startPos.y, 1);
 
     if (parent != nullptr) {
         parentChildLink = lifeForm->getEnv()->addParentChildLink(startPoint, -1,
@@ -50,10 +50,10 @@ void CellPartInstance::simulate(float dt) {
 }
 
 float CellPartInstance::getAdjustedAngleFromBody() const {
-    return cellData->angleFromBody * ((flipped && !cellData->flipped) ? -1.0 : 1.0);
+    return schematic->angleFromBody * ((flipped && !schematic->flipped) ? -1.0 : 1.0);
 }
 
 float CellPartInstance::getAdjustedAngleOnBody() const {
-    return cellData->angleOnBody * ((flipped && !cellData->flipped) ? -1.0 : 1.0)
-           + ((flipped && !cellData->flipped)? M_PI * 2 : 0);
+    return schematic->angleOnBody * ((flipped && !schematic->flipped) ? -1.0 : 1.0)
+           + ((flipped && !schematic->flipped) ? M_PI * 2 : 0);
 }

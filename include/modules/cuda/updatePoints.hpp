@@ -1,7 +1,7 @@
 #ifndef UPDATE_POINTS
 #define UPDATE_POINTS
 
-#include <modules/verlet/point.hpp>
+#include <modules/physics/point.hpp>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "GPUVector.hpp"

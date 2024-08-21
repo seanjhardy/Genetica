@@ -13,7 +13,7 @@ class CellPartType;
  */
 class CellPartSchematic {
 public:
-    CellPartType* partType;
+    CellPartType* type;
     int buildPriority;
     float angleOnBody, angleFromBody;
     bool flipped;

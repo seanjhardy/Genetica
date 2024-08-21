@@ -1,7 +1,7 @@
 #ifndef SEGMENT_TYPE
 #define SEGMENT_TYPE
 
-#include "geneticAlgorithm/entities/lifeform.hpp"
+#include "simulator/entities/lifeform.hpp"
 #include "cellPartType.hpp"
 
 class LifeForm;

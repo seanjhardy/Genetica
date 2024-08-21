@@ -4,11 +4,12 @@
 
 #include "vector"
 #include "random"
-#include "modules/verlet/point.hpp"
+#include "modules/physics/point.hpp"
 #include "modules/cuda/GPUVector.hpp"
 #include "modules/cuda/GPUValue.hpp"
 #include "modules/graphics/vertexManager.hpp"
 #include "modules/quadtree/quadtree.hpp"
+#include "simulator/entities/entity.hpp"
 
 class LifeForm;
 
@@ -18,7 +19,6 @@ class LifeForm;
  */
 class Environment {
 private:
-    std::string title;
     GPUValue<sf::FloatRect> bounds;
 
     GPUVector<Point> points = GPUVector<Point>();
@@ -26,15 +26,18 @@ private:
     GPUVector<ParentChildLink> parentChildLinks = GPUVector<ParentChildLink>();
     Quadtree quadtree;
     bool quadTreeVisible = false;
+    Point* heldPoint = nullptr;
 
 public:
     explicit Environment(sf::FloatRect bounds);
     void simulate(float deltaTime);
     void render(VertexManager& window);
     void reset();
+    int handleEvent(const sf::Event& event, sf::Vector2f mousePos);
+    void update(const sf::Vector2f& mousePos);
     LifeForm& createRandomLifeForm();
 
-    int addPoint(float x, float y, float mass);
+    int addPoint(int id, float x, float y, float mass);
     Point* getPoint(int index);
     ParentChildLink* getParentChildLink(int index);
     void addConnection(int a, int b, float distance);
@@ -44,10 +47,10 @@ public:
                          float targetAngle, float stiffness);
     GPUVector<ParentChildLink>& getParentChildLinks() { return parentChildLinks; }
 
-    [[nodiscard]] char* getTitle() const;
     [[nodiscard]] sf::FloatRect getBounds() const;
     void toggleQuadTreeVisible();
-    bool isQuadTreeVisible() const;
+    [[nodiscard]] bool isQuadTreeVisible() const;
+    Quadtree* getQuadtree();
 
 };
 

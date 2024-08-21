@@ -132,7 +132,7 @@ void QuadtreeNode::update(Quadtree* quadtree) {
 
     for (auto it = points.begin(); it != points.end();) {
         Point* point = *it;
-        if (diff(point->pos, point->prevPos) > 0.05f) {
+        if (point->pos != point->prevPos) {
             if (!inBoundary(point->pos)) {
                 it = points.erase(it);
                 quadtree->insert(point);
@@ -141,6 +141,50 @@ void QuadtreeNode::update(Quadtree* quadtree) {
             }
         } else {
             ++it;
+        }
+    }
+}
+
+bool QuadtreeNode::overlapsSearch(float2 position, float distanceSquared) {
+    float dx = std::abs(center.x - position.x);
+    float dy = std::abs(center.y - position.y);
+    float distance = std::sqrt(distanceSquared);
+    if (dx > halfDimension.x + distance) return false;
+    if (dy > halfDimension.y + distance) return false;
+
+    if (dx <= halfDimension.x) return true;
+    if (dy <= halfDimension.y) return true;
+
+    float cornerDistanceSquared = (dx - halfDimension.x) * (dx - halfDimension.x) +
+                                  (dy - halfDimension.y) * (dy - halfDimension.y);
+
+    return cornerDistanceSquared <= distanceSquared;
+}
+
+void QuadtreeNode::findNearestPoint(float2 position, Point*& nearestPoint, float& nearestDistanceSquared) {
+    if (!overlapsSearch(position, nearestDistanceSquared)) return;
+
+    // Check if this node is too far away
+    float dx = std::abs(center.x - position.x) - halfDimension.x;
+    float dy = std::abs(center.y - position.y) - halfDimension.y;
+    dx = std::max(dx, 0.0f);
+    dy = std::max(dy, 0.0f);
+    if (dx * dx + dy * dy > nearestDistanceSquared) return;
+
+    // Check points in this node
+    for (const auto& point : points) {
+        float2 d = position - point->pos;
+        float distSquared = sum(d*d);
+        if (distSquared < nearestDistanceSquared) {
+            nearestDistanceSquared = distSquared;
+            nearestPoint = point;
+        }
+    }
+
+    // Recursively search children
+    if (isSubdivided()) {
+        for (const auto& child : children) {
+            child->findNearestPoint(position,nearestPoint, nearestDistanceSquared);
         }
     }
 }
@@ -154,6 +198,8 @@ void QuadtreeNode::render(VertexManager& vertexManager) {
         for (auto &child: children) {
             child->render(vertexManager);
         }
+    } else {
+        vertexManager.addText(std::to_string(points.size()), {center.x, center.y}, 24, sf::Color(0, 255, 0));
     }
 }
 

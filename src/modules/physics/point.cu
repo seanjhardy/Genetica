@@ -1,7 +1,7 @@
 #ifndef POINT_CU
 #define POINT_CU
 
-#include <modules/verlet/point.hpp>
+#include <modules/physics/point.hpp>
 #include <modules/utils/floatOps.hpp>
 
  __host__ __device__ float2 Point::getVelocity() const {
@@ -15,7 +15,7 @@ __host__ __device__ void Point::update(float dt) {
     float2 velocity = pos - prevPos;
     float2 accel = force / mass;
 
-    float2 newPosition = pos + velocity * 0.9 + accel * dt * dt;
+    float2 newPosition = pos + velocity * pow(0.99, dt) + accel * dt * dt;
     prevPos = pos;
     pos = newPosition;
 

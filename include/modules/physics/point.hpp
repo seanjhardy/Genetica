@@ -7,13 +7,15 @@
 #include <modules/graphics/vertexManager.hpp>
 
 struct Point {
+    int entityID;
     float2 pos{};
     float2 prevPos{};
     float2 force{};
     float mass = 1.0f;
 
     Point() : pos{0,0}, prevPos{0,0}, force{0,0}, mass(1.0f) {}
-    Point(float x, float y, float m = 1.0f) {
+    Point(int id, float x, float y, float m = 1.0f) {
+        entityID = id;
         pos.x = x;
         pos.y = y;
         prevPos.x = x;

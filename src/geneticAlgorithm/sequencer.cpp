@@ -3,13 +3,15 @@
 #include <geneticAlgorithm/cellParts/segmentType.hpp>
 #include <geneticAlgorithm/cellParts/cellPartSchematic.hpp>
 #include "modules/utils/genomeUtils.hpp"
+#include <modules/utils/print.hpp>
 #include <geneticAlgorithm/cellParts/segmentInstance.hpp>
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
+#include <simulator/simulator.hpp>
 #include <memory>
 #include <string>
 #include <utility>
 
-void sequence(LifeForm* lifeForm, const std::unordered_map<int, string>& genome) {
+void sequence(LifeForm* lifeForm, const std::map<int, string>& genome) {
     // Get the lowest index genome as the header
     int lowestChromosomeIndex = std::numeric_limits<int>::max(); // Initialize to maximum integer value
 
@@ -51,7 +53,7 @@ void sequence(LifeForm* lifeForm, const std::unordered_map<int, string>& genome)
 
     // Designate head part
     for (auto& [key, value]: genome) {
-        if (key == lowestChromosomeIndex || lifeForm->head != nullptr) continue;
+        if (key == lowestChromosomeIndex) continue;
         if (lifeForm->cellParts.at(key)->type == CellPartType::Type::SEGMENT) {
             auto* headCellPartData = new CellPartSchematic(lifeForm->cellParts.at(key).get(),
                                                false, 100, 0, 0);
@@ -101,8 +103,9 @@ void construct(LifeForm* lifeForm, int key, string chromosome) {
 
     // Keep track of whether the first valid segment has been found (for ensuring radial symmetry around head only)
     bool headSegmentFound = false;
+    readBaseRange(chromosome, LifeForm::HEADER_SIZE); // Skip header
 
-    while (chromosome.length() > LifeForm::CELL_DATA_SIZE) {
+    while (chromosome.length() >= LifeForm::CELL_DATA_SIZE) {
         float partCode = readBaseRange(chromosome, 15);
 
         // Get part with the most similar partCode (differentiable)
@@ -115,10 +118,9 @@ void construct(LifeForm* lifeForm, int key, string chromosome) {
                 partID = key;
             }
         }
-
         int buildPriority = int(readExpBaseRange(chromosome, 5) * 100);
-        float angleOnBody = readUniqueBaseRange(chromosome, 3) * (float)M_PI * 2.0f;
-        float angleFromBody = (readBaseRange(chromosome, 3) * 90.0f - 45.0f) * (float)M_PI / 180.0f;
+        float angleOnBody = readUniqueBaseRange(chromosome, 4) * (float)M_PI * 2.0f;
+        float angleFromBody = (readBaseRange(chromosome, 4) * 90.0f - 45.0f) * (float)M_PI / 180.0f;
 
         // Ensure that the partID exists and that the partToBuildFrom is a segment
         if (partToBuildFrom->type != CellPartType::Type::SEGMENT) return;
@@ -162,9 +164,9 @@ void construct(LifeForm* lifeForm, int key, string chromosome) {
     }
 }
 
-std::unordered_map<int, string> plantGenome() {
-    std::unordered_map<int, string> genome;
-    genome.insert({GeneticAlgorithm::get().nextGeneID(),
+std::map<int, string> plantGenome() {
+    std::map<int, string> genome;
+    genome.insert({Simulator::get().getGA().nextGeneID(),
                     "3" // Radial
                     "0" // Asexual
                     "22222" // Size
@@ -173,12 +175,12 @@ std::unordered_map<int, string> plantGenome() {
                     "222" // Child energy
                     "222" // Regeneration fraction
     });
-    int head = GeneticAlgorithm::get().nextGeneID();
+    int head =Simulator::get().getGA().nextGeneID();
     genome.insert({head,
                    //PartCode
                    "000000000000000" // Head
                    "1111"//R
-                   "3333"//G
+                   "2211"//G
                    "1111"//B
                     "222"//Start width
                     "222"//End width
@@ -191,21 +193,21 @@ std::unordered_map<int, string> plantGenome() {
                     "000"//Muscle strength
                     "222"//Fat size
                     // CELL PARTS
-                    "333333333"//Part ID
-                    "22222"//Build priority
-                    "000"//Angle on body
-                    "200"//Angle from body
+                    "111111111111111"//Part ID
+                    "222222"//Build priority
+                    "0000"//Angle on body
+                    "1122"//Angle from body
                   });
-    int body = GeneticAlgorithm::get().nextGeneID();
+    int body = Simulator::get().getGA().nextGeneID();
     genome.insert({body,
                     //PartCode
                    "111111111111111" // Head
                    "0111"//R
-                   "2222"//G
+                   "3333"//G
                    "0111"//B
                    "222"//Start width
                    "122"//End width
-                   "222"//Length
+                   "333"//Length
                    "0"//Bone
                    "0"//Muscle
                    "0"//Nerve
@@ -216,8 +218,8 @@ std::unordered_map<int, string> plantGenome() {
                    // CELL PARTS
                    "111111111111111"//Part ID
                    "111111"//Build priority
-                   "000"//Angle on body
-                   "200"//Angle from body
+                   "2000"//Angle on body
+                   "2000"//Angle from body
                   });
     return genome;
 }

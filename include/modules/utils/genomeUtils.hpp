@@ -1,6 +1,6 @@
 #include "iostream"
 #include "vector"
-#include "geneticAlgorithm/entities/lifeform.hpp"
+#include "simulator/entities/lifeform.hpp"
 #include "unordered_map"
 
 using namespace std;
@@ -22,10 +22,10 @@ float compareGeneBases(string gene1, string gene2);
 float getCompatibility(LifeForm* a, LifeForm* b,
                               float geneDifferenceScalar, float baseDifferenceScalar);
 
-unordered_map<int, string> crossover(const unordered_map<int, string>& genome1,
-                                                const unordered_map<int, string>& genome2,
-                                                int header = 0, int cellDataSize = 1,
-                                                float crossoverChance = 0.2f);
+map<int, string> crossover(const map<int, string>& genome1,
+                            const map<int, string>& genome2,
+                            int header = 0, int cellDataSize = 1,
+                            float crossoverChance = 0.2f);
 string crossoverGene(string gene1, string gene2,
                             int header = 0, int cellDataSize = 1,
                             float crossoverChance = 0.2f);
