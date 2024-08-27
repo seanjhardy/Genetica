@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <cuda_runtime.h>
 
 #ifndef M_PI_2
     #define M_PI_2 6.283185f
@@ -16,11 +17,12 @@ public:
 
     static void init();
 
-    static float cos(float angle);
-    static float sin(float angle);
+    static __host__ float cos(float angle);
+    static __host__ float sin(float angle);
+    static __host__ __device__ float atan2f(float y, float x);
 
 private:
-    static float getValue(float angle, const float* table);
+    static __host__ float getValue(float angle, const float* table);
 };
 
 #endif

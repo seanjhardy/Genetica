@@ -13,6 +13,7 @@ public:
     // Gets a sprite by its key
     static sf::Sprite* get(const std::string& key);
 
+    static sf::Texture* getTexture(const std::string& key);
 private:
     static std::unordered_map<std::string, sf::Texture> textures;
     static std::unordered_map<std::string, sf::Sprite> sprites;

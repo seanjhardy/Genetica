@@ -1,7 +1,7 @@
 #include "modules/graphics/shaderManager.hpp"
 #include <fstream>
-#include <sstream>
-#include <iostream>
+#include <modules/utils/print.hpp>
+#include <modules/graphics/spriteManager.hpp>
 
 std::unordered_map<std::string, sf::Texture> ShaderManager::textures;
 std::unordered_map<std::string, sf::Shader> ShaderManager::shaders;
@@ -9,26 +9,24 @@ std::unordered_map<std::string, sf::Shader> ShaderManager::shaders;
 
 void ShaderManager::init() {
     // Hardcoded map of key to file path
-    std::unordered_map<std::string, std::string> shaderMappings = {
-            // Icons
-            {"blur", "./assets/shaders/blur.glsl"},
-    };
+    loadShader("texture", "./assets/shaders/texture.vert", "./assets/shaders/texture.frag");
+}
 
-    for (const auto& pair : shaderMappings) {
-        const std::string& key = pair.first;
-        const std::string& filePath = pair.second;
-        if (!shaders[key].loadFromFile(filePath, sf::Shader::Fragment)) {
-            shaders[key].loadFromFile("./assets/shaders/blur_vertex.glsl", sf::Shader::Vertex);
-            std::cerr << "Failed to load texture from file: " << filePath << std::endl;
-            continue; // Skip to next texture
-        }
+void ShaderManager::loadShader(const std::string &key, const std::string &vertexPath, const std::string &fragmentPath) {
+    if (fragmentPath.empty()) {
+        shaders[key].loadFromFile(vertexPath, sf::Shader::Vertex);
+        shaders[key].setUniform("texture", SpriteManager::get("default"));
+        return;
+    }
+    if (!shaders[key].loadFromFile(vertexPath, fragmentPath)) {
+        print("Failed to load shader ", key, " from ", vertexPath, " and ", fragmentPath);
+        return;
     }
 }
 
 sf::Shader* ShaderManager::get(const std::string &key) {
-    auto it = shaders.find(key);
-    if (it != shaders.end()) {
-        return &it->second;
+    if (shaders.contains(key)) {
+        return &shaders[key];
     }
     return nullptr;
 }

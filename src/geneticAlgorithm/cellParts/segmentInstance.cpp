@@ -95,7 +95,9 @@ bool SegmentInstance::grow(float dt, float massChange) {
     lastGrowthFraction = growthFraction;
     growthFraction = newGrowthFraction;
     lifeForm->energy -= growthEnergyCost;
-    // Calculate the growthFraction of each point based on gene, segment growthFraction %, and lifeform growthFraction
+    lifeForm->currentGrowthEnergy += growthEnergyCost;
+
+      // Calculate the growthFraction of each point based on gene, segment growthFraction %, and lifeform growthFraction
     start->mass = startWidth * growthFraction * lifeForm->size;
     end->mass = endWidth * growthFraction * lifeForm->size;
 
@@ -104,6 +106,17 @@ bool SegmentInstance::grow(float dt, float massChange) {
 
     float cellLength = dynamic_cast<SegmentType*>(schematic->type)->length * 1.0f * lifeForm->size;
     lifeForm->getEnv()->addConnection(startPoint, endPoint, cellLength);
+
+    if (parent != nullptr || false) {
+        float distToParentStart = sqrt(sum(pointOnParent * pointOnParent));
+        lifeForm->getEnv()->addConnection(parent->startPoint, startPoint, distToParentStart);
+
+        float parentLength = dynamic_cast<SegmentType *>(parent->schematic->type)->length * lifeForm->size;
+        float2 d = pointOnParent - make_float2(parentLength, 0);
+        float distToParentEnd = sqrt(sum(d * d));
+        lifeForm->getEnv()->addConnection(parent->endPoint, startPoint, distToParentEnd);
+    }
+
     // Return true if fully built
     return true;
 }
@@ -162,24 +175,24 @@ void SegmentInstance::render(VertexManager& vertexManager) {
         child->render(vertexManager);
     }
 
-    //Don't render this segment if it's out of bounds of the camera
-    //if (!vertexManager.camera->isCircleVisible(start->pos, start->mass) &&
-    //    !vertexManager.camera->isCircleVisible(end->pos, end->mass)) {
-    //    return;
-    //}
+    // Don't render this segment if it's out of bounds of the camera
+    if (!vertexManager.camera->isCircleVisible(start->pos, start->mass) &&
+        !vertexManager.camera->isCircleVisible(end->pos, end->mass)) {
+        return;
+    }
 
-    float startRadius = start->mass / 2;
-    float endRadius = end->mass / 2;
-    float length = dynamic_cast<SegmentType*>(schematic->type)->length;
+    SegmentType* type = dynamic_cast<SegmentType*>(schematic->type);
+    float startRadius = start->mass / 2.0f;
+    float endRadius = end->mass / 2.0f;
+    float length = type->length;
 
     // Automatically cull small segments
     if ((startRadius < 0.5f && endRadius < 0.5f) || length < 0.5f) return;
 
-    sf::Color color = dynamic_cast<SegmentType*>(schematic->type)->color;
+    sf::Color color = type->color;
     float lineWidth = min((startRadius + endRadius) * 0.5f, length) * growthFraction * lifeForm->size * 0.5f;
 
-    float boneDensity = dynamic_cast<SegmentType*>(schematic->type)->boneDensity
-            * dynamic_cast<SegmentType*>(schematic->type)->bone;
+    float boneDensity = type->boneDensity * (type->bone ? 1 : 0);
 
     if (boneDensity > 0 and parent != nullptr) {
         float boneAngle = 40 * M_PI / 180;
@@ -199,8 +212,7 @@ void SegmentInstance::render(VertexManager& vertexManager) {
     }
     vertexManager.addSegment(start->pos, end->pos, start->mass, end->mass, realAngle, color);
 
-    float muscleStrength = dynamic_cast<SegmentType*>(schematic->type)->muscleStrength
-                        * dynamic_cast<SegmentType*>(schematic->type)->muscle;
+    float muscleStrength = type->muscleStrength * (type->muscle ? 1 : 0);
 
     if (muscleStrength > 0 && false) {
         sf::Color muscleColour = sf::Color(255, 125, 125);
@@ -222,10 +234,6 @@ void SegmentInstance::render(VertexManager& vertexManager) {
         vertexManager.addLine(line1Start, line1End, muscleColour, muscleWidth);
         vertexManager.addLine(line2Start, line2End, muscleColour, muscleWidth);
     }
-    vertexManager.addCircle(start->prevPos, 0.5, sf::Color::Blue);
-    vertexManager.addCircle(end->prevPos, 0.5, sf::Color::Blue);
-    vertexManager.addCircle(start->pos, 0.5, sf::Color::Red);
-    vertexManager.addCircle(end->pos, 0.5, sf::Color::Red);
 }
 
 float SegmentInstance::getEnergyContent() {

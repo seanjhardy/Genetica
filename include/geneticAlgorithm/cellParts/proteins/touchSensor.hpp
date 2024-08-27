@@ -24,12 +24,12 @@ public:
 
     void checkForOverlap() {
         Point* end = lifeForm->getEnv()->getPoint(endPoint);
-        std::vector<Point*> points = lifeForm->getEnv()->getQuadtree()->queryRange(end->pos - 1.25, end->pos + 1.25);
+        /*std::vector<Point*> points = lifeForm->getEnv()->getQuadtree()->queryRange(end->pos - 1.25, end->pos + 1.25);
         for (Point* point : points) {
             if (point->entityID != lifeForm->entityID) {
                 overlapping = true;
             }
-        }
+        }*/
     }
 };
 

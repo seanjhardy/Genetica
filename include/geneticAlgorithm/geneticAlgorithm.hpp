@@ -55,6 +55,7 @@ public:
     [[nodiscard]] string mutateGene(map<int, string> genome, int key, string gene,
                       int headerSize, int cellDataSize) const;
     map<int, string> createRandomGenome();
+    LifeForm& createRandomLifeForm();
 
     vector<LifeForm*> getPopulation();
     vector<Species*> getSpecies();

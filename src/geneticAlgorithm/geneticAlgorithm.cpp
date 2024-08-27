@@ -122,6 +122,18 @@ map<int, string> GeneticAlgorithm::createRandomGenome() {
     return genome;
 }
 
+LifeForm& GeneticAlgorithm::createRandomLifeForm() {
+    map<int, string> genome = createRandomGenome();
+    float x = Simulator::get().getEnv().getBounds().left + Random::random(Simulator::get().getEnv().getBounds().width);
+    float y = Simulator::get().getEnv().getBounds().top + Random::random(Simulator::get().getEnv().getBounds().height);
+    auto* lifeForm = new LifeForm(&Simulator::get().getEnv(),
+                                  {x, y},
+                                  genome);
+    lifeForm->energy = 100;
+    Simulator::get().getGA().addLifeForm(lifeForm);
+    return *lifeForm;
+}
+
 void GeneticAlgorithm::addLifeForm(LifeForm* lifeform) {
     population.push_back(lifeform);
 }

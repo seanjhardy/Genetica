@@ -5,8 +5,6 @@
 #include "modules/utils/genomeUtils.hpp"
 #include "geneticAlgorithm/geneticAlgorithm.hpp"
 #include "geneticAlgorithm/cellParts/segmentType.hpp"
-#include "geneticAlgorithm/cellParts/segmentInstance.hpp"
-#include "unordered_map"
 #include "modules/utils/print.hpp"
 #include "simulator/simulator.hpp"
 
@@ -15,9 +13,9 @@ using namespace std;
 int LifeForm::HEADER_SIZE = 50;
 int LifeForm::GROWTH_INTERVAL = 5;
 int LifeForm::CELL_DATA_SIZE = 28;
-float LifeForm::BUILD_COST_SCALE = 0.0005f;
+float LifeForm::BUILD_COST_SCALE = 0.00001f;
 float LifeForm::BUILD_RATE = 50.0f;
-float LifeForm::ENERGY_DECREASE_RATE = 0.0001;
+float LifeForm::ENERGY_DECREASE_RATE = 0.0000001;
 
 LifeForm::LifeForm(Environment* environment, float2 pos, const map<int, string>& genome)
     : Entity(pos), env(environment), genome(genome){
@@ -33,11 +31,10 @@ void LifeForm::simulate(float dt) {
 }
 
 void LifeForm::render(VertexManager& vertexManager) {
-    pos = getEnv()->getPoint(head->startPoint)->pos;
     if (head != nullptr) {
+        pos = getEnv()->getPoint(head->startPoint)->pos;
         head->render(vertexManager);
     }
-    vertexManager.addText(std::to_string(energy), pos, 24);
 }
 
 void LifeForm::grow(float dt) {

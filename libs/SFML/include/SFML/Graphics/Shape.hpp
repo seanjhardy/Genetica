@@ -346,7 +346,7 @@ private:
 /// \li the outline thickness can be zero
 ///
 /// You can write your own derived shape class, there are only
-/// two virtual functions to override:
+/// two virtual functions to overrideValues:
 /// \li getPointCount must return the number of points of the shape
 /// \li getPoint must return the points of the shape
 ///

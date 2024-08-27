@@ -1,9 +1,10 @@
 // simulator.hpp
-#pragma once
+#ifndef SIMULATION
+#define SIMULATION
 
 #include "SFML/Graphics.hpp"
 #include "vector"
-#include "CameraController.hpp"
+#include "Camera.hpp"
 #include <modules/graphics/vertexManager.hpp>
 #include "environment.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
@@ -16,6 +17,10 @@ public:
         Paused,
         Playing,
         Fast,
+    };
+    enum class Tab {
+        Simulation,
+        LifeForm,
     };
 private:
     // Time and framerate
@@ -32,12 +37,11 @@ private:
     UIManager uiManager;
 
     // Simulation state
-    CameraController camera;
+    Camera camera{};
     State state;
     Environment env;
     GeneticAlgorithm geneticAlgorithm;
-
-    int entityID = 0;
+    Entity* selectedEntity = nullptr;
 
     // Singleton class functions
     Simulator();
@@ -52,17 +56,19 @@ public:
     void speedUp();
     void slowDown();
 
-    int nextEntityID();
-
     std::string getTimeString() const;
     float getSpeed() const;
     int getStep() const;
     State getState();
     sf::RenderWindow& getWindow();
+    void setTab(Tab tab);
 
     Environment& getEnv();
     GeneticAlgorithm& getGA();
-    Entity* selectedEntity = nullptr;
+    Entity* getSelectedEntity();
+    Camera& getCamera();
 
     static Simulator& get();
 };
+
+#endif

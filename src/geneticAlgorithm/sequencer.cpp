@@ -1,10 +1,8 @@
 #include "unordered_map"
 #include "geneticAlgorithm/sequencer.hpp"
 #include <geneticAlgorithm/cellParts/segmentType.hpp>
-#include <geneticAlgorithm/cellParts/cellPartSchematic.hpp>
 #include "modules/utils/genomeUtils.hpp"
 #include <modules/utils/print.hpp>
-#include <geneticAlgorithm/cellParts/segmentInstance.hpp>
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <simulator/simulator.hpp>
 #include <memory>
@@ -29,9 +27,9 @@ void sequence(LifeForm* lifeForm, const std::map<int, string>& genome) {
          LifeForm::SymmetryType::GLOBAL,
          LifeForm::SymmetryType::RADIAL}[readBase(header)];
 
-    lifeForm->reproductionType = readBase(header) == 3
+    /*lifeForm->reproductionType = readBase(header) == 3
             ? LifeForm::ReproductionType::SEXUAL
-            : LifeForm::ReproductionType::ASEXUAL;
+            : LifeForm::ReproductionType::ASEXUAL;*/
     lifeForm->size = max(readExpBaseRange(header, 5) * 5, 0.5f);
     lifeForm->growthEnergy = max(readBaseRange(header, 3) * 100.0f, 5.0f);
     lifeForm->growthRate = max(readBaseRange(header, 3), 0.1f);
@@ -119,7 +117,7 @@ void construct(LifeForm* lifeForm, int key, string chromosome) {
             }
         }
         int buildPriority = int(readExpBaseRange(chromosome, 5) * 100);
-        float angleOnBody = readUniqueBaseRange(chromosome, 4) * (float)M_PI * 2.0f;
+        float angleOnBody = readBaseRange(chromosome, 4) * (float)M_PI;
         float angleFromBody = (readBaseRange(chromosome, 4) * 90.0f - 45.0f) * (float)M_PI / 180.0f;
 
         // Ensure that the partID exists and that the partToBuildFrom is a segment
@@ -167,10 +165,10 @@ void construct(LifeForm* lifeForm, int key, string chromosome) {
 std::map<int, string> plantGenome() {
     std::map<int, string> genome;
     genome.insert({Simulator::get().getGA().nextGeneID(),
-                    "3" // Radial
-                    "0" // Asexual
+                    "2" // Symmetry
+                    //"0" // Asexual
                     "22222" // Size
-                    "222" // Growth energy
+                    "001" // Growth energy
                     "222" // Growth rate
                     "222" // Child energy
                     "222" // Regeneration fraction
@@ -180,8 +178,8 @@ std::map<int, string> plantGenome() {
                    //PartCode
                    "000000000000000" // Head
                    "1111"//R
-                   "2211"//G
-                   "1111"//B
+                   "2333"//G
+                   "1113"//B
                     "222"//Start width
                     "222"//End width
                     "111"//Length
@@ -195,7 +193,7 @@ std::map<int, string> plantGenome() {
                     // CELL PARTS
                     "111111111111111"//Part ID
                     "222222"//Build priority
-                    "0000"//Angle on body
+                    "1122"//Angle on body
                     "1122"//Angle from body
                   });
     int body = Simulator::get().getGA().nextGeneID();
@@ -218,8 +216,12 @@ std::map<int, string> plantGenome() {
                    // CELL PARTS
                    "111111111111111"//Part ID
                    "111111"//Build priority
-                   "2000"//Angle on body
-                   "2000"//Angle from body
+                   "0022"//Angle on body
+                   "1122"//Angle from body
+                   "111111111111111"//Part ID
+                   "111111"//Build priority
+                   "3322"//Angle on body
+                   "1122"//Angle from body
                   });
     return genome;
 }

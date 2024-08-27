@@ -16,6 +16,9 @@ public:
 private:
     static std::unordered_map<std::string, sf::Texture> textures;
     static std::unordered_map<std::string, sf::Shader> shaders;
+
+    // Loads a shader from a file
+    static void loadShader(const std::string& key, const std::string& vertexPath, const std::string& fragmentPath="");
 };
 
 #endif

@@ -8,6 +8,9 @@ file(GLOB_RECURSE SRCS "src/*.cpp")
 file(GLOB_RECURSE CUDA_SRCS "src/*.cu")
 file(GLOB_RECURSE HEADERS "./*.hpp" "src/*.tpp")
 
+file(GLOB_RECURSE XMLS "src/*.xml")
+file(GLOB_RECURSE CSSS "src/*.css")
+
 set_source_files_properties(main.cpp ${SRCS} PROPERTIES LANGUAGE CXX)
 set_source_files_properties(${CUDA_SRCS} PROPERTIES LANGUAGE CUDA)
 
@@ -25,7 +28,10 @@ target_link_libraries(Genetica ${LIBS})
 set_target_properties(Genetica PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(Genetica PROPERTIES CUDA_ARCHITECTURES "52")
 
+file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/assets/")
 file(COPY assets DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY ${XMLS} DESTINATION "${CMAKE_BINARY_DIR}/assets/components")
+file(COPY ${CSSS} DESTINATION "${CMAKE_BINARY_DIR}/assets/styles")
 
 # Copy dlls to build
 if(WIN32)

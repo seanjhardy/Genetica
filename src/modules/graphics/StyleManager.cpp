@@ -6,6 +6,7 @@
 #include <string>
 #include <iostream>
 #include <modules/utils/stringUtils.hpp>
+#include <modules/utils/print.hpp>
 
 namespace fs = std::filesystem;
 
@@ -41,7 +42,7 @@ void Styles::init() {
                 iss >> token;
 
                 if (!insideStyle && line.contains("{")) {
-                    styleName = trimSpaces(line.substr(0, line.find("{")));
+                    styleName = trim(line.substr(0, line.find("{")));
                     styleContent.clear();
                     insideStyle = true;
                 } else if (insideStyle) {

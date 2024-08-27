@@ -15,9 +15,10 @@ GPUValue<T>::~GPUValue() {
 }
 
 template<typename T>
-GPUValue<T>& GPUValue<T>::operator=(T& value) {
+GPUValue<T>& GPUValue<T>::operator=(T value) {
     h_data = value;
     cudaMemcpy(d_data, &value, sizeof(T), cudaMemcpyHostToDevice);
+    return *this;
 }
 
 

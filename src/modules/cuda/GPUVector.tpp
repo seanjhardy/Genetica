@@ -24,7 +24,7 @@ template<typename T>
 void GPUVector<T>::reallocateDevice(size_t new_capacity) {
     T* new_d_data;
     cudaMalloc(&new_d_data, new_capacity * sizeof(T));
-    cudaMemcpy(new_d_data, h_data.data(), size_ * sizeof(T), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_d_data, h_data.data(), size_ * sizeof(T), cudaMemcpyHostToDevice);
     cudaFree(d_data);
     d_data = new_d_data;
     capacity_ = new_capacity;

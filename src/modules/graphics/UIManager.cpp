@@ -13,12 +13,12 @@ void UIManager::draw(sf::RenderTarget& target) const {
     screens.at(currentScreen)->draw(target);
 }
 
-void UIManager::handleEvent(const sf::Event& event) {
+bool UIManager::handleEvent(const sf::Event& event) {
     if (event.type == sf::Event::Resized) {
         screens.at(currentScreen)->resize(window->getSize());
     }
 
-    screens.at(currentScreen)->handleEvent(event);
+    return screens.at(currentScreen)->handleEvent(event);
 }
 
 void UIManager::update(float dt, const sf::Vector2f& position) {
@@ -30,4 +30,8 @@ void UIManager::setCurrentScreen(const std::string& screen) {
         currentScreen = screen;
         screens.at(currentScreen)->resize(window->getSize());
     }
+}
+
+Screen* UIManager::getScreen(std::string name) {
+    return screens.at(name);
 }

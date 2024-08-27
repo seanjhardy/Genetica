@@ -1,14 +1,12 @@
 #include <modules/physics/point.hpp>
 #include "../physics/constraints.cu"
 #include "cuda_runtime.h"
-#include "modules/utils/print.hpp"
 #include <modules/cuda/updatePoints.hpp>
 #include <SFML/Graphics.hpp>
 #include "simulator/entities/rock.hpp"
 
 __global__ void updatePointsKernel(Point *points, int numParticles, float dt, sf::FloatRect *bounds) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-
+    size_t index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index < numParticles) {
         Point &point = points[index];
         point.update(dt);
@@ -21,7 +19,7 @@ __global__ void constrainDistancesKernel(Point *points, Connection *connections,
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index < numConnections) {
-        Connection &connection = connections[index];
+        Connection connection = connections[index];
         constrainDistance(points[connection.a], points[connection.b], connection.distance, 0.2f);
     }
 }
@@ -31,12 +29,12 @@ __global__ void updateParentChildLinkKernel(Point *points, ParentChildLink *angl
 
     if (index < numAngles) {
         ParentChildLink &pcl = angles[index];
-        float parentAngle = atan2(points[pcl.parentEndPoint].pos.y -
+        float parentAngle = FastMath::atan2f(points[pcl.parentEndPoint].pos.y -
                                                     points[pcl.parentStartPoint].pos.y,
                                                     points[pcl.parentEndPoint].pos.x -
                                                     points[pcl.parentStartPoint].pos.x);
-        //constrainAngle(points[pcl.startPoint], points[pcl.endPoint], parentAngle + pcl.targetAngle, pcl.stiffness, dt);
-        //points[pcl.startPoint].pos = points[pcl.parentStartPoint].pos + rotate(pcl.pointOnParent, parentAngle);
+        constrainAngle(points[pcl.startPoint], points[pcl.endPoint], parentAngle + pcl.targetAngle, pcl.stiffness, dt);
+        points[pcl.startPoint].pos = points[pcl.parentStartPoint].pos + rotate(pcl.pointOnParent, parentAngle);
     }
 }
 
@@ -70,7 +68,6 @@ void updatePoints(GPUVector<Point> &points,
     updateParentChildLinkKernel<<<numBlocks, blockSize>>>(points.deviceData(), parentChildLinks.deviceData(),
                                                           numParentChildLinks, dt);
 
-
     numBlocks = (numConnections + blockSize - 1) / blockSize;
     constrainDistancesKernel<<<numBlocks, blockSize>>>(points.deviceData(), connections.deviceData(), numConnections,
                                                        numPoints);
@@ -81,5 +78,5 @@ void updatePoints(GPUVector<Point> &points,
                        (numRocks + threadsPerBlock - 1) / threadsPerBlock, 1);
     computeCollisions<<<blocksPerGrid, threadsPerBlockDim>>>(points.deviceData(),
                                                 numPoints, rocks.deviceData(), numRocks);*/
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
 }

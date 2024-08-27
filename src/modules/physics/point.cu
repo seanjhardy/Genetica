@@ -3,11 +3,12 @@
 
 #include <modules/physics/point.hpp>
 #include <modules/utils/floatOps.hpp>
+#include <modules/utils/fastMath.hpp>
 
  __host__ __device__ float2 Point::getVelocity() const {
     float2 d = pos - prevPos;
     float speed = sqrtf(sum(d*d));
-    float dir = atan2f(d.y, d.x);
+    float dir = FastMath::atan2f(d.y, d.x);
     return make_float2(speed, dir);
 }
 
@@ -33,7 +34,7 @@ __host__ __device__ float Point::distanceTo(const Point& other) const {
 }
 
 __host__ __device__ float Point::angleTo(const Point& other) const{
-    return atan2f(other.pos.y - pos.y, other.pos.x - pos.x);
+    return FastMath::atan2f(other.pos.y - pos.y, other.pos.x - pos.x);
 }
 
 __host__ __device__ void Point::rotate(const float2& origin, float angle) {

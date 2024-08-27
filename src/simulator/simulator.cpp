@@ -1,7 +1,6 @@
 // simulator.cpp
 #include "simulator/simulator.hpp"
-#include "simulator/screens/simulationScreen.hpp"
-#include <modules/utils/print.hpp>
+#include "./screen/simulationScreen.cpp"
 #include <sstream>
 #include <iomanip>
 
@@ -13,11 +12,11 @@ Simulator& Simulator::get(){
 // Instantiate simulator
 Simulator::Simulator()
       : env(sf::FloatRect(0, 0, 1000, 1000)),
-        window(sf::VideoMode(600, 800), "Genetica"),
+        window(sf::VideoMode(800, 600), "Genetica"),
         state(State::Playing),
-        uiManager(&window),
-        camera(CameraController(env.getBounds(), &window)){
+        uiManager(&window){
 
+    camera = Camera(env.getBounds(), &window);
     vertexManager.setCamera(&camera);
 }
 
@@ -42,12 +41,20 @@ void Simulator::run() {
             }
             // Handle discrete events (e.g. key press, mouse click)
             camera.updateEvent(event);
-            uiManager.handleEvent(event);
-            env.handleEvent(event, camera.getCoords(mousePos));
+            bool consumed = uiManager.handleEvent(event);
+            if (consumed) continue;
+
+            Entity* newSelectedEntity = nullptr;
+            bool entitySelected = env.handleEvent(event, camera.getCoords(mousePos), &newSelectedEntity);
+
+            if (entitySelected && newSelectedEntity != selectedEntity) {
+                selectedEntity = newSelectedEntity;
+                setTab(selectedEntity == nullptr ? Tab::Simulation : Tab::LifeForm);
+            }
         }
         // Handle continuous events (e.g. holding down a key/hovering over a UI element)
         uiManager.update(deltaTime, mousePos);
-        env.update(camera.getCoords(mousePos));
+        env.update(mousePos);
         camera.update(deltaTime);
 
         // Update simulation state
@@ -94,6 +101,14 @@ sf::RenderWindow& Simulator::getWindow() {
     return window;
 }
 
+void Simulator::setTab(Tab tab) {
+    uiManager.getScreen("simulation")->getElement("LifeformTab")->overrideProperty("style",
+                                                                                std::string(tab == Tab::LifeForm ? "visible: true" : "visible: false"));
+    uiManager.getScreen("simulation")->getElement("SimulationTab")->overrideProperty("style",
+                                                                                   std::string(tab == Tab::Simulation ? "visible: true" : "visible: false"));
+    uiManager.getScreen("simulation")->resize(window.getSize());
+}
+
 Environment& Simulator::getEnv() {
     return env;
 }
@@ -137,4 +152,12 @@ float Simulator::getSpeed() const {
 
 int Simulator::getStep() const {
     return step;
+}
+
+Entity* Simulator::getSelectedEntity() {
+    return selectedEntity;
+}
+
+Camera& Simulator::getCamera() {
+    return camera;
 }

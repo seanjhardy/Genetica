@@ -199,7 +199,7 @@ void QuadtreeNode::render(VertexManager& vertexManager) {
             child->render(vertexManager);
         }
     } else {
-        vertexManager.addText(std::to_string(points.size()), {center.x, center.y}, 24, sf::Color(0, 255, 0));
+        vertexManager.addText(std::to_string(points.size()), {center.x, center.y}, 16, sf::Color(0, 255, 0));
     }
 }
 

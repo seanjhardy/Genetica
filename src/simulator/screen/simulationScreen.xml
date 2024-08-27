@@ -1,0 +1,25 @@
+<!-- Simulation screen-->
+
+<!-- Bottom menu bar -->
+<View key="root" class="full" style="align-col: end; allowClick: false;">
+    <View key="bottomBar" class="container" style="flex-direction: row; width: 100%; height: 150px; border: 2px #438891 0px;">
+        <!-- Simulation Mini Settings -->
+        <View key="simulationMiniSettings" class="container" style="background: #215057; flex-direction: column; width: 50px; height: 100%;">
+            <Button class="miniBtn" onClick="toggleQuadTree">
+                <Image key="quadtreeBtnIcon" style="flex: 1; image: quadtree;" styleOnHover="image: quadtreeHighlighted"/>
+            </Button>
+            <Button class="miniBtn" onClick="hideUI">
+                <Image style="flex: 1; image: noEye" styleOnHover="image: noEyeHighlighted"/>
+            </Button>
+        </View>
+        <SimulationTab/>
+        <LifeformTab/>
+    </View>
+</View>
+
+<!-- show UI button-->
+<View key="showUIView" class="full" style="allowClick: false; visible: false; align-row: start; align-col: end; margin: 20px;">
+    <Button class="miniBtn" onClick="showUI">
+        <Image style="flex: 1; image: eye;"  styleOnHover="image: eyeHighlighted"/>
+    </Button>
+</View>

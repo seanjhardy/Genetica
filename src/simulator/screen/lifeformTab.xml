@@ -1,0 +1,23 @@
+<View key="LifeformTab" class="container" style="visible: false; flex-direction: row; width: 100%; height: 100%; gap: 5px;">
+    <!-- Blueprint -->
+    <!-- Lifeform Mini Settings -->
+    <View key="lifeFormMiniSettings" class="container" style="width: 180px; background: #215057; flex-direction: row;
+    height: 100%; gap: 2px;">
+        <Button class="miniBtn" onClick="clone">
+            <Image key="cloneIcon" style="flex: 1; image: clone;" styleOnHover="image: cloneHighlighted"/>
+        </Button>
+        <Button class="miniBtn" onClick="mutate">
+            <Image style="flex: 1; image: mutate" styleOnHover="image: mutateHighlighted"/>
+        </Button>
+        <Button class="miniBtn" onClick="energy">
+            <Image style="flex: 1; image: energy" styleOnHover="image: energyHighlighted"/>
+        </Button>
+        <Button class="miniBtn" onClick="delete">
+            <Image style="flex: 1; image: delete" styleOnHover="image: deleteHighlighted"/>
+        </Button>
+    </View>
+    <!-- Lifeform info -->
+    <View class="container" style="background: #215057; flex-direction: column; width: 200px; height: 100%;">
+        <Text key="lifeformInfoLabel" style="font-size: 18px;"/>
+    </View>
+</View>

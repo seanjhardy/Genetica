@@ -19,7 +19,7 @@ public:
 
     // Move constructor and assignment operator
     explicit GPUValue(T& value);
-    GPUValue& operator=(T& value);
+    GPUValue& operator=(T value);
 
     //Destructor
     ~GPUValue();

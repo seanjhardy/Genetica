@@ -2,13 +2,12 @@
 
 // main.cpp
 #include "simulator/simulator.hpp"
-#include "simulator/environment.hpp"
-#include "SFML/Graphics.hpp"
 #include "stdexcept"
 #include <modules/graphics/fontManager.hpp>
 #include <modules/graphics/spriteManager.hpp>
 #include <modules/graphics/shaderManager.hpp>
-#include <modules/graphics/styleManager.hpp>
+#include <modules/graphics/componentManager.hpp>
+#include <modules/graphics/cursorManager.hpp>
 #include <modules/utils/fastMath.hpp>
 
 int main() {
@@ -21,6 +20,8 @@ int main() {
         SpriteManager::init();
         ShaderManager::init();
         FontManager::init();
+        ComponentManager::init();
+        CursorManager::init();
 
         // Set up simulation
         Simulator::get().setup();

@@ -1,15 +1,15 @@
 // dot_environment.hpp
-#ifndef HYPERLIFE_HPP
-#define HYPERLIFE_HPP
+#ifndef ENVIRONMENT
+#define ENVIRONMENT
 
-#include "vector"
-#include "random"
-#include "modules/physics/point.hpp"
-#include "modules/cuda/GPUVector.hpp"
-#include "modules/cuda/GPUValue.hpp"
-#include "modules/graphics/vertexManager.hpp"
-#include "modules/quadtree/quadtree.hpp"
-#include "simulator/entities/entity.hpp"
+#include <vector>
+#include <random>
+#include <modules/physics/point.hpp>
+#include <modules/cuda/GPUVector.hpp>
+#include <modules/cuda/GPUValue.hpp>
+#include <modules/graphics/vertexManager.hpp>
+#include <simulator/entities/entity.hpp>
+#include <modules/utils/dragHandler.hpp>
 
 class LifeForm;
 
@@ -24,20 +24,22 @@ private:
     GPUVector<Point> points = GPUVector<Point>();
     GPUVector<Connection> connections = GPUVector<Connection>();
     GPUVector<ParentChildLink> parentChildLinks = GPUVector<ParentChildLink>();
-    Quadtree quadtree;
-    bool quadTreeVisible = false;
+    bool gridLinesVisible = true;
     Point* heldPoint = nullptr;
+    std::unordered_map<int, Entity*> entities;
+    int entityID;
+    DragHandler dragHandler;
 
 public:
     explicit Environment(sf::FloatRect bounds);
     void simulate(float deltaTime);
     void render(VertexManager& window);
     void reset();
-    int handleEvent(const sf::Event& event, sf::Vector2f mousePos);
+    bool handleEvent(const sf::Event& event, sf::Vector2f mousePos, Entity** selectedEntity);
     void update(const sf::Vector2f& mousePos);
-    LifeForm& createRandomLifeForm();
 
     int addPoint(int id, float x, float y, float mass);
+    void addEntity(int id, Entity* entity);
     Point* getPoint(int index);
     ParentChildLink* getParentChildLink(int index);
     void addConnection(int a, int b, float distance);
@@ -48,9 +50,10 @@ public:
     GPUVector<ParentChildLink>& getParentChildLinks() { return parentChildLinks; }
 
     [[nodiscard]] sf::FloatRect getBounds() const;
-    void toggleQuadTreeVisible();
-    [[nodiscard]] bool isQuadTreeVisible() const;
-    Quadtree* getQuadtree();
+    void toggleGridLinesVisible();
+    [[nodiscard]] bool getGridLineVisibility() const;
+
+    int nextEntityID();
 
 };
 

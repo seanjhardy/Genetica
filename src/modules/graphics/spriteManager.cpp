@@ -11,8 +11,8 @@ void SpriteManager::init() {
     // Hardcoded map of key to file path
     std::unordered_map<std::string, std::string> spriteMappings = {
             // Icons
-            {"creature", "./assets/icons/creature.png"},
-            {"creatureHightlighted", "./assets/icons/creature_highlighted.png"},
+            {"clone", "./assets/icons/creature.png"},
+            {"cloneHighlighted", "./assets/icons/creature_highlighted.png"},
             {"dna", "./assets/icons/dna.png"},
             {"dnaHighlighted", "./assets/icons/dna_highlighted.png"},
             {"play", "./assets/icons/play.png"},
@@ -25,8 +25,10 @@ void SpriteManager::init() {
             {"eyeHighlighted", "./assets/icons/eye_highlighted.png"},
             {"folder", "./assets/icons/folder.png"},
             {"folderHighlighted", "./assets/icons/folder_highlighted.png"},
-            {"mutation", "./assets/icons/mutation.png"},
-            {"mutationHighlighted", "./assets/icons/mutation_highlighted.png"},
+            {"mutate", "./assets/icons/mutation.png"},
+            {"mutateHighlighted", "./assets/icons/mutation_highlighted.png"},
+            {"delete", "./assets/icons/delete.png"},
+            {"deleteHighlighted", "./assets/icons/delete_highlighted.png"},
             {"noEye", "./assets/icons/no_eye.png"},
             {"noEyeHighlighted", "./assets/icons/no_eye_highlighted.png"},
             {"save", "./assets/icons/save.png"},
@@ -36,8 +38,8 @@ void SpriteManager::init() {
             {"tools", "./assets/icons/tools.png"},
             {"settings", "./assets/icons/settings.png"},
             {"settingsHighlighted", "./assets/icons/settings_highlighted.png"},
-            {"fastForward", "./assets/icons/fast_forward.png"},
-            {"fastForwardHighlighted", "./assets/icons/fast_forward_highlighted.png"},
+            {"speedUp", "./assets/icons/speed_up.png"},
+            {"speedUpHighlighted", "./assets/icons/speed_up_highlighted.png"},
             {"slowDown", "./assets/icons/slow_down.png"},
             {"slowDownHighlighted", "./assets/icons/slow_down_highlighted.png"},
             {"map", "./assets/icons/map.png"},
@@ -51,6 +53,7 @@ void SpriteManager::init() {
             {"dnaBannerSmall", "./assets/textures/dna_banner_small.png"},
             {"jawsClosed", "./assets/textures/jaws_closed.png"},
             {"jawsOpen", "./assets/textures/jaws_open.png"},
+            {"cellTexture", "./assets/textures/cellTexture.png"},
     };
 
     for (const auto& pair : spriteMappings) {
@@ -64,15 +67,22 @@ void SpriteManager::init() {
         }
 
         texture.setSmooth(true);
+        texture.setRepeated(true);
         textures[key] = texture;
         sprites[key] = sf::Sprite(textures[key]);
     }
 }
 
 sf::Sprite* SpriteManager::get(const std::string& key) {
-    auto it = sprites.find(key);
-    if (it != sprites.end()) {
-        return &it->second;
+    if (sprites.contains(key)) {
+        return &sprites[key];
     }
-    return nullptr;
+    return &sprites["default"];
+}
+
+sf::Texture* SpriteManager::getTexture(const std::string& key) {
+    if (textures.contains(key)) {
+        return &textures[key];
+    }
+    return &textures["default"];
 }

@@ -82,7 +82,7 @@ protected:
 /// sf::Drawable is a very simple base class that allows objects
 /// of derived classes to be drawn to a sf::RenderTarget.
 ///
-/// All you have to do in your derived class is to override the
+/// All you have to do in your derived class is to overrideValues the
 /// draw virtual function.
 ///
 /// Note that inheriting from sf::Drawable is not mandatory,

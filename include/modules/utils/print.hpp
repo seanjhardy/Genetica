@@ -8,8 +8,8 @@
 #include <unordered_map>
 #include <string>
 #include <modules/physics/point.hpp>
-#include <modules/graphics/UI/utils/size.hpp>
-#include <modules/graphics/UI/utils/styleParser.hpp>
+#include <modules/graphics/utils/size.hpp>
+#include <modules/graphics/utils/styleParser.hpp>
 
 inline void printElement(const Size c) {
     std::cout <<
@@ -54,6 +54,10 @@ inline void printElement(const float2& f2) {
 template<typename T>
 inline void printElement(const sf::Vector2<T>& f2) {
     std::cout << f2.x << " " << f2.y;
+}
+
+inline void printElement(const sf::FloatRect& f2) {
+    std::cout << f2.left << " " << f2.top << " " << f2.width << " " << f2.height;
 }
 
 inline void printElement(const sf::Color& c) {

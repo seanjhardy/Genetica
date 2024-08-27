@@ -16,7 +16,7 @@ std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& po
         x1 += 1e-8;
     }
 
-    double angle = std::atan2(y2 - y1, x2 - x1);
+    double angle = FastMath::atan2f(y2 - y1, x2 - x1);
     float anglePlus90 = angle + M_PI / 2;
     float angleMinus90 = angle - M_PI / 2;
 
@@ -52,11 +52,6 @@ float angleDiff(float angle1, float angle2, bool norm) {
         diff = normAngle(diff);
     }
     return diff;
-}
-
-float clockwiseAngleDiff(const float2& p1, const float2& p2) {
-    return std::atan2(p1.x * p2.y - p1.y * p2.x,
-                      p1.x * p2.x + p1.y * p2.y);
 }
 
 std::vector<std::pair<int, int>> bezier(int x0, int y0, int x1, int y1, int x2, int y2, int num_points) {
@@ -97,7 +92,7 @@ float2 getPointOnSegment(float length, float r1, float r2, float angle) {
     angle = fmod(angle, two_pi);
     angle += (angle < 0) * two_pi;
 
-    const float tr = atan2f(r2, half_length);
+    const float tr = FastMath::atan2f(r2, half_length);
     const float br = two_pi - tr;
 
     if (angle > br || angle < tr) {
@@ -105,7 +100,7 @@ float2 getPointOnSegment(float length, float r1, float r2, float angle) {
         return vec(new_a) * r2 + make_float2(length, 0);
     }
 
-    const float tr1 = atan2f(r1, half_length);
+    const float tr1 = FastMath::atan2f(r1, half_length);
     const float tl = M_PI - tr1;
     const float bl = two_pi - tr1;
 

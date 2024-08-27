@@ -1,0 +1,27 @@
+<!-- Control Panel -->
+<View key="controlPanel" class="container" style="background: #215057; width: 200px; height: 100%;">
+    <View class="container" style="background: transparent; flex-direction: row; width: 100%; flex: 1;
+    align-row: center; align-col: start; gap: 10px; padding: 0px;">
+        <Button key="slowDownBtn" class="mainBtn"
+                style="height: 100%;"
+                onClick="slowDown">
+            <Image key="slowDownIcon" style="flex: 1; image: slowDown" styleOnHover="image: slowDownHighlighted"/>
+        </Button>
+        <Button key="playBtn" class="mainBtn"
+                style="height: 100%;"
+                onClick="togglePaused">
+            <Image key="playBtnIcon" style="flex: 1; image: pause;" styleOnHover="image: pauseHighlighted"/>
+        </Button>
+        <Button key="speedUpBtn" class="mainBtn"
+                style="height: 100%;"
+                onClick="speedUp">
+            <Image key="speedUpIcon" style="flex: 1; image: speedUp;" styleOnHover="image: speedUpHighlighted"/>
+        </Button>
+    </View>
+    <Button key="createRandom" class="mainBtn" style="width: 100%;" onClick="createRandom">
+        <Text>Create Random</Text>
+    </Button>
+    <Button key="reset" class="mainBtn" style="width: 100%;" onClick="reset">
+        <Text>Reset</Text>
+    </Button>
+</View>

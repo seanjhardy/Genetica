@@ -4,14 +4,63 @@
 #include "vector_types.h"
 #include <modules/graphics/vertexManager.hpp>
 #include <modules/utils/floatOps.hpp>
-#include <modules/utils/fastMath.hpp>
 #include <modules/utils/print.hpp>
 #include <modules/graphics/fontManager.hpp>
+#include <modules/graphics/spriteManager.hpp>
+#include <modules/graphics/shaderManager.hpp>
 
 #ifndef M_PI
     #define M_PI 3.14159
 #endif
 
+
+VertexManager::VertexManager()
+: vertices(sf::PrimitiveType::Triangles), texturedVertices(sf::PrimitiveType::Triangles) {
+    ShaderManager::get("texture")->setParameter("texture", sf::Shader::CurrentTexture);
+    states.shader = ShaderManager::get("texture");
+    states.texture = SpriteManager::getTexture("cellTexture");
+    states.blendMode = sf::BlendAlpha;
+}
+
+void VertexManager::addTriangle(const float2& p1, const float2& p2, const float2& p3,
+                                const sf::Color& color) {
+
+    vertices.append(sf::Vertex({p1.x, p1.y}, color));
+    vertices.append(sf::Vertex({p2.x, p2.y}, color));
+    vertices.append(sf::Vertex({p3.x, p3.y}, color));
+}
+
+void VertexManager::addTexturedTriangle(const float2& p1, const float2& p2, const float2& p3,
+                                const sf::Color& color, const sf::FloatRect& bbox, float angle) {
+
+    float textureWidth = 50;
+    float textureHeight = 50;
+    float textureAspect = textureWidth / textureHeight;
+
+    // Adjust the scale factors to maintain aspect ratio
+    float scaleX = textureAspect / textureWidth;
+    float scaleY = (1.0f / textureAspect) / textureWidth;
+
+    float centerX = (bbox.left + bbox.width / 2);
+    float centerY = (bbox.top + bbox.height / 2);
+
+    float2 texCoord1 = rotate({
+      scaleX * (p1.x - centerX),
+      scaleY * (p1.y - centerY)
+    }, -angle);
+    float2 texCoord2 = rotate({
+      scaleX * (p2.x - centerX),
+      scaleY * (p2.y - centerY)
+    }, -angle);
+    float2 texCoord3 = rotate({
+      scaleX * (p3.x - centerX),
+      scaleY * (p3.y - centerY),
+    }, -angle);
+
+    texturedVertices.append(sf::Vertex({p1.x, p1.y}, color, {texCoord1.x, texCoord1.y}));
+    texturedVertices.append(sf::Vertex({p2.x, p2.y}, color, {texCoord2.x, texCoord2.y}));
+    texturedVertices.append(sf::Vertex({p3.x, p3.y}, color, {texCoord3.x, texCoord3.y}));
+}
 
 void VertexManager::addCircle(const float2& center, float radius, const sf::Color& color, int maxPoints) {
     float angle = 0;
@@ -19,11 +68,7 @@ void VertexManager::addCircle(const float2& center, float radius, const sf::Colo
     if (LOD > maxPoints) LOD = maxPoints;
     for (int i = 0; i < LOD; ++i) {
         float angle2 = (i + 1.0f) * 2 * M_PI / LOD;
-        vertices.append(sf::Vertex({center.x, center.y}, color));
-        vertices.append(sf::Vertex({center.x + cosf(angle) * radius,
-                                                center.y + sinf(angle) * radius}, color));
-        vertices.append(sf::Vertex({center.x + cosf(angle2) * radius,
-                                                center.y + sinf(angle2) * radius}, color));
+        addTriangle(center, center + vec(angle) * radius, center + vec(angle2) * radius, color);
         angle = angle2;
     }
 }
@@ -50,26 +95,23 @@ void VertexManager::addFloatRectOutline(const sf::FloatRect& rect, const sf::Col
     addLine({rect.left, rect.top + rect.height}, {rect.left, rect.top}, color, thickness);
 }
 
-void VertexManager::addTriangle(const float2& p1, const float2& p2, const float2& p3, const sf::Color& color) {
-    vertices.append(sf::Vertex({p1.x, p1.y}, color));
-    vertices.append(sf::Vertex({p2.x, p2.y}, color));
-    vertices.append(sf::Vertex({p3.x, p3.y}, color));
-}
-
 void VertexManager::addPolygon(const std::vector<float2>& points, const sf::Color& color) {
     if (points.size() < 3) return;
     for (int i = 1; i < points.size() - 1; ++i) {
-        vertices.append(sf::Vertex({points[0].x, points[0].y}, color));
-        vertices.append(sf::Vertex({points[i].x, points[i].y}, color));
-        vertices.append(sf::Vertex({points[i + 1].x, points[i + 1].y}, color));
+        addTriangle(points[0], points[i], points[i + 1], color);
     }
 }
 
 void VertexManager::addSegment(float2 p1, float2 p2, float r1, float r2, float angle, const sf::Color& color) {
     // Keep track of body polygon points
-    float2 polygon[4] = {{},{},{},{}};
+    float2 polygon[4] = {0,0,0,0};
     int LOD1 = getCircleLOD(r1) / 2;
     int LOD2 = getCircleLOD(r2) / 2;
+
+    sf::FloatRect bbox = {min(p1.x - r1, p2.x - r2),
+                          min(p1.y - r1, p2.y - r2),
+                          max(p1.x + r1, p2.x + r2) - min(p1.x - r1, p2.x - r2),
+                          max(p1.y + r1, p2.y + r2) - min(p1.y - r1, p2.y - r2)};
 
     // Create body
     float2 prevVertex = p1 + vec(angle + M_PI/2) * r1;
@@ -77,45 +119,34 @@ void VertexManager::addSegment(float2 p1, float2 p2, float r1, float r2, float a
     for (int i = 0; i < LOD1; ++i) {
         float currentAngle = (i + 1) * M_PI / LOD1 + angle + M_PI/2;
         float2 nextVertex = p1 + vec(currentAngle) * r1;
-        vertices.append(sf::Vertex({p1.x, p1.y}, color));
-        vertices.append(sf::Vertex({prevVertex.x, prevVertex.y}, color));
-        vertices.append(sf::Vertex({nextVertex.x, nextVertex.y}, color));
+        addTexturedTriangle(p1, prevVertex, nextVertex, color, bbox, angle);
         prevVertex = nextVertex;
     }
     polygon[1] = prevVertex;
+
     // Second semicircle
-    prevVertex = p2 + vec(angle + 3 *M_PI/2) * r2;
+    prevVertex = p2 + vec(angle - M_PI/2) * r2;
     polygon[2] = prevVertex;
     for (int i = 0; i < LOD2; i++) {
         float currentAngle = (i + 1) * M_PI / LOD2 + angle + 3*M_PI/2;
-        float2 nextVertex = p2 + vec(currentAngle) * r1;
-        vertices.append(sf::Vertex({p2.x, p2.y}, color));
-        vertices.append(sf::Vertex({prevVertex.x, prevVertex.y}, color));
-        vertices.append(sf::Vertex({nextVertex.x, nextVertex.y}, color));
+        float2 nextVertex = p2 + vec(currentAngle) * r2;
+        addTexturedTriangle(p2, prevVertex, nextVertex, color, bbox, angle);
         prevVertex = nextVertex;
     }
     polygon[3] = prevVertex;
+
     //Add polygon
-    vertices.append(sf::Vertex({polygon[0].x, polygon[0].y}, color));
-    vertices.append(sf::Vertex({polygon[1].x, polygon[1].y}, color));
-    vertices.append(sf::Vertex({polygon[2].x, polygon[2].y}, color));
+    addTexturedTriangle(polygon[0], polygon[1], polygon[2], color, bbox, angle);
     // Second half of polygon
-    vertices.append(sf::Vertex({polygon[2].x, polygon[2].y}, color));
-    vertices.append(sf::Vertex({polygon[3].x, polygon[3].y}, color));
-    vertices.append(sf::Vertex({polygon[0].x, polygon[0].y}, color));
+    addTexturedTriangle(polygon[2], polygon[3], polygon[0], color, bbox, angle);
 }
 
 void VertexManager::addLine(const float2 start, const float2 end, const sf::Color& color, const float thickness) {
-    float angle = std::atan2(end.y - start.y, end.x - start.x);
+    float angle = FastMath::atan2f(end.y - start.y, end.x - start.x);
     float2 d = vec(angle + M_PI/2) * thickness * 0.5f;
 
-    vertices.append(sf::Vertex(sf::Vector2f(start.x + d.x, start.y + d.y), color));
-    vertices.append(sf::Vertex(sf::Vector2f(end.x + d.x, end.y + d.y), color));
-    vertices.append(sf::Vertex(sf::Vector2f(end.x - d.x, end.y - d.y), color));
-
-    vertices.append(sf::Vertex(sf::Vector2f(end.x - d.x, end.y - d.y), color));
-    vertices.append(sf::Vertex(sf::Vector2f(start.x - d.x, start.y - d.y), color));
-    vertices.append(sf::Vertex(sf::Vector2f(start.x + d.x, start.y + d.y), color));
+    addTriangle(start + d, end + d, end - d, color);
+    addTriangle(end - d, start - d, start + d, color);
 }
 
 void VertexManager::addText(const std::string text, const float2& pos, float size, const sf::Color& color) {
@@ -140,11 +171,14 @@ float VertexManager::getSizeInView(float size) {
 
 void VertexManager::clear() {
     vertices.clear();
+    texturedVertices.clear();
     labels.clear();
 }
 
 void VertexManager::draw(sf::RenderTarget& target) {
-    target.draw(vertices, states);
+    target.draw(vertices);
+    target.draw(texturedVertices, states);
+
     for (auto& label : labels) {
         target.draw(label);
     }
@@ -152,6 +186,6 @@ void VertexManager::draw(sf::RenderTarget& target) {
     clear();
 }
 
-void VertexManager::setCamera(CameraController* cam) {
+void VertexManager::setCamera(Camera* cam) {
     this->camera = cam;
 }
