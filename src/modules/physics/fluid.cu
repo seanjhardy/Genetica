@@ -22,17 +22,6 @@ void FluidSimulator::init()
     pixelBuffer = std::vector<uint8_t>( width * height * 4);
     texture.create(width, height);
 
-    colorArray[0] = { 1.0f, 0.0f, 0.0f };
-    colorArray[1] = { 0.0f, 1.0f, 0.0f };
-    colorArray[2] = { 1.0f, 0.0f, 1.0f };
-    colorArray[3] = { 1.0f, 1.0f, 0.0f };
-    colorArray[4] = { 0.0f, 1.0f, 1.0f };
-    colorArray[5] = { 1.0f, 0.0f, 1.0f };
-    colorArray[6] = { 1.0f, 0.5f, 0.3f };
-
-    int idx = rand() % colorArraySize;
-    currentColor = colorArray[idx];
-
     cudaSetDevice(0);
     cudaMalloc(&colorField, width * height * 4 * sizeof(uint8_t));
     cudaMalloc(&oldField, width * height * sizeof(Particle));
@@ -302,7 +291,7 @@ __global__ void applyVorticity(Particle* newField, Particle* oldField, float* vF
     float2 v = absGradient(vField, width, height, x, y);
     v.y *= -1.0f;
 
-    float length = sqrtf(v.x * v.x + v.y * v.y) + 1e-5f;
+    float length = sqrtf(v.x * v.x + v.y * v.y) + 1e-6f;
     float2 vNorm = v * (1.0f / length);
 
     float2 vF = vNorm * vField[y * width + x] * vorticity;
@@ -368,8 +357,6 @@ void FluidSimulator::update(float dt)
     // diffuse velocity and color
     computeDiffusion(numBlocks, threadsPerBlock, dt);
 
-    timeSincePress += dt;
-
     // compute pressure
     computePressure(numBlocks, threadsPerBlock, dt);
 
@@ -397,34 +384,21 @@ void FluidSimulator::update(float dt)
 }
 
 __global__ void applyForce(Particle* field, int width, int height,
-                                 float2 pos, float2 F, Color3f color,
+                                 float2 pos, float2 F,
                                  float radius, float dt, int minX, int minY) {
     int x = blockIdx.x * blockDim.x + threadIdx.x + minX;
     int y = blockIdx.y * blockDim.y + threadIdx.y + minY;
 
-    if (x < width && y < height) {
+    if (x < width && y < height && x >= 0 && y >= 0) {
         float e = expf(-((x - pos.x) * (x - pos.x) + (y - pos.y) * (y - pos.y)) / radius);
         float2 uF = F * dt * e;
         Particle &p = field[y * width + x];
         p.u = p.u + uF;
-        color = color * e + p.color;
-        p.color.x = color.x;
-        p.color.y = color.y;
-        p.color.z = color.z;
+        p.color = p.color + Color3f(0.3,0.5, 1.0) * e;
     }
 }
 
-
 void FluidSimulator::addForce(float2 position, float2 vector) {
-    timeSincePress = 0.0f;
-    elapsedTime += deltaTime;
-
-    // Apply gradient to color
-    int roundT = int(elapsedTime) % colorArraySize;
-    int ceilT = int((elapsedTime + 1)) % colorArraySize;
-    float w = elapsedTime - int(elapsedTime);
-    currentColor = colorArray[roundT] * (1 - w) + colorArray[ceilT] * w;
-
     float2 F = vector * config.forceScale;
 
     // Calculate the bounding box of the affected area
@@ -443,7 +417,7 @@ void FluidSimulator::addForce(float2 position, float2 vector) {
 
     // Launch the kernel only for the affected area
     applyForce<<<gridSize, blockSize>>>(
-      oldField, width, height, position, F, currentColor,
+      oldField, width, height, position, F,
       config.radius, deltaTime, minX, minY
     );
 }

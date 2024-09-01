@@ -43,7 +43,7 @@ public:
         float pressure = 1.5f;
         float vorticity = 20.0f;
         float colorDiffusion = 0.8f;
-        float densityDiffusion = 0.5f;
+        float densityDiffusion = 0.001f;
         float forceScale = 5000.0f;
         float bloomIntense = 0.1f;
         int radius = 5;
@@ -52,14 +52,11 @@ public:
 
     struct SystemConfig
     {
-        int velocityIterations = 5;
-        int pressureIterations = 10;
+        int velocityIterations = 10;
+        int pressureIterations = 20;
         int xThreads = 32;
         int yThreads = 32;
     } sConfig;
-
-    static const int colorArraySize = 7;
-    Color3f colorArray[colorArraySize];
 
     Particle* newField;
     Particle* oldField;
@@ -67,9 +64,6 @@ public:
     float* pressureNew;
     float* pressureOld;
     float* vorticityField;
-    Color3f currentColor;
-    float elapsedTime = 0.0f;
-    float timeSincePress = 0.0f;
     float deltaTime = 0.0f;
 
     float scale = 1;

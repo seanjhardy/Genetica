@@ -1,7 +1,7 @@
 #include <cuda_runtime.h>
 #include <geneticAlgorithm/systems/morphogen/morphogen.hpp>
 
-__host__ __device__ float Morphogen::sample(const float2& point) {
+__host__ __device__ float Morphogen::sample(const float2& point) const {
     if (type == 0) {
         float dx = point.x - pos.x;
         float dy = point.y - pos.y;

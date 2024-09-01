@@ -20,11 +20,11 @@ struct Morphogen {
     float startConcentration, endConcentration;
     float3 extra;
 
-    Morphogen(int id, float2 pos, float start, float end, float3 extra={0,0,0})
-        : id(id), pos(pos), startConcentration(start), endConcentration(end), extra(extra) {
+    Morphogen(int id, int type, float2 pos, float start, float end, float3 extra={0,0,0})
+        : id(id), type(type), pos(pos), startConcentration(start), endConcentration(end), extra(extra) {
     }
 
-    __host__ __device__ float sample(const float2& point);
+    __host__ __device__ float sample(const float2& point) const;
 };
 
 #endif
