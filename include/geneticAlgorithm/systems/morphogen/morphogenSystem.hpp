@@ -5,7 +5,7 @@
 
 class MorphogenSystem {
 public:
-    void addMorphogen(int id, Morphogen morphogen, std::unordered_map<int, float> morphogenInteractions) {
+    void addMorphogen(int id, Morphogen morphogen, const std::unordered_map<int, float>& morphogenInteractions) {
         morphogens.insert({id, morphogen});
         concentrations.insert({id, 0.0});
         for (const auto& interaction : morphogenInteractions) {

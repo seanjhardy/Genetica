@@ -10,7 +10,7 @@
 
 using namespace std;
 
-int LifeForm::HEADER_SIZE = 50;
+int LifeForm::MORPHOGEN_DATA_SIZE = 10;
 int LifeForm::GROWTH_INTERVAL = 5;
 int LifeForm::CELL_DATA_SIZE = 28;
 float LifeForm::BUILD_COST_SCALE = 0.00001f;

@@ -10,7 +10,7 @@
 #include <utility>
 
 void sequence(LifeForm* lifeForm, const std::map<int, string>& genome) {
-    // Get the lowest index genome as the header
+    // Get the lowest index genome as the morphogen chromosome
     int lowestChromosomeIndex = std::numeric_limits<int>::max(); // Initialize to maximum integer value
 
     for (const auto& [key, _] : lifeForm->getGenome()) {
@@ -18,25 +18,11 @@ void sequence(LifeForm* lifeForm, const std::map<int, string>& genome) {
             lowestChromosomeIndex = key;
         }
     }
+
     string header = genome.at(lowestChromosomeIndex);
+    sequenceMorphogens(header);
 
-    // Set meta variables from header
-    lifeForm->symmetryType = std::vector<LifeForm::SymmetryType>{
-        LifeForm::SymmetryType::NONE,
-         LifeForm::SymmetryType::LOCAL,
-         LifeForm::SymmetryType::GLOBAL,
-         LifeForm::SymmetryType::RADIAL}[readBase(header)];
-
-    /*lifeForm->reproductionType = readBase(header) == 3
-            ? LifeForm::ReproductionType::SEXUAL
-            : LifeForm::ReproductionType::ASEXUAL;*/
-    lifeForm->size = max(readExpBaseRange(header, 5) * 5, 0.5f);
-    lifeForm->growthEnergy = max(readBaseRange(header, 3) * 100.0f, 5.0f);
-    lifeForm->growthRate = max(readBaseRange(header, 3), 0.1f);
-    lifeForm->childEnergy = max(readBaseRange(header, 3) * 0.9f, 0.05f);
-    lifeForm->regenerationFraction = min(readBaseRange(header, 3), 0.9f);
-
-    // Read segment genomes
+    // Read genes
     for (auto& [key, value]: genome) {
         if (key == lowestChromosomeIndex) continue;
         auto cellPart = sequenceChromosome(key, value);
@@ -62,6 +48,25 @@ void sequence(LifeForm* lifeForm, const std::map<int, string>& genome) {
             break;
         }
     }
+}
+
+MorphogenSystem sequenceMorphogens(string chromosome) {
+    MorphogenSystem morphogenSystem = MorphogenSystem();
+    while (chromosome.length() >= LifeForm::MORPHOGEN_DATA_SIZE) {
+        //int type = 0;
+        //    float2 pos;
+        //    float startConcentration, endConcentration;
+        //    float3 extra;
+        float morphogenCode = readUniqueBaseRange(chromosome, 5);
+        int type = readUniqueBaseRange(chromosome, 2)*3;
+        float angle = readBaseRange(chromosome, 4) * (float)M_PI*2;
+
+        std::unordered_map<int, float> interactions;
+        morphogenSystem.addMorphogen(morphogenCode,
+                                     {type, angle, 0, 0, {0,0,0}},
+                                     interactions);
+    }
+    return morphogenSystem;
 }
 
 std::shared_ptr<CellPartType> sequenceChromosome(int key, string chromosome) {

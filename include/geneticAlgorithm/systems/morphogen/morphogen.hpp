@@ -5,6 +5,7 @@
 #include <vector>
 #include <vector_types.h>
 #include <cuda_runtime.h>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -15,15 +16,16 @@
  */
 struct Morphogen {
     int type = 0;
-    float2 pos;
+    float angle;
     float startConcentration, endConcentration;
-    float3 extra;
+    float2 extra;
 
-    Morphogen(int type, float2 pos, float start, float end, float3 extra={0,0,0})
-        : type(type), pos(pos), startConcentration(start), endConcentration(end), extra(extra) {
+    Morphogen(int type, float angle, float start, float end, float2 extra={0,0})
+        : type(type), angle(angle), startConcentration(start), endConcentration(end), extra(extra) {
     }
 
-    __host__ __device__ float sample(const float2& point) const;
+    __host__ __device__ float sample(float2 cellPos, float cellRadius,
+                                     float distFraction, const float2& point) const;
 };
 
 #endif

@@ -36,7 +36,7 @@ public:
     vector<CellPartInstance*> inputs;
     vector<CellPartInstance*> outputs;
 
-    static int HEADER_SIZE, CELL_DATA_SIZE, GROWTH_INTERVAL;
+    static int MORPHOGEN_DATA_SIZE, CELL_DATA_SIZE, GROWTH_INTERVAL;
     static float BUILD_COST_SCALE, BUILD_RATE, ENERGY_DECREASE_RATE;
 
     map<int, string> genome;
