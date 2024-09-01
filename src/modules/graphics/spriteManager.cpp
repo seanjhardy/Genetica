@@ -46,6 +46,10 @@ void SpriteManager::init() {
             {"mapHighlighted", "./assets/icons/map_highlighted.png"},
             {"quadtree", "./assets/icons/quadtree.png"},
             {"quadtreeHighlighted", "./assets/icons/quadtree_highlighted.png"},
+            {"fluidEnabled", "./assets/icons/fluid.png"},
+            {"fluidEnabledHighlighted", "./assets/icons/fluid_highlighted.png"},
+            {"fluidDisabled", "./assets/icons/no_fluid.png"},
+            {"fluidDisabledHighlighted", "./assets/icons/no_fluid_highlighted.png"},
             // Textures
             {"default", "./assets/textures/default.png"},
             {"dnaBanner", "./assets/textures/dna_banner.png"},

@@ -14,7 +14,7 @@ Environment::Environment(sf::FloatRect bounds) :
 }
 
 void Environment::simulate(float deltaTime) {
-    if (Simulator::get().getStep() % 500 == 0) {
+    if (Simulator::get().getStep() % 500 == 0 && fluidEnabled) {
         fluidSimulator.update(0.02);
     }
 
@@ -26,8 +26,9 @@ void Environment::simulate(float deltaTime) {
 void Environment::render(VertexManager& vertexManager) {
     vertexManager.addFloatRect(bounds.hostData(), sf::Color(100, 100, 255, 50));
 
-    fluidSimulator.render(vertexManager, bounds.hostData());
-
+    if (fluidEnabled) {
+        fluidSimulator.render(vertexManager, bounds.hostData());
+    }
     // Draw a grid of columns and rows inside of bounds:
     if (vertexManager.getSizeInView(1) > 0.5 && gridLinesVisible) {
         sf::Color gridColor = sf::Color(0, 0, 0, 50);
@@ -88,6 +89,8 @@ void Environment::update(const sf::Vector2f& mousePos) {
         Simulator::get().getCamera().setBounds(bounds.hostData());
         fluidSimulator = FluidSimulator(0.1, bounds.hostData().width, bounds.hostData().height, {});
     }
+
+    if (!fluidEnabled) return;
 
     std::swap(mousePos1, mousePos2);
     mousePos2 = {(worldCoords.x - bounds.hostData().left) * fluidSimulator.scale,
@@ -155,6 +158,13 @@ void Environment::toggleGridLinesVisible() {
 
 bool Environment::getGridLineVisibility() const {
     return gridLinesVisible;
+}
+
+bool Environment::getFluidEnabled() const {
+    return fluidEnabled;
+}
+void Environment::toggleFluidEnabled() {
+    fluidEnabled = !fluidEnabled;
 }
 
 int Environment::nextEntityID() {

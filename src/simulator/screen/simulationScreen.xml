@@ -11,6 +11,9 @@
             <Button class="miniBtn" onClick="hideUI">
                 <Image style="flex: 1; image: noEye" styleOnHover="image: noEyeHighlighted"/>
             </Button>
+            <Button class="miniBtn" onClick="toggleFluid">
+                <Image key="fluidBtnIcon" style="flex: 1; image: fluidDisabled" styleOnHover="image: noFluidHighlighted"/>
+            </Button>
         </View>
         <SimulationTab/>
         <LifeformTab/>

@@ -14,14 +14,13 @@
  * of a creature. These are determined by hox genes.
  */
 struct Morphogen {
-    int id;
     int type = 0;
     float2 pos;
     float startConcentration, endConcentration;
     float3 extra;
 
-    Morphogen(int id, int type, float2 pos, float start, float end, float3 extra={0,0,0})
-        : id(id), type(type), pos(pos), startConcentration(start), endConcentration(end), extra(extra) {
+    Morphogen(int type, float2 pos, float start, float end, float3 extra={0,0,0})
+        : type(type), pos(pos), startConcentration(start), endConcentration(end), extra(extra) {
     }
 
     __host__ __device__ float sample(const float2& point) const;

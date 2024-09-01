@@ -26,6 +26,7 @@ private:
     GPUVector<Connection> connections = GPUVector<Connection>();
     GPUVector<ParentChildLink> parentChildLinks = GPUVector<ParentChildLink>();
     bool gridLinesVisible = true;
+    bool fluidEnabled = true;
     Point* heldPoint = nullptr;
     std::unordered_map<int, Entity*> entities;
     int entityID;
@@ -58,6 +59,8 @@ public:
     [[nodiscard]] sf::FloatRect getBounds() const;
     void toggleGridLinesVisible();
     [[nodiscard]] bool getGridLineVisibility() const;
+    bool getFluidEnabled() const;
+    void toggleFluidEnabled();
 
     int nextEntityID();
 
