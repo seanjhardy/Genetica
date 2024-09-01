@@ -97,4 +97,21 @@ inline __host__ __device__ float distanceBetween(float2 p1, float2 p2) {
     return sqrt(sum(d*d));
 }
 
+inline __host__ __device__ uint3 operator+(const uint3 &a, const uint3 &b) {
+    return {static_cast<uint8_t>(a.x + b.x), static_cast<uint8_t>(a.y + b.y), static_cast<uint8_t>(a.z + b.z)};
+}
+
+inline __host__ __device__ uint4 operator*(const uint3 &a, const float &b) {
+    return {static_cast<uint8_t>(a.x * b), static_cast<uint8_t>(a.y * b), static_cast<uint8_t>(a.z * b)};
+}
+
+
+inline __host__ __device__ float3 operator+(const float3 &a, const float3 &b) {
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+inline __host__ __device__ float3 operator*(const float3 &a, const float &b) {
+    return {a.x * b, a.y * b, a.z * b};
+}
+
 #endif

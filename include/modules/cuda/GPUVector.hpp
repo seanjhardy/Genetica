@@ -30,6 +30,7 @@ public:
     GPUVector& operator=(GPUVector&& other) noexcept;
 
     void push_back(const T& value);
+    void remove(int index);
     T* back();
     void pop_back();
     T& operator[](size_t index);

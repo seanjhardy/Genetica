@@ -161,3 +161,7 @@ Entity* Simulator::getSelectedEntity() {
 Camera& Simulator::getCamera() {
     return camera;
 }
+
+void Simulator::cleanup() {
+    env.cleanup();
+}

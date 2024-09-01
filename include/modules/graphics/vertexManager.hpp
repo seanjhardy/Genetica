@@ -17,7 +17,7 @@ private:
     sf::VertexArray texturedVertices;
     sf::RenderStates states;
     std::vector<sf::Text> labels;
-
+    std::vector<sf::Sprite> sprites;
 public:
     VertexManager();
 
@@ -32,6 +32,7 @@ public:
     void addLine(const float2 start, float2 end, const sf::Color& color, const float thickness = 1.0f);
     void addSegment(float2 p1, float2 p2, float r1, float r2, float angle, const sf::Color& color);
     void addText(std::string text, const float2& pos, float size = 24, const sf::Color& color = sf::Color::White);
+    void addSprite(const sf::Sprite& sprite);
 
     float getSizeInView(float size);
     int getCircleLOD(float radius);

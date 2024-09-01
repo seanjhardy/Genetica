@@ -149,6 +149,11 @@ void LifeForm::mutate() {
     sequence(this, mutatedGenome);
 }
 
+void LifeForm::kill() {
+    //TODO: Implement this
+    //env->removePoint(this->entityID);
+}
+
 void LifeForm::addCellPartInstance(CellPartInstance* cellPartInstance){
     cellPartInstances.push_back(cellPartInstance);
 

@@ -1,13 +1,13 @@
 #undef main
 
 // main.cpp
+#include <modules/physics/fluid.hpp>
 #include "simulator/simulator.hpp"
 #include "stdexcept"
 #include <modules/graphics/fontManager.hpp>
 #include <modules/graphics/spriteManager.hpp>
 #include <modules/graphics/shaderManager.hpp>
 #include <modules/graphics/componentManager.hpp>
-#include <modules/graphics/cursorManager.hpp>
 #include <modules/utils/fastMath.hpp>
 
 int main() {
@@ -30,5 +30,7 @@ int main() {
     } catch (const std::runtime_error& error) {
         std::cerr << "Error: " << error.what() << std::endl;
     }
+
+    Simulator::get().cleanup();
     return 0;
 }

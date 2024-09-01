@@ -10,6 +10,7 @@
 #include <modules/graphics/vertexManager.hpp>
 #include <simulator/entities/entity.hpp>
 #include <modules/utils/dragHandler.hpp>
+#include "modules/physics/fluid.hpp"
 
 class LifeForm;
 
@@ -30,6 +31,9 @@ private:
     int entityID;
     DragHandler dragHandler;
 
+    FluidSimulator fluidSimulator;
+    float2 mousePos1, mousePos2;
+
 public:
     explicit Environment(sf::FloatRect bounds);
     void simulate(float deltaTime);
@@ -37,8 +41,10 @@ public:
     void reset();
     bool handleEvent(const sf::Event& event, sf::Vector2f mousePos, Entity** selectedEntity);
     void update(const sf::Vector2f& mousePos);
+    void cleanup();
 
     int addPoint(int id, float x, float y, float mass);
+    void removePoint(int index);
     void addEntity(int id, Entity* entity);
     Point* getPoint(int index);
     ParentChildLink* getParentChildLink(int index);

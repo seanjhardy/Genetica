@@ -1,8 +1,7 @@
 #include "modules/graphics/utils/size.hpp"
 #include "modules/graphics/utils/styleParser.hpp"
-#include "modules/graphics/utils/shadow.hpp"
-#include "modules/graphics/utils/transform.hpp"
 #include "modules/utils/stringUtils.hpp"
+#include <SFML/Graphics.hpp>
 #include <sstream>
 #include <unordered_map>
 #include <string>
@@ -199,10 +198,10 @@ Alignment parseAlignment(const string& value) {
     return Alignment::Start; // Default
 }
 
-Transform parseTransform(const string& value) {
-    istringstream iss(value);
-    vector<string> tokens;
-    string token;
+UITransform parseTransform(const std::string& value) {
+    std::istringstream iss(value);
+    std::vector<std::string> tokens;
+    std::string token;
 
     while (iss >> token) {
         tokens.push_back(token);
@@ -211,7 +210,7 @@ Transform parseTransform(const string& value) {
     for (const auto& t : tokens) {
         if (t.find("scale") != string::npos) {
             float scale = stof(t.substr(t.find('(') + 1, t.find(')') - t.find('(') - 1));
-            return Transform::Scale(scale);
+            return UITransform::Scale(scale);
         }
     }
 }

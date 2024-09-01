@@ -159,6 +159,10 @@ void VertexManager::addText(const std::string text, const float2& pos, float siz
     labels.push_back(label);
 }
 
+void VertexManager::addSprite(const sf::Sprite& sprite) {
+    sprites.push_back(sprite);
+}
+
 int VertexManager::getCircleLOD(float radius) {
     // Linearly interpolate between 3 points and 30 points based on apparent size from 10 pixels to over 100 pixels wide
     int value = 4 + 30*std::clamp(getSizeInView(radius) / 100.0f, 0.0f, 1.0f);
@@ -173,9 +177,14 @@ void VertexManager::clear() {
     vertices.clear();
     texturedVertices.clear();
     labels.clear();
+    sprites.clear();
 }
 
 void VertexManager::draw(sf::RenderTarget& target) {
+    for (auto& sprite : sprites) {
+        target.draw(sprite);
+    }
+
     target.draw(vertices);
     target.draw(texturedVertices, states);
 

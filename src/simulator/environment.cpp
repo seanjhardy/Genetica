@@ -5,24 +5,32 @@
 #include <modules/utils/print.hpp>
 #include <simulator/simulator.hpp>
 #include <modules/cuda/findNearest.hpp>
-#include <modules/graphics/cursorManager.hpp>
+#include <modules/physics/fluid.hpp>
 
 Environment::Environment(sf::FloatRect bounds) :
-    bounds(bounds){
+    bounds(bounds), fluidSimulator(
+      0.1, bounds.width, bounds.height,
+      {}) {
 }
 
 void Environment::simulate(float deltaTime) {
+    if (Simulator::get().getStep() % 500 == 0) {
+        fluidSimulator.update(0.02);
+    }
+
     points.syncToDevice();
     updatePoints(points, connections, parentChildLinks, bounds, deltaTime);
     points.syncToHost();
 };
 
 void Environment::render(VertexManager& vertexManager) {
-    vertexManager.addFloatRect(bounds.hostData(), sf::Color(10, 10, 20));
+    vertexManager.addFloatRect(bounds.hostData(), sf::Color(100, 100, 255, 50));
+
+    fluidSimulator.render(vertexManager, bounds.hostData());
 
     // Draw a grid of columns and rows inside of bounds:
     if (vertexManager.getSizeInView(1) > 0.5 && gridLinesVisible) {
-        sf::Color gridColor = sf::Color(30, 30, 40);
+        sf::Color gridColor = sf::Color(0, 0, 0, 50);
         for (float i = 0; i < bounds.hostData().width + 1; i += 20) {
             vertexManager.addLine({bounds.hostData().left + i, bounds.hostData().top},
                                   {bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height}, gridColor, 1);
@@ -43,6 +51,7 @@ bool Environment::handleEvent(const sf::Event& event, const sf::Vector2f mousePo
             heldPoint = nullptr;
         }
     }
+
     if (event.type == sf::Event::MouseButtonPressed) {
         if (event.mouseButton.button == sf::Mouse::Left) {
             // Find the nearest point in the quadtree (within a radius of 10)
@@ -77,6 +86,14 @@ void Environment::update(const sf::Vector2f& mousePos) {
                   bounds.hostData().width + deltaBounds.width,
                   bounds.hostData().height + deltaBounds.height};
         Simulator::get().getCamera().setBounds(bounds.hostData());
+        fluidSimulator = FluidSimulator(0.1, bounds.hostData().width, bounds.hostData().height, {});
+    }
+
+    std::swap(mousePos1, mousePos2);
+    mousePos2 = {(worldCoords.x - bounds.hostData().left) * fluidSimulator.scale,
+                 (worldCoords.y - bounds.hostData().top) * fluidSimulator.scale};
+    if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
+        fluidSimulator.addForce(mousePos2, mousePos2 - mousePos1);
     }
 }
 
@@ -84,12 +101,24 @@ void Environment::reset() {
     points.clear();
     connections.clear();
     parentChildLinks.clear();
+    fluidSimulator.init();
 };
+
+void Environment::cleanup() {
+    points.clear();
+    connections.clear();
+    parentChildLinks.clear();
+    fluidSimulator.reset();
+}
 
 int Environment::addPoint(int id, float x, float y, float mass) {
     //Add a point to the "points" vector and return a pointer to it
     points.push_back(Point(id, x, y, mass));
     return points.size() - 1;
+}
+
+void Environment::removePoint(int index) {
+    points.remove(index);
 }
 
 void Environment::addEntity(int id, Entity* entity) {

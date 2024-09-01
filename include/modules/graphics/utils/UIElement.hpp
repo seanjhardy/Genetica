@@ -57,7 +57,7 @@ public:
     Size padding[4] = {Size::Pixel(0), Size::Pixel(0),
                        Size::Pixel(0), Size::Pixel(0)};
     Border border = Border(0.0f, sf::Color::Black);
-    Transform transform = Transform::Scale(1);
+    UITransform transform = UITransform::Scale(1);
     unique_ptr<Animation> animation;
     vector<UIElement*> children;
     unordered_map<string, UIElement*> keys;

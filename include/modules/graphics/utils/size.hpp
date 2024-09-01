@@ -1,5 +1,5 @@
-#ifndef SIZE
-#define SIZE
+#ifndef SIZE_VALUE
+#define SIZE_VALUE
 
 class Size {
 public:

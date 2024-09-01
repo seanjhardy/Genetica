@@ -59,6 +59,7 @@ public:
     void mutate();
     LifeForm& combine(LifeForm *partner);
     LifeForm& clone(bool mutate);
+    void kill();
     void init();
 
     void grow(float dt);

@@ -5,7 +5,6 @@
 #include "border.hpp"
 #include "shadow.hpp"
 #include "animation.hpp"
-#include "SFML/Graphics.hpp"
 #include <iostream>
 #include <sstream>
 #include <unordered_map>
@@ -14,8 +13,7 @@
 #include <regex>
 #include <functional>
 #include <memory>
-
-class Transform;
+#include "transform.hpp"
 
 using namespace std;
 
@@ -32,6 +30,6 @@ sf::Color parseColor(const string& value);
 void parseMultiValue(const string& value, Size (&result)[4]);
 Direction parseDirection(const string& value);
 Alignment parseAlignment(const string& value);
-Transform parseTransform(const string& value);
+UITransform parseTransform(const string& value);
 
 #endif

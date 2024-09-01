@@ -5,6 +5,7 @@
 #include "modules/graphics/functionManager.hpp"
 #include "modules/graphics/utils/HTMLParser.hpp"
 #include "simulator/entities/lifeform.hpp"
+#include <modules/graphics/components/text.hpp>
 #include <format>
 
 inline Screen *getSimulationScreen(Simulator *simulator) {
@@ -54,16 +55,16 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
     });
 
     FunctionManager::add("clone", [simulator]() {
-        //
+        dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->clone(false);
     });
     FunctionManager::add("mutate", [simulator]() {
-        //
+        dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->mutate();
     });
     FunctionManager::add("energy", [simulator]() {
-        //
+        dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->energy += 100;
     });
     FunctionManager::add("delete", [simulator]() {
-        //
+        dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->kill();
     });
 
     screen->addFunction([simulator, screen]() {

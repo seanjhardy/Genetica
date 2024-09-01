@@ -55,6 +55,7 @@ public:
     void setState(State newState);
     void speedUp();
     void slowDown();
+    void cleanup();
 
     std::string getTimeString() const;
     float getSpeed() const;

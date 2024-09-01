@@ -67,6 +67,11 @@ void GPUVector<T>::push_back(const T& value) {
 }
 
 template<typename T>
+void GPUVector<T>::remove(int index) {
+    h_data.erase(h_data.begin() + index);
+}
+
+template<typename T>
 T* GPUVector<T>::back() {
     return &h_data.back();
 }
