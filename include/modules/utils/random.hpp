@@ -17,7 +17,15 @@ public:
         return ret;
     }
 
-    static float random(float min = 0.0, float max = 1.0) {
+    static float random() {
+        return (float)dist(rng);
+    }
+
+    static int random(int max) {
+        return (int)(max * dist(rng));
+    }
+
+    static float random(float min, float max) {
         return (max - min) * dist(rng) + min;
     }
 

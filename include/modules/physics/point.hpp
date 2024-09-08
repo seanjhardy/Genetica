@@ -6,8 +6,25 @@
 #include "iostream"
 #include <modules/graphics/vertexManager.hpp>
 
-struct Point {
-    int entityID;
+struct Connection {
+    int p1;
+    int p2;
+    float distance;
+};
+
+struct ParentChildLink {
+    int startPoint;
+    int endPoint;
+    int parentStartPoint;
+    int parentEndPoint;
+    float2 pointOnParent;
+    float targetAngle;
+    float stiffness;
+};
+
+class Point {
+public:
+    int entityID{};
     float2 pos{};
     float2 prevPos{};
     float2 force{};
@@ -33,22 +50,6 @@ struct Point {
     void render(VertexManager& viewer, sf::Color colour) const {
         viewer.addCircle(pos, mass, colour);
     }
-};
-
-struct Connection {
-    int a;
-    int b;
-    float distance;
-};
-
-struct ParentChildLink {
-    int startPoint;
-    int endPoint;
-    int parentStartPoint;
-    int parentEndPoint;
-    float2 pointOnParent;
-    float targetAngle;
-    float stiffness;
 };
 
 

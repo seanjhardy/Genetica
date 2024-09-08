@@ -67,7 +67,7 @@ inline __host__ __device__ float2 operator/=(float2 &a, const float &b) {
 }
 
 inline __host__ __device__ bool operator==(const float2 &a, const float2 &b) {
-    return (a.x == b.x) && (a.y == b.y);
+    return a.x == b.x && a.y == b.y;
 }
 
 inline __host__ __device__ float2 rotate(float2 point, float angle) {

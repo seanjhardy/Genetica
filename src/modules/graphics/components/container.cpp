@@ -254,7 +254,7 @@ bool Container::handleEvent(const sf::Event& event) {
             if (onClick) {
                 onClick();
             }
-            // Consume the mouse click as long as its within the bounds of the container
+            // Consume the mouse click as long as it's within the bounds of the container
             return true;
         }
     }

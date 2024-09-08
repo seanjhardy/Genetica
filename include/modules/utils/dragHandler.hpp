@@ -23,7 +23,7 @@ private:
     bool isDragging = false;
 
 public:
-    void handleEvent(const sf::Vector2f mousePos, const sf::Event& event);
+    void handleEvent(const sf::Event &event);
     sf::FloatRect update(const sf::Vector2f& mousePos, const sf::FloatRect& bounds);
     void render(VertexManager &vertexManager, const sf::FloatRect& bounds);
 

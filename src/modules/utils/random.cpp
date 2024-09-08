@@ -1,4 +1,4 @@
-#include <modules/noise/random.hpp>
+#include "modules/utils/random.hpp"
 
 std::random_device Random::rd;
 std::mt19937 Random::rng = std::mt19937(Random::rd());

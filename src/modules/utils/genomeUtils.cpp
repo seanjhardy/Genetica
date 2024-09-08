@@ -9,11 +9,19 @@ using namespace std;
 // =====================================
 
 /**
+ * An exception representing if the rna string is empty
+ */
+const char* RNAExhaustedException::what() const noexcept {
+    return "RNA sequence exhausted";
+}
+
+
+/**
  * Reads the first base from the gene and removes it from the gene
  */
 int readBase(string& rna) {
     if (rna.empty()) {
-        return -1;
+        throw RNAExhaustedException();
     }
     int base = rna[0] - '0';
     rna.erase(0, 1);
@@ -25,9 +33,8 @@ int readBase(string& rna) {
  * Used for most functions as it is differentiable and linear
  */
 float readBaseRange(string& rna, int length) {
-    float result = 0;
+    float result = 0.0f;
     for (int i = 0; i < length; i++) {
-
         result += (float) readBase(rna);
     }
     return result / (3.0f * (float) length);
@@ -76,20 +83,21 @@ float compareGeneBases(string gene1, string gene2) {
 // COMPATIBILITY
 // =====================================
 
-float getCompatibility(LifeForm* a, LifeForm* b, float geneDifferenceScalar, float baseDifferenceScalar) {
+float getCompatibility(const Genome& a, const Genome& b,
+                       float geneDifferenceScalar, float baseDifferenceScalar) {
     float geneDifference = 0;
     float baseDifference = 0;
 
-    for (auto& [key, value]: a->getGenome()) {
-        if (!b->cellParts.contains(key)) {
+    for (auto& [key, value] : a.getGenes()) {
+        if (!b.getGenes().contains(key)) {
             geneDifference += 1;
         } else {
-            baseDifference += compareGeneBases(value, b->getGenome().at(key));
+            baseDifference += compareGeneBases(value, b.at(key));
         }
     }
 
-    for (auto& [key, value]: b->cellParts) {
-        if (!a->cellParts.contains(key)) {
+    for (auto& [key, value]: b.getGenes()) {
+        if (!a.getGenes().contains(key)) {
             geneDifference += 1;
         }
     }
@@ -101,67 +109,68 @@ float getCompatibility(LifeForm* a, LifeForm* b, float geneDifferenceScalar, flo
 // CROSSOVER
 // =====================================
 
-map<int, string> crossover(const map<int, string>& parent1,
-                             const map<int, string>& parent2,
-                             int header, int cellDataSize, float crossoverChance) {
-    std::map<int, string> childGenome;
-    for (auto& [key, value]: parent1) {
+Genome& crossover(const Genome& parent1,
+                 const Genome& parent2, float crossoverChance) {
+    Genome* childGenome = new Genome();
+
+    // Add each gene in order of the earliest index in the parents
+    // (to prevent duplicate genes being added)
+    map<int, bool> hoxGenesAdded;
+    vector<int> hoxOrder;
+    int size = max(parent1.hoxOrder.size(), parent2.hoxOrder.size());
+    for (int i = 0; i < size; i++) {
+        if (i < parent1.hoxOrder.size() && !hoxGenesAdded.contains(parent1.hoxOrder[i])) {
+            hoxOrder.push_back(parent1.hoxOrder[i]);
+            hoxGenesAdded.insert({parent1.hoxOrder[i], true});
+        }
+        if (i < parent2.hoxOrder.size() && !hoxGenesAdded.contains(parent2.hoxOrder[i])) {
+            hoxOrder.push_back(parent2.hoxOrder[i]);
+            hoxGenesAdded.insert({parent2.hoxOrder[i], true});
+        }
+    }
+
+    // Crossover genes from both parents
+    for (auto& [key, value]: parent1.getGenes()) {
         if (parent2.contains(key)) {
-            if (key == 0) {
-                // Treat the header gene as a special case where the "header" is the full length of the gene
-                // So it either crosses over entirely, or takes either parent's gene
-                childGenome.insert({key,
-                                    crossoverGene(value, parent2.at(key),
-                                                  max(parent1.size(), parent2.size()))});
-            } else {
-                childGenome.insert({key,
-                                    crossoverGene(value, parent2.at(key),
-                                                  header, cellDataSize, crossoverChance)});
-            }
+            childGenome->addHoxGene(key, crossoverGene(value,
+                                          parent2.at(key),
+                                          crossoverChance));
         } else {
-            childGenome.insert({key, value});
+            // Add all genes from parent 1 not in parent 2
+            childGenome->addHoxGene(key, value);
         }
     }
 
-    for (auto& [key, value]: parent2) {
+    for (auto& [key, value]: parent2.getGenes()) {
         if (!parent1.contains(key)) {
-            childGenome.insert({key, value});
+            // Add all genes from parent 2 not in parent 1
+            childGenome->addHoxGene(key, value);
         }
     }
 
-    return childGenome;
+    return *childGenome;
 }
 
-string crossoverGene(string gene1, string gene2, int header, int cellDataSize, float crossoverChance) {
+string crossoverGene(string gene1, string gene2, float crossoverChance) {
     int geneLength = max(gene1.size(), gene2.size());
-    int headerSize = min(geneLength, header);
-    bool crossover, parent;
+
+    bool parent = Random::randomBool();
     string childGene;
+
     //Crossover headers
     for (int i = 0; i < geneLength; i++) {
         // Randomly switch mode after the header, at intervals of "cellDataSize"
         // (when header is 0 and cellDataSize is 1, this is effectively the same as random switching)
-        if (i >= headerSize and ((i - headerSize) % cellDataSize == 0)) {
-            crossover = Random::random() < crossoverChance;
-            parent = Random::randomBool();
+        if (Random::random() < crossoverChance) {
+            parent = !parent;
         }
 
-        // Randomly combine both parents
-        if (crossover) {
-            if (i < gene1.size() && i < gene2.size()) {
-                childGene += Random::randomBool() ? gene1[i] : gene2[i];
-            } else if (i < gene1.size()) {
-                childGene += gene1[i];
-            } else {
-                childGene += gene2[i];
-            }
+        if (i < gene1.size() && i < gene2.size()) {
+            childGene += parent ? gene1[i] : gene2[i];
+        } else if (i < gene1.size()) {
+            childGene += gene1[i];
         } else {
-            // Take base pairs from one parent
-            if (parent) {
-                childGene += i < gene1.size() ? gene1[i] : gene2[i];
-            } else {
-                childGene += i < gene2.size() ? gene2[i] : gene1[i];
-            }
+            childGene += gene2[i];
         }
     }
 

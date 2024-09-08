@@ -20,7 +20,7 @@ __global__ void constrainDistancesKernel(Point *points, Connection *connections,
 
     if (index < numConnections) {
         Connection connection = connections[index];
-        constrainDistance(points[connection.a], points[connection.b], connection.distance, 0.2f);
+        constrainDistance(points[connection.p1], points[connection.p2], connection.distance, 0.2f);
     }
 }
 

@@ -35,7 +35,7 @@ CellPartInstance::CellPartInstance(LifeForm* lifeForm, CellPartSchematic* type, 
 }
 
 void CellPartInstance::simulate(float dt) {
-    Point* start = lifeForm->getEnv()->getPoint(startPoint);
+    //Point* start = lifeForm->getEnv()->getPoint(startPoint);
 
     if (parent == nullptr) return;
 

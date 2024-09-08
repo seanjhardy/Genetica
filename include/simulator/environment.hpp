@@ -48,13 +48,17 @@ public:
     void removePoint(int index);
     void addEntity(int id, Entity* entity);
     Point* getPoint(int index);
-    ParentChildLink* getParentChildLink(int index);
-    void addConnection(int a, int b, float distance);
+
     int addParentChildLink(int a, int b,
-                         int parentStart, int parentEnd,
-                         float2 pointOnParent,
-                         float targetAngle, float stiffness);
+                           int parentStart, int parentEnd,
+                           float2 pointOnParent,
+                           float targetAngle, float stiffness);
+    ParentChildLink* getParentChildLink(int index);
     GPUVector<ParentChildLink>& getParentChildLinks() { return parentChildLinks; }
+
+    int addConnection(int a, int b, float distance);
+    Connection* getConnection(int index);
+    GPUVector<Connection>& getConnections() { return connections; }
 
     [[nodiscard]] sf::FloatRect getBounds() const;
     void toggleGridLinesVisible();

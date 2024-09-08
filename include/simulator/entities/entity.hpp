@@ -8,7 +8,9 @@ class Entity : public Point {
 public:
     explicit Entity(float2 pos);
     virtual ~Entity() = default;
-    float2 pos;
+
+    virtual void simulate(float dt) = 0;
+    virtual void render(VertexManager& viewer) = 0;
 };
 
 #endif

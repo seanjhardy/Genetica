@@ -1,8 +1,9 @@
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
-#include <modules/noise/random.hpp>
+#include "modules/utils/random.hpp"
 #include "modules/utils/genomeUtils.hpp"
 #include "geneticAlgorithm/sequencer.hpp"
 #include <simulator/simulator.hpp>
+#include <geneticAlgorithm/genome.hpp>
 
 void GeneticAlgorithm::simulate(float dt) {
     for (LifeForm* lifeform : population) {
@@ -16,116 +17,71 @@ void GeneticAlgorithm::render(VertexManager& vertexManager) {
     }
 };
 
-map<int, string> GeneticAlgorithm::mutate(const map<int, string>& genome,
-                                            int headerSize, int cellDataSize) {
-    map<int, string> mutatedGenome;
+void GeneticAlgorithm::mutate(Genome& genome) {
     // Clone genes
-    for (auto& [key, value]: genome) {
-        mutatedGenome.insert({key, value});
-        if (Random::random() < cloneChromosomeChance) {
-            mutatedGenome.insert({nextGeneID(), value});
+    for (auto& [key, value]: genome.getGenes()) {
+        if (Random::random() < cloneGeneChance) {
+            genome.addHoxGene(nextGeneID(),
+                              value,
+                              Random::random(genome.hoxOrder.size()));
         }
     }
+
     // Insert new genes
     float insertRandom = Random::random();
-    if (insertRandom < insertChromosomeChance) {
-        string newChromosome;
-        int size = Random::random(headerSize, MAX_CHROMOSOME_SIZE);
-        for(int i = 0; i < size; i++) {
-            //TODO: Fix random character generation
-            newChromosome += std::to_string(rand() % 4);
+    if (insertRandom < insertGeneChance) {
+        string newGene;
+        for(int i = 0; i < Genome::HOX_SIZE; i++) {
+            newGene += Random::randomBase();
         }
-        mutatedGenome.insert({nextGeneID(), newChromosome});
+        genome.addHoxGene(nextGeneID(),
+                          newGene,
+                          Random::random(genome.hoxOrder.size()));
+    }
+
+    // Delete genes
+    for (auto& [key, value]: genome.getGenes()) {
+        if (Random::random() < deleteGeneChance) {
+            genome.removeGene(key);
+        }
     }
 
     // Mutate genes
-    for (auto& [key, value]: mutatedGenome) {
-        string mutatedChromosome = mutateGene(mutatedGenome, key, value, headerSize, cellDataSize);
+    for (auto& [key, gene] : genome.hoxGenes) {
+        mutateGene(gene);
     }
-
-    // Add cloned genes to the end of the chromosomes
-    for (auto& [key, value]: mutatedGenome) {
-        for(int i = 0; i <value.size(); i++) {
-            int adjustedIndex = i - headerSize - (cellDataSize - 1);
-            if(Random::random() < cloneBaseChance &&
-            i >= headerSize && adjustedIndex % cellDataSize == 0){
-                string lastItems = value.substr(i - (cellDataSize - 1),i + 1);
-                value += lastItems;
-            }
-        }
-        mutatedGenome.insert({key, value});
-    }
-    return mutatedGenome;
 }
 
-string GeneticAlgorithm::mutateGene(map<int, string> genome,
-                                    const int key, string gene,
-                                    int headerSize, int cellDataSize) const {
-    string mutatedGene = gene;
+void GeneticAlgorithm::mutateGene(string& gene) const {
+    string mutatedGene;
+
     for (int i = 0; i < gene.size(); i++) {
         int base = readBase(gene);
-        float mutateParentGene = Random::random();
-        int adjustedIndex = i - headerSize - (cellDataSize - 1);
+
         // Mutate base
         if (Random::random() < mutateBaseChance) {
             base = rand() % 4;
         }
+
         // Delete base
-        if (Random::random() > deleteBaseChance &&
-            !(mutateParentGene < mutateSectionLocationChance &&
-              i >= headerSize &&
-              (adjustedIndex % cellDataSize == 0))) {
+        if (Random::random() > deleteBaseChance) {
             mutatedGene += base;
         }
 
-        if (i >= headerSize && adjustedIndex % cellDataSize == 0) {
-            // Insert new section
-            if (Random::random() < insertChromosomeChance) {
-                for (int j = 0; i < cellDataSize; j++) {
-                    mutatedGene += rand() % 4;
-                }
-            }
-            //Change location of a section
-            if (mutateParentGene < mutateSectionLocationChance) {
-                string section = gene.substr(i - (cellDataSize - 1), i + 1);
-                int randomIndex = rand() % genome.size();
-                auto it = genome.begin();
-                std::advance(it, randomIndex);
-                int randomKey = it->first;
-                if (randomKey == key) {
-                    mutatedGene += section;
-                } else {
-                    genome.insert({randomKey,
-                                   genome.at(randomKey) + section});
-                }
-            }
+        // Insert base
+        if (Random::random() < insertBaseChance) {
+            mutatedGene += Random::randomBase();
         }
     }
-    return mutatedGene;
-}
-
-map<int, string> GeneticAlgorithm::createRandomGenome() {
-    if (true) {
-        return plantGenome();
-    }
-    // Create random genome
-    map<int, string> genome;
-    int num_chromosomes = (int)Random::random(2, 5);
-    for (int i = 0; i < num_chromosomes; i++) {
-        string chromosome;
-        int size = LifeForm::HEADER_SIZE + LifeForm::CELL_DATA_SIZE * Random::random(0, 3);
-        for (int j = 0; j < size; j++) {
-            chromosome += Random::randomBase();
-        }
-        genome.insert({nextGeneID(), chromosome});
-    }
-    return genome;
+    gene = mutatedGene;
 }
 
 LifeForm& GeneticAlgorithm::createRandomLifeForm() {
-    map<int, string> genome = createRandomGenome();
-    float x = Simulator::get().getEnv().getBounds().left + Random::random(Simulator::get().getEnv().getBounds().width);
-    float y = Simulator::get().getEnv().getBounds().top + Random::random(Simulator::get().getEnv().getBounds().height);
+    Genome genome = Genome();
+    float x = Simulator::get().getEnv().getBounds().left
+      + Random::random(Simulator::get().getEnv().getBounds().width);
+    float y = Simulator::get().getEnv().getBounds().top
+      + Random::random(Simulator::get().getEnv().getBounds().height);
     auto* lifeForm = new LifeForm(&Simulator::get().getEnv(),
                                   {x, y},
                                   genome);
@@ -155,7 +111,7 @@ vector<Species*> GeneticAlgorithm::getSpecies() {
 }
 
 int GeneticAlgorithm::nextGeneID() {
-    return lifeFormID++;
+    return geneID++;
 }
 
 int GeneticAlgorithm::nextSpeciesID() {

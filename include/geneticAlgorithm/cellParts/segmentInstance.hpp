@@ -3,7 +3,7 @@
 
 #include "vector"
 #include "cellPartInstance.hpp"
-#include "modules/noise/random.hpp"
+#include "modules/utils/random.hpp"
 #include "modules/utils/floatOps.hpp"
 #include "cellPartSchematic.hpp"
 

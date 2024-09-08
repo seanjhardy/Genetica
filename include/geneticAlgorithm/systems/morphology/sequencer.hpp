@@ -1,5 +1,6 @@
 #include "unordered_map"
 #include "simulator/entities/lifeform.hpp"
 #include "geneticAlgorithm/cellParts/cellPartType.hpp"
+#include "./geneRegulatoryNetwork.hpp"
 
-void sequence(LifeForm* lifeForm, const Genome& genome);
+GeneRegulatoryNetwork sequenceGRN(const Genome& genome);

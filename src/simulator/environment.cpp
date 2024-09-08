@@ -45,7 +45,7 @@ void Environment::render(VertexManager& vertexManager) {
 };
 
 bool Environment::handleEvent(const sf::Event& event, const sf::Vector2f mousePos, Entity** selectedEntity) {
-    dragHandler.handleEvent(mousePos, event);
+    dragHandler.handleEvent(event);
 
     if (event.type == sf::Event::MouseButtonReleased) {
         if (event.mouseButton.button == sf::Mouse::Left) {
@@ -138,6 +138,10 @@ ParentChildLink* Environment::getParentChildLink(int index) {
 
 void Environment::addConnection(int a, int b, float distance){
     connections.push_back(Connection(a, b, distance));
+}
+
+Connection* Environment::getConnection(int index) {
+    return &connections[index];
 }
 
 int Environment::addParentChildLink(int a, int b, int parentStart, int parentEnd,

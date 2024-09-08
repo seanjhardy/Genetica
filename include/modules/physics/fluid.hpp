@@ -41,7 +41,7 @@ public:
     {
         float velocityDiffusion = 0.8f;
         float pressure = 1.5f;
-        float vorticity = 20.0f;
+        float vorticity = 50.0f;
         float colorDiffusion = 0.8f;
         float densityDiffusion = 0.001f;
         float forceScale = 5000.0f;
@@ -52,8 +52,8 @@ public:
 
     struct SystemConfig
     {
-        int velocityIterations = 10;
-        int pressureIterations = 20;
+        int velocityIterations = 20;
+        int pressureIterations = 40;
         int xThreads = 32;
         int yThreads = 32;
     } sConfig;
