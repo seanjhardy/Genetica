@@ -108,20 +108,12 @@ void LifeForm::init(){
     inputs.clear();
     outputs.clear();
     energy = 0;
-    growthRate = 0;
     numChildren = 0;
 }
 
 Environment* LifeForm::getEnv() const {
     return env;
 }
-
-Genome LifeForm::getGenome() const {
-    return genome;
-};
-void LifeForm::setGenome(const Genome& genomeArr) {
-    this->genome = genomeArr;
-};
 
 Species* LifeForm::getSpecies() const {
     return species;

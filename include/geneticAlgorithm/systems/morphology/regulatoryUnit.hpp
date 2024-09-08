@@ -15,16 +15,13 @@ public:
 
     std::unordered_map<Gene*, float> factorLevels;
 
-    float calculateActivation(std::map<Promoter*, float> promoterActivities) {
+    void calculateActivation(std::map<Promoter*, float> promoterActivities) {
         float additivePromoterValue = 0;
-        float multiplicativePromoterValue = 0;
+        float multiplicativePromoterValue = 1;
         for (auto& promoter : promoters) {
             if (promoter.promoterType == Promoter::PromoterType::Additive) {
                 additivePromoterValue += promoterActivities[&promoter];
             } else if (promoter.promoterType == Promoter::PromoterType::Multiplicative) {
-                if (multiplicativePromoterValue == 0) {
-                    multiplicativePromoterValue = 1;
-                }
                 multiplicativePromoterValue *= promoterActivities[&promoter];
             }
         }

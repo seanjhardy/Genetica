@@ -31,7 +31,6 @@ public:
     GeneRegulatoryNetwork grn;
     Cell* head{};
     std::vector<Cell*> cells;
-    std::vector<ExternalFactor> externalFactors;
 
     vector<CellPartInstance*> inputs;
     vector<CellPartInstance*> outputs;

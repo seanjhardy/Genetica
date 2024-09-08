@@ -131,7 +131,7 @@ private:
 ///
 /// It is important to keep in mind that a convex shape must
 /// always be... convex, otherwise it may not be drawn correctly.
-/// Moreover, the points must be defined in order; using a random
+/// Moreover, the points must be defined in order; using a init
 /// order would result in an incorrect shape.
 ///
 /// Usage example:

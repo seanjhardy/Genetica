@@ -655,7 +655,7 @@ SFML_SYSTEM_API String operator +(const String& left, const String& right);
 /// \endcode
 ///
 /// sf::String defines the most important functions of the
-/// standard std::string class: removing, random access, iterating,
+/// standard std::string class: removing, init access, iterating,
 /// appending, comparing, etc. However it is a simple class
 /// provided for convenience, and you may have to consider using
 /// a more optimized class if your program requires complex string

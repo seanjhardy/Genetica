@@ -117,15 +117,15 @@ Genome& crossover(const Genome& parent1,
     // (to prevent duplicate genes being added)
     map<int, bool> hoxGenesAdded;
     vector<int> hoxOrder;
-    int size = max(parent1.hoxOrder.size(), parent2.hoxOrder.size());
+    int size = max(parent1.hoxGeneOrder.size(), parent2.hoxGeneOrder.size());
     for (int i = 0; i < size; i++) {
-        if (i < parent1.hoxOrder.size() && !hoxGenesAdded.contains(parent1.hoxOrder[i])) {
-            hoxOrder.push_back(parent1.hoxOrder[i]);
-            hoxGenesAdded.insert({parent1.hoxOrder[i], true});
+        if (i < parent1.hoxGeneOrder.size() && !hoxGenesAdded.contains(parent1.hoxGeneOrder[i])) {
+            hoxOrder.push_back(parent1.hoxGeneOrder[i]);
+            hoxGenesAdded.insert({parent1.hoxGeneOrder[i], true});
         }
-        if (i < parent2.hoxOrder.size() && !hoxGenesAdded.contains(parent2.hoxOrder[i])) {
-            hoxOrder.push_back(parent2.hoxOrder[i]);
-            hoxGenesAdded.insert({parent2.hoxOrder[i], true});
+        if (i < parent2.hoxGeneOrder.size() && !hoxGenesAdded.contains(parent2.hoxGeneOrder[i])) {
+            hoxOrder.push_back(parent2.hoxGeneOrder[i]);
+            hoxGenesAdded.insert({parent2.hoxGeneOrder[i], true});
         }
     }
 

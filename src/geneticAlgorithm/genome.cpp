@@ -3,19 +3,7 @@
 #include <modules/utils/random.hpp>
 #include <simulator/simulator.hpp>
 
-Genome::Genome() {
-    int numHoxGenes = Random::random(1.0f, 10.0f);
-    int geneLength = 85;
-    for (int i = 0; i < numHoxGenes; i++) {
-        string randomGene;
-        for (int j = 0; j < geneLength; j++) {
-            randomGene += Random::randomBase();
-        }
-        int index = Simulator::get().getGA().nextGeneID();
-        hoxGenes.insert({index, randomGene});
-        hoxOrder.push_back(index);
-    }
-}
+Genome::Genome() {}
 
 bool Genome::contains(int key) const {
     return hoxGenes.contains(key);
@@ -32,14 +20,14 @@ map<int, string> Genome::getGenes() const {
 void Genome::addHoxGene(int key, const string& value, int position) {
     hoxGenes.insert({key, value});
     if (position == -1) {
-        position = hoxOrder.size();
+        position = hoxGeneOrder.size();
     }
-    hoxOrder.insert(hoxOrder.begin() + position, key);
+    hoxGeneOrder.insert(hoxGeneOrder.begin() + position, key);
 }
 
 void Genome::removeGene(int key) {
     hoxGenes.erase(key);
-    hoxOrder.erase(std::remove(hoxOrder.begin(), hoxOrder.end(), key), hoxOrder.end());
+    hoxGeneOrder.erase(std::remove(hoxGeneOrder.begin(), hoxGeneOrder.end(), key), hoxGeneOrder.end());
 }
 
 string Genome::toString() const {
@@ -49,4 +37,35 @@ string Genome::toString() const {
     }
     return genomeString;
 }
+
+/**
+ * DEFINE TEMPLATE GENERATORS
+ */
+
+void Genome::init(Template templateType) {
+    if (templateType == Template::RANDOM) {
+        // Insert external factors at the start of the genome
+        for (int i = 0; i < 8; i++) {
+            string randomGene;
+            for (int j = 0; j < 85; j++) {
+                randomGene += Random::randomBase();
+            }
+            int index = Simulator::get().getGA().nextGeneID();
+            hoxGenes.insert({index, randomGene});
+            hoxGeneOrder.push_back(index);
+        }
+        int numHoxGenes = (int) Random::random(1, 50);
+        int geneLength = 85;
+        for (int i = 0; i < numHoxGenes; i++) {
+            string randomGene;
+            for (int j = 0; j < geneLength; j++) {
+                randomGene += Random::randomBase();
+            }
+            int index = Simulator::get().getGA().nextGeneID();
+            hoxGenes.insert({index, randomGene});
+            hoxGeneOrder.push_back(index);
+        }
+    }
+}
+
 

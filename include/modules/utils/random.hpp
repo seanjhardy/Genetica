@@ -1,5 +1,5 @@
-#ifndef RANDOM
-#define RANDOM
+#ifndef RANDOM_GENERATOR
+#define RANDOM_GENERATOR
 
 #include <random>
 #include <map>

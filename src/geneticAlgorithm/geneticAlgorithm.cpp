@@ -23,7 +23,7 @@ void GeneticAlgorithm::mutate(Genome& genome) {
         if (Random::random() < cloneGeneChance) {
             genome.addHoxGene(nextGeneID(),
                               value,
-                              Random::random(genome.hoxOrder.size()));
+                              Random::random(genome.hoxGeneOrder.size()));
         }
     }
 
@@ -36,7 +36,7 @@ void GeneticAlgorithm::mutate(Genome& genome) {
         }
         genome.addHoxGene(nextGeneID(),
                           newGene,
-                          Random::random(genome.hoxOrder.size()));
+                          Random::random(genome.hoxGeneOrder.size()));
     }
 
     // Delete genes
@@ -78,6 +78,7 @@ void GeneticAlgorithm::mutateGene(string& gene) const {
 
 LifeForm& GeneticAlgorithm::createRandomLifeForm() {
     Genome genome = Genome();
+    genome.init();
     float x = Simulator::get().getEnv().getBounds().left
       + Random::random(Simulator::get().getEnv().getBounds().width);
     float y = Simulator::get().getEnv().getBounds().top

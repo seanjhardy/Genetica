@@ -11,7 +11,6 @@ public:
     enum class Type {
         Promoter,
         Effector,
-        Gene,
         Factor,
     } type;
     static constexpr float DISTANCE_THRESHOLD = 1.0f;
@@ -39,9 +38,9 @@ public:
         if (distance > GeneticUnit::DISTANCE_THRESHOLD) return 0.0;
 
         return (sign * other.sign) ? 1 : -1 *
-                                         (2.0 * std::abs(modifier * other.modifier)
-               * (GeneticUnit::DISTANCE_THRESHOLD - distance)) /
-                                         (10 * distance + std::abs(modifier * other.modifier));
+             (2.0f * std::abs(modifier * other.modifier)
+                * (GeneticUnit::DISTANCE_THRESHOLD - distance)) /
+             (10.0f * distance + std::abs(modifier * other.modifier));
     }
 };
 
@@ -76,49 +75,35 @@ public:
  */
 class Gene : public GeneticUnit {
 public:
-    enum class ProductType {
-        InternalProduct,
-        ExternalProduct, //Morphogen
-        Receptor,
-    } productType;
+    enum class FactorType {
+        // External Factors
+        ExternalFactorP1, // A morphogen from the environment
+        ExternalFactorP2, // A morphogen from the environment
+        ExternalFactorP3, // A morphogen from the environment
+        Constant, // A value of 1
+        Time, // A value that increases over time
+        Generation, // The generation of a particular
+        Congestion, // The number of nearby cells
+        Energy, // The energy of the life form (maybe add energy per cell?)
+        MaternalFactor, // A factor from the genome
 
+        // Genetic factors
+        InternalProduct,
+        ExternalProduct,
+        Receptor,
+    } factorType{};
     virtual ~Gene() = default;
 
-    Gene(ProductType productType,
+    Gene(FactorType factorType,
          bool active,
          bool sign,
          float modifier,
          const float* embedding)
         : GeneticUnit(Type::Factor, active, sign, modifier, embedding),
-          productType(productType) {}
+          factorType(factorType){}
 
     virtual void express(){};
-};
-
-class Receptor : public Gene {
-public:
-    Receptor(bool active,
-             bool sign,
-             float modifier,
-             const float* embedding)
-        : Gene(ProductType::Receptor, active, sign, modifier, embedding) {}
-
-    void express() override {};
     void interact(const std::unordered_map<Gene*, float> morphogenLevels) {};
-};
-
-class ExternalFactor : public GeneticUnit {
-public:
-    bool diffusable;
-
-    ExternalFactor(bool active,
-                   bool sign,
-                   float modifier,
-                   const float* embedding)
-        : GeneticUnit(Type::Factor, active, sign, modifier, embedding),
-          diffusable(diffusable) {}
-
-    float getPerceivedLevel(const Cell& cell) const;
 };
 
 /**
