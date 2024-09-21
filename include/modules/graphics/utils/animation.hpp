@@ -1,4 +1,5 @@
 #include <functional>
+#include <modules/utils/mathUtils.hpp>
 
 class Animation {
 public:
@@ -14,7 +15,8 @@ public:
         }
         if (progress <= 1) {
             progress += dt / duration;
-            setter(fromValue * (1 - progress) + toValue * progress);
+            float value = clamp(fromValue, fromValue * (1 - progress) + toValue * progress, toValue);
+            setter(value);
         } else {
             completed = true;
         }

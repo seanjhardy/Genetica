@@ -1,7 +1,8 @@
 #include <SFML/Graphics.hpp>
-#include "vector"
-#include "cmath"
-#include "vector_types.h"
+#include <vector>
+#include <array>
+#include <cmath>
+#include <vector_types.h>
 #include <modules/graphics/vertexManager.hpp>
 #include <modules/utils/floatOps.hpp>
 #include <modules/utils/print.hpp>
@@ -104,7 +105,7 @@ void VertexManager::addPolygon(const std::vector<float2>& points, const sf::Colo
 
 void VertexManager::addSegment(float2 p1, float2 p2, float r1, float r2, float angle, const sf::Color& color) {
     // Keep track of body polygon points
-    float2 polygon[4] = {0,0,0,0};
+    std::array<float2, 4> polygon = {0,0,0,0};
     int LOD1 = getCircleLOD(r1) / 2;
     int LOD2 = getCircleLOD(r2) / 2;
 

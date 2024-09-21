@@ -1,6 +1,6 @@
 // simulator.cpp
 #include "simulator/simulator.hpp"
-#include "./screen/simulationScreen.cpp"
+#include "./screen/simulationScreen.hpp"
 #include <sstream>
 #include <iomanip>
 
@@ -11,13 +11,10 @@ Simulator& Simulator::get(){
 
 // Instantiate simulator
 Simulator::Simulator()
-      : env(sf::FloatRect(0, 0, 1000, 1000)),
+      : env(sf::FloatRect(0, 0, 10000, 6000)),
         window(sf::VideoMode(800, 600), "Genetica"),
         state(State::Playing),
         uiManager(&window){
-
-    camera = Camera(env.getBounds(), &window);
-    vertexManager.setCamera(&camera);
 }
 
 void Simulator::setup() {
@@ -29,23 +26,29 @@ void Simulator::setup() {
 // Run simulation step
 void Simulator::run() {
     sf::Clock clock;
+
+    Viewport* simulation = dynamic_cast<Viewport*>(uiManager.getScreen("simulation")->getElement("simulation"));
+
     while (window.isOpen()) {
         sf::Time elapsed = clock.restart(); // Restart the clock and get elapsed time
         float deltaTime = elapsed.asSeconds(); // Convert elapsed time to seconds
 
         sf::Event event{};
         sf::Vector2f mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
+        sf::Vector2f worldCoords = simulation->mapPixelToCoords(mousePos);
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
                 window.close();
             }
+            if (event.type == sf::Event::Resized) {
+                updateWindowView();
+            }
             // Handle discrete events (e.g. key press, mouse click)
-            camera.updateEvent(event);
             bool consumed = uiManager.handleEvent(event);
             if (consumed) continue;
 
             Entity* newSelectedEntity = nullptr;
-            bool entitySelected = env.handleEvent(event, camera.getCoords(mousePos), &newSelectedEntity);
+            bool entitySelected = env.handleEvent(event, worldCoords, &newSelectedEntity);
 
             if (entitySelected && newSelectedEntity != selectedEntity) {
                 selectedEntity = newSelectedEntity;
@@ -54,10 +57,9 @@ void Simulator::run() {
         }
         // Handle continuous events (e.g. holding down a key/hovering over a UI element)
         uiManager.update(deltaTime, mousePos);
-        env.update(mousePos);
-        camera.update(deltaTime);
+        env.update(worldCoords, simulation->getCamera()->getZoom());
 
-        // Update simulation state
+        // Update simulation state if playing
         if (state == State::Playing) {
             realTime += deltaTime * speed;
             env.simulate(speed);
@@ -67,23 +69,19 @@ void Simulator::run() {
 
         std::clock_t now = std::clock();
         auto renderDelta = static_cast<double>(now - lastRenderTime);
+
         // Avoid re-rendering over 60fps
         if (renderDelta >= FRAME_INTERVAL) {
             lastRenderTime = now;
+            window.clear();
 
-            if (state != State::Fast) {
-                window.clear();
+            // Render simulation
+            env.render(simulation->getVertexManager());
+            geneticAlgorithm.render(simulation->getVertexManager());
 
-                // Render simulation
-                window.setView(camera.getView());
-                env.render(vertexManager);
-                geneticAlgorithm.render(vertexManager);
-                vertexManager.draw(window);
+            // Render UI
+            uiManager.draw(window);
 
-                // Render UI
-                window.setView(camera.getWindowView());
-                uiManager.draw(window);
-            }
             window.display();
         }
     }
@@ -99,6 +97,16 @@ Simulator::State Simulator::getState() {
 
 sf::RenderWindow& Simulator::getWindow() {
     return window;
+}
+
+void Simulator::updateWindowView() {
+    sf::Vector2f viewSize(window.getSize().x, window.getSize().y);
+
+    // Set the view size and center
+    windowView.setSize(viewSize);
+    windowView.setCenter({viewSize.x / 2, viewSize.y / 2});
+
+    window.setView(windowView);
 }
 
 void Simulator::setTab(Tab tab) {
@@ -131,7 +139,7 @@ void Simulator::reset() {
 }
 
 std::string Simulator::getTimeString() const {
-    float time = realTime;
+    float time = (float)realTime;
     int hours = time / 3600;
     time -= hours * 3600;
     int minutes = time / 60;
@@ -154,12 +162,12 @@ int Simulator::getStep() const {
     return step;
 }
 
-Entity* Simulator::getSelectedEntity() {
-    return selectedEntity;
+float Simulator::getRealTime() const {
+    return realTime;
 }
 
-Camera& Simulator::getCamera() {
-    return camera;
+Entity* Simulator::getSelectedEntity() {
+    return selectedEntity;
 }
 
 void Simulator::cleanup() {

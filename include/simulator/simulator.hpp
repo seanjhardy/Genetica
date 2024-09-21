@@ -4,7 +4,7 @@
 
 #include "SFML/Graphics.hpp"
 #include "vector"
-#include "Camera.hpp"
+#include "modules/graphics/utils/camera.hpp"
 #include <modules/graphics/vertexManager.hpp>
 #include "environment.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
@@ -16,7 +16,6 @@ public:
     enum class State {
         Paused,
         Playing,
-        Fast,
     };
     enum class Tab {
         Simulation,
@@ -33,11 +32,10 @@ private:
 
     // Rendering
     sf::RenderWindow window{};
-    VertexManager vertexManager{};
     UIManager uiManager;
+    sf::View windowView;
 
     // Simulation state
-    Camera camera{};
     State state;
     Environment env;
     GeneticAlgorithm geneticAlgorithm;
@@ -60,14 +58,15 @@ public:
     std::string getTimeString() const;
     float getSpeed() const;
     int getStep() const;
+    float getRealTime() const;
     State getState();
     sf::RenderWindow& getWindow();
+    void updateWindowView();
     void setTab(Tab tab);
 
     Environment& getEnv();
     GeneticAlgorithm& getGA();
     Entity* getSelectedEntity();
-    Camera& getCamera();
 
     static Simulator& get();
 };

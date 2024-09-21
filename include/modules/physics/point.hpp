@@ -9,7 +9,7 @@
 struct Connection {
     int p1;
     int p2;
-    float distance;
+    float length;
 };
 
 struct ParentChildLink {

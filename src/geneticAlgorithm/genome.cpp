@@ -44,16 +44,6 @@ string Genome::toString() const {
 
 void Genome::init(Template templateType) {
     if (templateType == Template::RANDOM) {
-        // Insert external factors at the start of the genome
-        for (int i = 0; i < 8; i++) {
-            string randomGene;
-            for (int j = 0; j < 85; j++) {
-                randomGene += Random::randomBase();
-            }
-            int index = Simulator::get().getGA().nextGeneID();
-            hoxGenes.insert({index, randomGene});
-            hoxGeneOrder.push_back(index);
-        }
         int numHoxGenes = (int) Random::random(1, 50);
         int geneLength = 85;
         for (int i = 0; i < numHoxGenes; i++) {
@@ -65,6 +55,10 @@ void Genome::init(Template templateType) {
             hoxGenes.insert({index, randomGene});
             hoxGeneOrder.push_back(index);
         }
+    }
+
+    if (templateType == Template::PROKARYOTE) {
+
     }
 }
 

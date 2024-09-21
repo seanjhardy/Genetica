@@ -1,5 +1,5 @@
-#include <modules/utils/dragHandler.hpp>
-#include <SFML/Graphics.hpp>
+#include "modules/graphics/dragHandler.hpp"
+#include "SFML/Graphics.hpp"
 #include "simulator/simulator.hpp"
 #include "modules/graphics/cursorManager.hpp"
 
@@ -7,17 +7,17 @@ void DragHandler::handleEvent(const sf::Event &event) {
     if (event.type == sf::Event::MouseButtonPressed) {
         if (event.mouseButton.button == sf::Mouse::Left) {
             if (dragHandle != DragHandle::None) {
-                isDragging = true;
+                dragging = true;
             }
         }
     } else if (event.type == sf::Event::MouseButtonReleased) {
         if (event.mouseButton.button == sf::Mouse::Left) {
-            isDragging = false;
+            dragging = false;
         }
     }
 }
 
-sf::FloatRect DragHandler::update(const sf::Vector2f& mousePos, const sf::FloatRect& bounds) {
+sf::FloatRect DragHandler::update(const sf::Vector2f& mousePos, const sf::FloatRect& bounds, float sensitivity) {
     sf::Vector2f delta = mousePos - lastMousePos;
     lastMousePos = mousePos;
 
@@ -25,29 +25,28 @@ sf::FloatRect DragHandler::update(const sf::Vector2f& mousePos, const sf::FloatR
     float right = abs(mousePos.x - bounds.left - bounds.width);
     float top = abs(mousePos.y - bounds.top);
     float bottom = abs(mousePos.y - bounds.top - bounds.height);
-    float dist = 15 / Simulator::get().getCamera().getZoom();
 
     DragHandle newDragHandlePos;
-    if (left < dist * 2 && top < dist * 2) {
+    if (left < sensitivity * 2 && top < sensitivity * 2) {
         newDragHandlePos = DragHandle::TopLeft;
-    } else if (right < dist * 2 && top < dist * 2) {
+    } else if (right < sensitivity * 2 && top < sensitivity * 2) {
         newDragHandlePos = DragHandle::TopRight;
-    } else if (left < dist * 2 && bottom < dist * 2) {
+    } else if (left < sensitivity * 2 && bottom < sensitivity * 2) {
         newDragHandlePos = DragHandle::BottomLeft;
-    } else if (right < dist * 2 && bottom < dist * 2) {
+    } else if (right < sensitivity * 2 && bottom < sensitivity * 2) {
         newDragHandlePos = DragHandle::BottomRight;
-    } else if (left < dist) {
+    } else if (left < sensitivity && mousePos.y < bounds.top + bounds.height && mousePos.y > bounds.top) {
         newDragHandlePos = DragHandle::Left;
-    } else if (right < dist) {
+    } else if (right < sensitivity && mousePos.y < bounds.top + bounds.height && mousePos.y > bounds.top) {
         newDragHandlePos = DragHandle::Right;
-    } else if (top < dist) {
+    } else if (top < sensitivity && mousePos.x < bounds.left + bounds.width && mousePos.x > bounds.left) {
         newDragHandlePos = DragHandle::Top;
-    } else if (bottom < dist) {
+    } else if (bottom < sensitivity && mousePos.x < bounds.left + bounds.width && mousePos.x > bounds.left) {
         newDragHandlePos = DragHandle::Bottom;
     } else {
         newDragHandlePos = DragHandle::None;
     }
-    if (newDragHandlePos != dragHandle && !isDragging) {
+    if (newDragHandlePos != dragHandle && !dragging) {
         dragHandle = newDragHandlePos;
         if (dragHandle == DragHandle::None) {
             Simulator::get().getWindow().setMouseCursor(CursorManager::getDefault());
@@ -66,7 +65,7 @@ sf::FloatRect DragHandler::update(const sf::Vector2f& mousePos, const sf::FloatR
         }
     }
 
-    if (isDragging) {
+    if (dragging) {
 
         int horizontal = horizontalDirection();
         int vertical = verticalDirection();
@@ -86,11 +85,11 @@ void DragHandler::render(VertexManager &vertexManager, const sf::FloatRect& boun
 
     if (horizontalDirection() == -1) {
         vertexManager.addLine({bounds.left, bounds.top}, {bounds.left, bounds.top + bounds.height}, highlight, 2);
-    } else if (horizontalDirection() == 1) {
+    } if (horizontalDirection() == 1) {
         vertexManager.addLine({bounds.left + bounds.width, bounds.top}, {bounds.left + bounds.width, bounds.top + bounds.height}, highlight, 2);
-    } else if (verticalDirection() == -1) {
+    } if (verticalDirection() == -1) {
         vertexManager.addLine({bounds.left, bounds.top}, {bounds.left + bounds.width, bounds.top}, highlight, 2);
-    } else if (verticalDirection() == 1) {
+    } if (verticalDirection() == 1) {
         vertexManager.addLine({bounds.left, bounds.top + bounds.height}, {bounds.left + bounds.width, bounds.top + bounds.height}, highlight, 2);
     }
 }
@@ -111,4 +110,8 @@ int DragHandler::verticalDirection() const {
         return 1;
     }
     return 0;
+}
+
+bool DragHandler::isDragging() const {
+    return dragging;
 }

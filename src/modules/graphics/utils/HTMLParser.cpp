@@ -1,8 +1,9 @@
-#include "modules/graphics/utils/HTMLParser.hpp"
-#include "modules/graphics/componentManager.hpp"
-#include "modules/graphics/components/text.hpp"
-#include "modules/graphics/components/container.hpp"
-#include "modules/graphics/components/image.hpp"
+#include <modules/graphics/utils/HTMLParser.hpp>
+#include <modules/graphics/componentManager.hpp>
+#include <modules/graphics/components/text.hpp>
+#include <modules/graphics/components/view.hpp>
+#include <modules/graphics/components/image.hpp>
+#include <modules/graphics/components/viewport.hpp>
 #include <vector>
 #include <unordered_map>
 #include <sstream>
@@ -50,11 +51,13 @@ vector<UIElement*> parseHTMLString(const string& html) {
 UIElement* createElement(string& tag, unordered_map<string, string>& properties, const string& innerContent) {
     if (tag == "Button" || tag == "View") {
         vector<UIElement*> children = parseHTMLString(innerContent);
-        return new Container(properties, children);
+        return new View(properties, children);
     } else if (tag == "Text") {
         return new Text(properties, innerContent);
     } else if (tag == "Image") {
         return new ImageElement(properties);
+    } else if (tag == "Viewport") {
+        return new Viewport(properties);
     } else {
         if (ComponentManager::contains(tag)) {
             return ComponentManager::get(tag)[0];

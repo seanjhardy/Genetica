@@ -42,8 +42,8 @@ float readBaseRange(string& rna, int length) {
 
 /**
  * Turns the base range into a unique number by taking
- * 0.25 * first base + 0.25^2 * second base + 0.25^3 * third base + ...base
- * Used for things like part IDs since they're non-differentiable
+ * 0.25 * first base + 0.25^2 * second base + 0.25^3 * third base + ...
+ * Used for things like random floats since they're uniformly distributed (but non-continuous)
  */
 float readUniqueBaseRange(string& rna, int length) {
     float result = 0;

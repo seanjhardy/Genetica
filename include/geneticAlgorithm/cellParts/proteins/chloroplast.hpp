@@ -1,5 +1,5 @@
-#include <geneticAlgorithm/cellParts/proteinInstance.hpp>
+#include <geneticAlgorithm/cellParts/protein.hpp>
 
-class Chloroplast : ProteinInstance {
+class Chloroplast : Protein {
 
 };

@@ -1,8 +1,13 @@
+#ifndef GENE_REGULATORY_NETWORK
+#define GENE_REGULATORY_NETWORK
+
 #include <cmath>
 #include <vector>
 #include <unordered_map>
 #include <map>
-#include "./geneticUnit.hpp"
+#include "./gene.hpp"
+#include "./promoter.hpp"
+#include "./effector.hpp"
 #include "./regulatoryUnit.hpp"
 #include "geneticAlgorithm/cellParts/cell.hpp"
 #include <modules/utils/floatOps.hpp>
@@ -12,15 +17,25 @@ class LifeForm;
 class GeneRegulatoryNetwork {
 public:
     LifeForm* lifeForm;
-    std::vector<GeneticUnit> elements;
     std::vector<Gene> factors;
+    std::vector<Promoter> promoters;
+    std::vector<Effector> effectors;
+
     std::vector<RegulatoryUnit> regulatoryUnits;
 
     std::map<std::pair<Promoter*, Gene*>, float> promoterFactorAffinities;
-    std::map<Promoter*, float> promoterActivities;
+    std::map<std::pair<Gene*, Effector*>, float> factorEffectorAffinities;
+    std::map<std::pair<Gene*, Gene*>, float> factorReceptorAffinities;
+
+    std::map<std::pair<const Cell*, const Cell*>, float> cellDistances;
+
+    void update(float deltaTime);
+    void render(VertexManager& vertexManager);
 
     void precomputeAffinities();
-    std::unordered_map<Gene*, float> calculateMorphogenPerception(const Cell& cell);
+    void precomputeDistances();
     void updateProductConcentrations(float deltaTime);
-    std::vector<double> calculateExternalDivisionVector(const Cell& cell);
+    void updateGeneExpression(float deltaTime);
 };
+
+#endif

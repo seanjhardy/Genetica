@@ -5,7 +5,9 @@
 #include "modules/graphics/functionManager.hpp"
 #include "modules/graphics/utils/HTMLParser.hpp"
 #include "simulator/entities/lifeform.hpp"
-#include <modules/graphics/components/text.hpp>
+#include <modules/graphics/components/image.hpp>
+#include <modules/graphics/components/viewport.hpp>
+#include <simulator/planet.hpp>
 #include <format>
 
 inline Screen *getSimulationScreen(Simulator *simulator) {
@@ -43,15 +45,15 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
     });
 
     FunctionManager::add("showUI", [simulator, screen]() {
-        screen->getElement("root")->overrideProperty("style", "visible: true");
+        screen->getElement("bottomBar")->overrideProperty("style", "visible: true");
         screen->getElement("showUIView")->overrideProperty("style", "visible: false");
-        screen->resize(simulator->getWindow().getSize());
+        screen->getElement("root")->onLayout();
     });
 
     FunctionManager::add("hideUI", [simulator, screen]() {
-        screen->getElement("root")->overrideProperty("style", "visible: false");
+        screen->getElement("bottomBar")->overrideProperty("style", "visible: false");
         screen->getElement("showUIView")->overrideProperty("style", "visible: true");
-        screen->resize(simulator->getWindow().getSize());
+        screen->getElement("root")->onLayout();
     });
 
     FunctionManager::add("toggleFluid", [simulator, screen]() {
@@ -70,7 +72,7 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->clone(false);
     });
     FunctionManager::add("mutate", [simulator]() {
-        dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->mutate();
+        simulator->getGA().mutate(dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->genome);
     });
     FunctionManager::add("energy", [simulator]() {
         dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->energy += 100;
@@ -79,24 +81,48 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->kill();
     });
 
+    FunctionManager::add("randomPlanet", [screen, simulator]() {
+        Planet* planet;
+        do {
+            planet = Planet::getRandom();
+        } while (simulator->getEnv().getPlanet().name == planet->thumbnail);
+
+        simulator->getEnv().setPlanet(planet);
+
+        ((ImageElement*)screen->getElement("planetBtnIcon"))
+        ->overrideProperty("style", "image: " + planet->thumbnail);
+        ((Text*)screen->getElement("planetBtnName"))->setText(planet->name);
+    });
+
     screen->addFunction([simulator, screen]() {
         if (simulator->getSelectedEntity() == nullptr) {
             string text = "Time: " + simulator->getTimeString() +
                    "\nStep: " + std::to_string(simulator->getStep()) +
                    "\nSpeed: " + std::format("{:.2f}", simulator->getSpeed()) +
                    "\nLifeForms: " + std::to_string(simulator->getGA().getPopulation().size()) +
+                   "\nCells: " + std::to_string(simulator->getEnv().getPoints().size()) +
                    "\nSpecies: " + std::to_string(simulator->getGA().getSpecies().size());
             dynamic_cast<Text*>(screen->getElement("simulationInfoLabel"))->setText(text);
         } else if (dynamic_cast<LifeForm*>(simulator->getSelectedEntity())) {
             auto selectedLifeform = dynamic_cast<LifeForm*>(simulator->getSelectedEntity());
             string text = "Energy: " + std::to_string(selectedLifeform->energy);
             dynamic_cast<Text*>(screen->getElement("lifeformInfoLabel"))->setText(text);
-        }
+
+            selectedLifeform->grn.render(((Viewport*)screen->getElement("geneRegulatoryNetwork"))->getVertexManager());
+            sf::FloatRect layout = ((Viewport*)screen->getElement("geneRegulatoryNetwork"))->layout;
+            float zoom = std::min(layout.width, layout.height);
+            ((Viewport*)screen->getElement("geneRegulatoryNetwork"))->getCamera()->setZoom(zoom);
+            ((Viewport*)screen->getElement("geneRegulatoryNetwork"))->getCamera()->setPosition({0.5, 0.5});
+       }
     });
 
     vector<UIElement*> elements = ComponentManager::get("simulationScreen");
     for (const auto& child : elements) {
         screen->addElement(child);
     }
+
+    // Post setup functions
+    ((Viewport*)screen->getElement("simulation"))->setCameraBounds(simulator->getEnv().getBounds());
+
     return screen;
 }

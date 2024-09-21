@@ -1,18 +1,28 @@
-#include "simulator/Camera.hpp"
-#include "cmath"
-#include "vector_types.h"
+#include <modules/graphics/utils/camera.hpp>
+#include <cmath>
+#include <vector_types.h>
+#include <simulator/simulator.hpp>
 
-Camera::Camera(sf::FloatRect bounds,
-               sf::RenderWindow* window)
-        : window(window),
-          position(bounds.left + bounds.width/2,
-                   bounds.top + bounds.height/2),
-          sceneBounds(bounds){
-    view = window->getDefaultView();
-    windowView = window->getDefaultView();
+Camera::Camera(sf::RenderTarget* target,
+               sf::FloatRect* targetLayout,
+               sf::FloatRect* bounds)
+        : target(target),
+          targetLayout(targetLayout){
+    view = target->getDefaultView();
+
+    if (bounds != nullptr) {
+        position = {bounds->left + bounds->width/2,
+                 bounds->top + bounds->height/2};
+        zoomLevel = std::min(targetLayout->width / bounds->width,
+                             targetLayout->height / bounds->height);
+        sceneBounds = bounds;
+    }
+    updateView();
 }
 
 void Camera::update(float deltaTime) {
+    if (locked) return;
+
     sf::Vector2f movement(0.0f, 0.0f);
     bool didUpdate = false;
     if (keyStates[sf::Keyboard::W]) {
@@ -40,13 +50,16 @@ void Camera::update(float deltaTime) {
     }
 }
 
-void Camera::updateEvent(const sf::Event& event) {
+void Camera::handleEvent(const sf::Event& event) {
+    if (locked) return;
+
     if (event.type == sf::Event::KeyPressed) {
         keyStates[event.key.code] = true;
     } else if (event.type == sf::Event::KeyReleased) {
         keyStates[event.key.code] = false;
     } else if (event.type == sf::Event::MouseWheelScrolled) {
-        sf::Vector2i mousePosition = sf::Mouse::getPosition(*window);
+        sf::Vector2i mousePosition = sf::Mouse::getPosition(Simulator::get().getWindow());
+        mousePosition -= sf::Vector2i(targetLayout->left, targetLayout->top);
         zoom(event.mouseWheelScroll.delta, mousePosition);
         updateView();
     } else if (event.type == sf::Event::Resized) {
@@ -56,41 +69,37 @@ void Camera::updateEvent(const sf::Event& event) {
 
 void Camera::constrainToBounds() {
     // Calculate the visible area size
-    sf::Vector2f visibleSize = window->getDefaultView().getSize() / zoomLevel;
+    sf::Vector2f visibleSize = target->getDefaultView().getSize() / zoomLevel;
 
     // Calculate the maximum allowed distance from scene edges
     sf::Vector2f maxDistance = visibleSize / 8.0f;
 
     // Constrain the camera position
     position.x = std::clamp(position.x,
-                            sceneBounds.left - maxDistance.x,
-                            sceneBounds.left + sceneBounds.width + maxDistance.x);
+                            sceneBounds->left - maxDistance.x,
+                            sceneBounds->left + sceneBounds->width + maxDistance.x);
     position.y = std::clamp(position.y,
-                            sceneBounds.top - maxDistance.y,
-                            sceneBounds.top + sceneBounds.height + maxDistance.y);
+                            sceneBounds->top - maxDistance.y,
+                            sceneBounds->top + sceneBounds->height + maxDistance.y);
 }
 
 void Camera::zoom(float delta, const sf::Vector2i& mousePos) {
-    const float maxZoomLevel = 10.0f;
-
-    float boxMaxDimension = std::max(sceneBounds.width, sceneBounds.height);
-    float screenMaxDimension = (sceneBounds.width > sceneBounds.height) ? window->getSize().x : window->getSize().y;
-
     // The minimum zoom level is the ratio of the screen dimension to twice the box dimension
-    float minZoomLevel = screenMaxDimension / (2.0f * boxMaxDimension);
+    float minZoomLevel = std::min(target->getSize().x / (2.0f * sceneBounds->width),
+                                  target->getSize().y / (2.0f * sceneBounds->height));
 
     // Convert mouse position from screen to world coordinates
-    sf::Vector2f mouseWorldBeforeZoom = window->mapPixelToCoords(mousePos, view);
+    sf::Vector2f mouseWorldBeforeZoom = target->mapPixelToCoords(mousePos, view);
 
     // Calculate new zoom level
     float newZoomLevel = zoomLevel * std::pow(1.2f, delta);
-    zoomLevel = std::clamp(newZoomLevel, minZoomLevel, maxZoomLevel);
+    zoomLevel = std::max(newZoomLevel, minZoomLevel);
 
     // Update the view to apply the new zoom level
     updateView();
 
     // Convert mouse position from screen to world coordinates after zooming
-    sf::Vector2f mouseWorldAfterZoom = window->mapPixelToCoords(mousePos, view);
+    sf::Vector2f mouseWorldAfterZoom = target->mapPixelToCoords(mousePos, view);
 
     // Calculate the movement needed to keep the mouse position stable
     position += mouseWorldBeforeZoom - mouseWorldAfterZoom;
@@ -103,15 +112,16 @@ void Camera::zoom(float delta, const sf::Vector2i& mousePos) {
 }
 
 void Camera::updateView() {
-    sf::Vector2f windowSize(static_cast<float>(window->getSize().x), static_cast<float>(window->getSize().y));
+    sf::Vector2f targetSize(target->getSize().x, target->getSize().y);
 
     // Calculate the visible size considering the zoom level
-    sf::Vector2f viewSize = windowSize / zoomLevel;
+    sf::Vector2f viewSize = targetSize / zoomLevel;
+
     // Set the view size and center
     view.setSize(viewSize);
     view.setCenter(position);
-    windowView.setSize(windowSize);
-    windowView.setCenter(windowSize / 2.0f);
+
+    target->setView(view);
 }
 
 // Check if a point is within "r" distance of the bounds
@@ -131,22 +141,45 @@ bool Camera::isCircleVisible(const float2& point, float r) {
             point.y >= top && point.y <= bottom);
 }
 
-sf::Vector2f Camera::getCoords(const sf::Vector2f& screenSpacePos) {
-    return window->mapPixelToCoords(sf::Vector2i(screenSpacePos), view);
+sf::Vector2f Camera::mapPixelToCoords(const sf::Vector2f& screenPos) {
+    sf::Vector2f mouseRelativeToTarget = {screenPos.x - targetLayout->left, screenPos.y - targetLayout->top};
+    return target->mapPixelToCoords(sf::Vector2i(mouseRelativeToTarget), view);
 }
 
 float Camera::getZoom() const {
     return zoomLevel;
 }
 
+void Camera::setZoom(float zoom) {
+    zoomLevel = zoom;
+    updateView();
+}
+
 sf::View Camera::getView() {
     return view;
 }
 
-sf::View Camera::getWindowView() {
-    return windowView;
+void Camera::setBounds(sf::FloatRect* bounds) {
+    if (sceneBounds == nullptr) {
+        position = {bounds->left + bounds->width/2,
+                    bounds->top + bounds->height/2};
+    }
+    sceneBounds = bounds;
 }
 
-void Camera::setBounds(const sf::FloatRect& bounds) {
-    sceneBounds = bounds;
+void Camera::setView(const sf::View& view) {
+    this->view = view;
+}
+
+void Camera::setLocked(bool locked) {
+    this->locked = locked;
+}
+
+void Camera::setTargetLayout(sf::FloatRect* targetLayout) {
+    this->targetLayout = targetLayout;
+}
+
+void Camera::setPosition(const sf::Vector2f& position) {
+    this->position = position;
+    updateView();
 }

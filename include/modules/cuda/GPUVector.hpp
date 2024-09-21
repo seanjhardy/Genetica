@@ -46,7 +46,6 @@ public:
     void syncToDevice();
 
     T* deviceData() { return d_data; }
-    const T* deviceData() const { return d_data; }
     const std::vector<T>& hostData() const { return h_data; }
 };
 

@@ -1,17 +1,11 @@
 #include "geneticAlgorithm/sequencer.hpp"
 #include "modules/utils/genomeUtils.hpp"
-#include <modules/utils/print.hpp>
 #include <string>
 #include <utility>
-#include <geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp>
-#include <modules/utils/genomeUtils.hpp>
-#include <geneticAlgorithm/genome.hpp>
 
-GeneRegulatoryNetwork sequenceGRN(const Genome& genome) {
-    GeneRegulatoryNetwork grn;
+void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
+    lifeForm->grn.lifeForm = lifeForm;
 
-    std::vector<Promoter> promoters;
-    std::vector<Gene> genes;
     RegulatoryUnit regulatoryUnit;
     bool readingPromoters = true;
     for (auto [id, sequence] : genome.hoxGenes) {
@@ -19,61 +13,72 @@ GeneRegulatoryNetwork sequenceGRN(const Genome& genome) {
         try {
             int type = readBase(rna);
             bool sign = readBase(rna) >= 2;
-            bool active = readBase(rna) >= 2;
+            bool active = readBase(rna) >= 1;
+            if (!active) continue;
+
             // Uniformly distributed modifiers (also allows for large jumps genetically)
-            float modifier = readUniqueBaseRange(rna, 20);
+            float modifier = readUniqueBaseRange(rna, 8);
 
             float embedding[GeneticUnit::N];
             for (float & i : embedding) {
                 // spatial fidelity = (4 values * 20 per dimension) = 80
                 // 80^(3 dimensions) = 512000 unique positions
                 // Uniform distribution using readUniqueBaseRange
-                i = readUniqueBaseRange(rna, 20);
+                i = readUniqueBaseRange(rna, 8);
             }
 
             // External factors (inputs to grn)
             if (type == 0) {
                 Gene::FactorType externalFactorTypes[] = {
-                  Gene::FactorType::ExternalFactorP1,
-                  Gene::FactorType::ExternalFactorP2,
-                  Gene::FactorType::ExternalFactorP3,
+                  Gene::FactorType::MaternalFactor,
+                  Gene::FactorType::Crowding,
                   Gene::FactorType::Constant,
-                  Gene::FactorType::Congestion,
-                  Gene::FactorType::Time,
                   Gene::FactorType::Generation,
-                  Gene::FactorType::Energy
+                  Gene::FactorType::Energy,
+                  Gene::FactorType::Time,
                 };
-                int subType = readUniqueBaseRange(rna, 2) * 8;
+                int subType = (int)(readUniqueBaseRange(rna, 3) * 64) % 6;
                 Gene::FactorType externalFactorType = externalFactorTypes[subType];
+
+                // If this grn already contains a special node
+                // (e.g. maternal factor, crowding, etc.) of this type, skip
+                if (std::any_of(lifeForm->grn.factors.begin(), lifeForm->grn.factors.end(),
+                                [externalFactorType](const Gene& gene) {
+                                    return gene.factorType == externalFactorType;
+                                })) {
+                    continue;
+                }
+                float2 extra = {(readBase(rna) >= 2 ? -1 : 1) * readUniqueBaseRange(rna, 8),
+                                (readBase(rna) >= 2 ? -1 : 1) * readUniqueBaseRange(rna, 8)};
                 Gene externalFactor = Gene(externalFactorType,
-                                           active, sign, modifier, embedding);
-                grn.elements.push_back(externalFactor);
+                                           sign, modifier, embedding, extra);
+                lifeForm->grn.factors.push_back(externalFactor);
             }
+
             // Gene effectors (outputs of grn)
             if (type == 1) {
-                int subType = (int)(readUniqueBaseRange(rna, 6) * 4096) % 7;
+                int subType = (int)(readUniqueBaseRange(rna, 3) * 64) % 7;
                 Effector effector = Effector(static_cast<Effector::EffectorType>(subType),
-                                             active, sign, modifier, embedding);
-                grn.elements.push_back(effector);
+                                             sign, modifier, embedding);
+                lifeForm->grn.effectors.push_back(effector);
             }
 
             // Regulatory units (nodes in grn)
-            // Promoters (take in morphogens and produce activity levels exitatory/inhibitory)
+            // Promoters (take in factors and produce activity levels excitatory/inhibitory additive/multiplicative)
             if (type == 2) {
                 int additive = readBase(rna) >= 1;
                 Promoter::PromoterType promoterType = additive
                                                       ? Promoter::PromoterType::Additive
                                                       : Promoter::PromoterType::Multiplicative;
-                Promoter promoter = Promoter(promoterType, active,
-                                             sign, modifier, embedding);
+                Promoter promoter = Promoter(promoterType, sign, modifier, embedding);
                 if (readingPromoters) {
-                    regulatoryUnit.promoters.push_back(promoter);
+                    regulatoryUnit.promoters.push_back(lifeForm->grn.promoters.size());
                 } else {
-                    grn.regulatoryUnits.push_back(regulatoryUnit);
+                    lifeForm->grn.regulatoryUnits.push_back(regulatoryUnit);
                     regulatoryUnit = RegulatoryUnit();
                     readingPromoters = true;
                 }
-                grn.elements.push_back(promoter);
+                lifeForm->grn.promoters.push_back(promoter);
             }
 
             // Genes - internal product, external product, receptor
@@ -81,20 +86,18 @@ GeneRegulatoryNetwork sequenceGRN(const Genome& genome) {
                 Gene::FactorType geneTypes[] = {
                   Gene::FactorType::ExternalProduct,
                  Gene::FactorType::InternalProduct,
-                 Gene::FactorType::Receptor};
+                 Gene::FactorType::Receptor,};
 
-                Gene gene = Gene(geneTypes[type - 3], active,
-                                 sign, modifier, embedding);
+                Gene gene = Gene(geneTypes[type - 3], sign, modifier, embedding);
 
                 readingPromoters = false;
-                regulatoryUnit.genes.push_back(gene);
-                grn.elements.push_back(gene);
+                regulatoryUnit.factors.push_back(lifeForm->grn.factors.size());
+                lifeForm->grn.factors.push_back(gene);
             }
         } catch (RNAExhaustedException& e) {
             // "RNA exhausted"
         }
     }
 
-    grn.precomputeAffinities();
-    return grn;
+    lifeForm->grn.precomputeAffinities();
 }

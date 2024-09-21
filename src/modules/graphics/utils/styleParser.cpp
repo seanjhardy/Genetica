@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <regex>
+#include <modules/utils/print.hpp>
 
 using namespace std;
 
@@ -36,14 +37,17 @@ Size parseSize(const string& value) {
     } else if (value.find('%') != string::npos) {
         return Size::Percent(stof(value.substr(0, value.find('%'))));
     }
-    return Size::Pixel(100); // Default
+    return Size::Pixel(0); // Default
 }
 
 float parseValue(const string& value) {
     if (value.find("px") != string::npos) {
         return stof(value.substr(0, value.find("px")));
     }
-    return 0; // Default
+    if (value.find('s') != string::npos) {
+        return stof(value.substr(0, value.find('s')));
+    }
+    return 0.0f; // Default
 }
 
 //Takes in a string of format <value>px or <value>px <value>px <value>px <value>px
@@ -67,6 +71,12 @@ void parseMultiValue(const string& value, Size (&result)[4]) {
             result[0] = values[0];
             result[1] = result[3] = values[1];
             result[2] = values[2];
+            break;
+        case 4:
+            result[0] = values[0];
+            result[1] = values[1];
+            result[2] = values[2];
+            result[3] = values[3];
             break;
         default:
             result[0] = result[1] = result[2] = result[3] = Size::Pixel(0);
@@ -111,14 +121,14 @@ Border parseBorder(const string& borderStr) {
         tokens.push_back(token);
     }
 
-    int stroke = 0;
+    int stroke = -1;
     sf::Color color;
     vector<int> radii;
 
     for (const auto& t : tokens) {
         if (t.find("px") != string::npos) {
             int value = stoi(t.substr(0, t.find("px")));
-            if (stroke == 0) {
+            if (stroke == -1) {
                 stroke = value;
             } else {
                 radii.push_back(value);
@@ -207,10 +217,14 @@ UITransform parseTransform(const std::string& value) {
         tokens.push_back(token);
     }
 
+    float scale = 1.0f;
+    float duration = 0.1f;
     for (const auto& t : tokens) {
         if (t.find("scale") != string::npos) {
-            float scale = stof(t.substr(t.find('(') + 1, t.find(')') - t.find('(') - 1));
-            return UITransform::Scale(scale);
+            scale = stof(t.substr(t.find('(') + 1, t.find(')') - t.find('(') - 1));
+        } else if (t.find('s') != string::npos) {
+            duration = stof(t.substr(0, t.find('s')));
         }
     }
+    return UITransform::Scale(scale, duration);
 }

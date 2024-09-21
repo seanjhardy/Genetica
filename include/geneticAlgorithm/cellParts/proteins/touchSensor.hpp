@@ -1,22 +1,22 @@
 #ifndef TOUCH
 #define TOUCH
 
-#include <geneticAlgorithm/cellParts/proteinInstance.hpp>
+#include <geneticAlgorithm/cellParts/protein.hpp>
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <simulator/simulator.hpp>
 
-class TouchSensor : public ProteinInstance {
+class TouchSensor : public Protein {
 private:
     int endPoint;
     float overlapping;
 public:
-    TouchSensor(LifeForm* lifeform, CellPartSchematic* schematic, SegmentInstance* parent)
-        : ProteinInstance(lifeform, schematic, parent) {
+    TouchSensor(LifeForm* lifeform, Cell* parent)
+        : Protein(lifeform, parent) {
         lifeform->addInput(this);
     }
 
     void simulate(float dt) override {
-        ProteinInstance::simulate(dt);
+        Protein::simulate(dt);
         if (Simulator::get().getStep() % 10 == 0) {
             checkForOverlap();
         }

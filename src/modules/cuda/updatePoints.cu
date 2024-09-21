@@ -20,10 +20,10 @@ __global__ void constrainDistancesKernel(Point *points, Connection *connections,
 
     if (index < numConnections) {
         Connection connection = connections[index];
-        constrainDistance(points[connection.p1], points[connection.p2], connection.distance, 0.2f);
+        constrainDistance(points[connection.p1], points[connection.p2], connection.length, 0.2f);
     }
 }
-
+/*
 __global__ void updateParentChildLinkKernel(Point *points, ParentChildLink *angles, int numAngles, float dt) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -37,7 +37,7 @@ __global__ void updateParentChildLinkKernel(Point *points, ParentChildLink *angl
         points[pcl.startPoint].pos = points[pcl.parentStartPoint].pos + rotate(pcl.pointOnParent, parentAngle);
     }
 }
-
+*/
 __global__ void computeCollisions(Point *points, int numPoints, Rock *rocks, int numRocks) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -51,22 +51,19 @@ __global__ void computeCollisions(Point *points, int numPoints, Rock *rocks, int
 
 void updatePoints(GPUVector<Point> &points,
                   GPUVector<Connection> &connections,
-                  GPUVector<ParentChildLink> &parentChildLinks,
                   GPUValue<sf::FloatRect> &bounds,
                   float dt) {
     int numPoints = points.size();
     int numConnections = connections.size();
-    int numParentChildLinks = parentChildLinks.size();
 
     int blockSize = 256; // Number of threads per block
     int numBlocks = (numPoints + blockSize - 1) / blockSize;
-
     updatePointsKernel<<<numBlocks, blockSize>>>(points.deviceData(),
                                                  numPoints, dt, bounds.deviceData());
 
-    numBlocks = (numParentChildLinks + blockSize - 1) / blockSize;
+    /*numBlocks = (numParentChildLinks + blockSize - 1) / blockSize;
     updateParentChildLinkKernel<<<numBlocks, blockSize>>>(points.deviceData(), parentChildLinks.deviceData(),
-                                                          numParentChildLinks, dt);
+                                                          numParentChildLinks, dt);*/
 
     numBlocks = (numConnections + blockSize - 1) / blockSize;
     constrainDistancesKernel<<<numBlocks, blockSize>>>(points.deviceData(), connections.deviceData(), numConnections,
@@ -78,5 +75,5 @@ void updatePoints(GPUVector<Point> &points,
                        (numRocks + threadsPerBlock - 1) / threadsPerBlock, 1);
     computeCollisions<<<blocksPerGrid, threadsPerBlockDim>>>(points.deviceData(),
                                                 numPoints, rocks.deviceData(), numRocks);*/
-    //cudaDeviceSynchronize();
+    cudaDeviceSynchronize();
 }

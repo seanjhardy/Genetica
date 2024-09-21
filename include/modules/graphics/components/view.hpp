@@ -1,5 +1,5 @@
-#ifndef CONTAINER
-#define CONTAINER
+#ifndef VIEW
+#define VIEW
 
 #include <SFML/Graphics.hpp>
 #include <modules/graphics/utils/roundedRectangleShape.hpp>
@@ -8,11 +8,11 @@
 #include "vector"
 #include "memory"
 
-class Container : public UIElement {
+class View : public UIElement {
 public:
-    explicit Container(const unordered_map<string, string>& properties, std::vector<UIElement*> children = {});
+    explicit View(const unordered_map<string, string>& properties, std::vector<UIElement*> children = {});
 
-    void draw(sf::RenderTarget& target) const override;
+    void draw(sf::RenderTarget& target) override;
     bool handleEvent(const sf::Event& event) override;
     void update(float dt, const sf::Vector2f& position) override;
     void onLayout() override;

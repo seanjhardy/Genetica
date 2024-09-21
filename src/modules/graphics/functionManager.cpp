@@ -18,3 +18,10 @@ function<void()>* FunctionManager::get(const string& key) {
 void FunctionManager::add(const string& key, function<void()> function) {
     functions[key] = function;
 }
+
+void FunctionManager::call(const string& key) {
+    auto it = functions.find(key);
+    if (it != functions.end()) {
+        it->second();
+    }
+}

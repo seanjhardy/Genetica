@@ -29,8 +29,7 @@ __host__ __device__ void Point::setPos(float2 newPos) {
 }
 
 __host__ __device__ float Point::distanceTo(const Point& other) const {
-    float2 d = pos - other.pos;
-    return sqrtf(sum(d*d));
+    return distanceBetween(pos, other.pos);
 }
 
 __host__ __device__ float Point::angleTo(const Point& other) const{

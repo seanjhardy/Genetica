@@ -8,7 +8,7 @@
 class Text : public UIElement {
 public:
     Text(const unordered_map<string, string>& properties, const std::string& text);
-    void draw(sf::RenderTarget& target) const override;
+    void draw(sf::RenderTarget& target) override;
     void onLayout() override;
     void setText(const std::string& text);
 
@@ -17,6 +17,7 @@ private:
     std::string text;
     sf::Font* font = FontManager::get("russo");
     float fontSize = 20;
+    float outlineThickness = 0.0f;
 };
 
 #endif

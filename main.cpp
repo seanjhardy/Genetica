@@ -9,6 +9,7 @@
 #include <modules/graphics/shaderManager.hpp>
 #include <modules/graphics/componentManager.hpp>
 #include <modules/utils/fastMath.hpp>
+#include <simulator/planet.hpp>
 
 int main() {
     try {
@@ -22,6 +23,7 @@ int main() {
         FontManager::init();
         ComponentManager::init();
         CursorManager::init();
+        Planet::init();
 
         // Set up simulation
         Simulator::get().setup();

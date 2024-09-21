@@ -4,13 +4,13 @@
 #include "SFML/Graphics.hpp"
 #include "modules/graphics/utils/UIElement.hpp"
 #include "vector"
-#include <modules/graphics/components/container.hpp>
+#include <modules/graphics/components/view.hpp>
 
 class Screen {
 public:
     void addElement(UIElement* element);
     void addElementKey(UIElement* element);
-    void draw(sf::RenderTarget& target) const;
+    void draw(sf::RenderTarget& target);
     bool handleEvent(const sf::Event& event);
     void resize(const sf::Vector2u& size);
     void update(float dt, const sf::Vector2f& position);

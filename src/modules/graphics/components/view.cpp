@@ -1,12 +1,11 @@
-#include <modules/graphics/components/container.hpp>
+#include <modules/graphics/components/view.hpp>
 #include <modules/graphics/functionManager.hpp>
-#include <modules/graphics/cursorManager.hpp>
 #include "vector"
 #include <utility>
 
 using namespace std;
 
-Container::Container(const unordered_map<string, string>& properties, vector<UIElement*> children) :
+View::View(const unordered_map<string, string>& properties, vector<UIElement*> children) :
     UIElement(properties, children) {
     styleSetters["background"] = [this](const string& v) {
         backgroundColor = parseColor(v);
@@ -38,7 +37,7 @@ Container::Container(const unordered_map<string, string>& properties, vector<UIE
     restyle();
 }
 
-void Container::onLayout() {
+void View::onLayout() {
     UIElement::onLayout();
     if (shadow.getColor() != sf::Color::Transparent) {
         shadowShape = sf::RoundedRectangleShape(layout.getSize() +
@@ -61,10 +60,10 @@ void Container::onLayout() {
     }
 }
 
-void Container::updateLayout() {
+void View::updateLayout() {
     // Get all visible children
     int numChildren = std::count_if(children.begin(), children.end(), [](UIElement* x) {
-        return x->visible;
+        return x->visible && !x->absolute;
     });
     if (numChildren == 0) return;
 
@@ -86,6 +85,7 @@ void Container::updateLayout() {
 
     for (const auto& child : children) {
         if (!child->visible) continue;
+        if (child->absolute) continue;
         const Size& mainSize = (flexDirection == Direction::Row) ? child->width : child->height;
         switch (mainSize.getMode()) {
             case Size::Mode::Pixel:
@@ -156,16 +156,45 @@ void Container::updateLayout() {
         float crossPos = (flexDirection == Direction::Row) ?
                 layout.top + padding[1].getValue() :
                 layout.left + padding[0].getValue();
+
         switch (alignment) {
             case Alignment::Center:
                 crossPos += (availableCrossSize - itemCrossSize) / 2;
                 break;
             case Alignment::End:
                 crossPos += availableCrossSize - itemCrossSize -
-                        ((flexDirection == Direction::Row) ? padding[2].getValue() : padding[3].getValue());
+                            ((flexDirection == Direction::Row) ? padding[2].getValue() : padding[3].getValue());
                 break;
             default:
                 break;
+        }
+
+        if (child->absolute) {
+            float rowPos = layout.left + padding[0].getValue();
+            switch (rowAlignment) {
+                case Alignment::Center:
+                    rowPos += (availableMainSize - itemMainSize) / 2;
+                    break;
+                case Alignment::End:
+                    rowPos += availableMainSize - itemMainSize - padding[2].getValue();
+                    break;
+                default:
+                    break;
+            }
+            float columnPos = layout.top + padding[1].getValue();
+            switch (columnAlignment) {
+                case Alignment::Center:
+                    columnPos += (availableCrossSize - itemCrossSize) / 2;
+                    break;
+                case Alignment::End:
+                    columnPos += availableCrossSize - itemCrossSize - padding[3].getValue();
+                    break;
+                default:
+                    break;
+            }
+            element->base_layout.left = rowPos;
+            element->base_layout.top = columnPos;
+            continue;
         }
 
         sf::Vector2f elementPos = (flexDirection == Direction::Row)
@@ -203,8 +232,10 @@ void Container::updateLayout() {
     }
 }
 
-void Container::applyOffset(float offset) {
+void View::applyOffset(float offset) {
     for (auto& child : children) {
+        if (!child->visible) continue;
+        if (child->absolute) continue;
         if (flexDirection == Direction::Row) {
             child->base_layout.left += offset;
         } else {
@@ -213,7 +244,7 @@ void Container::applyOffset(float offset) {
     }
 }
 
-void Container::distributeSpace(float space, bool includeEnds, int numVisibleChildren) {
+void View::distributeSpace(float space, bool includeEnds, int numVisibleChildren) {
     int divisions = includeEnds ? numVisibleChildren + 1 : numVisibleChildren - 1;
     if (divisions <= 0) return;
 
@@ -221,6 +252,8 @@ void Container::distributeSpace(float space, bool includeEnds, int numVisibleChi
     float currentOffset = includeEnds ? gap : 0;
 
     for (auto& child : children) {
+        if (!child->visible) continue;
+        if (child->absolute) continue;
         if (flexDirection == Direction::Row) {
             child->base_layout.left += currentOffset;
         } else {
@@ -230,7 +263,7 @@ void Container::distributeSpace(float space, bool includeEnds, int numVisibleChi
     }
 }
 
-void Container::draw(sf::RenderTarget& target) const {
+void View::draw(sf::RenderTarget& target) {
     if (!visible) return;
     if (shadow.getColor() != sf::Color::Transparent) {
         target.draw(shadowShape);
@@ -241,7 +274,7 @@ void Container::draw(sf::RenderTarget& target) const {
     }
 }
 
-bool Container::handleEvent(const sf::Event& event) {
+bool View::handleEvent(const sf::Event& event) {
     if (!visible) return false;
     for (auto& child : children) {
         bool consumed = child->handleEvent(event);
@@ -251,6 +284,9 @@ bool Container::handleEvent(const sf::Event& event) {
         event.mouseButton.button == sf::Mouse::Left) {
         if (contains({(float)event.mouseButton.x, (float)event.mouseButton.y})
             && visible && allowClick) {
+            if (animation) {
+                animation->reset();
+            }
             if (onClick) {
                 onClick();
             }
@@ -261,7 +297,7 @@ bool Container::handleEvent(const sf::Event& event) {
     return false;
 }
 
-void Container::update(float dt, const sf::Vector2f& position) {
+void View::update(float dt, const sf::Vector2f& position) {
     UIElement::update(dt, position);
     for (auto& child : children) {
         child->update(dt, position);

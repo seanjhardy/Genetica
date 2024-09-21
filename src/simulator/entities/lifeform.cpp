@@ -9,19 +9,15 @@
 
 using namespace std;
 
-int LifeForm::GROWTH_INTERVAL = 5;
-float LifeForm::BUILD_COST_SCALE = 0.00001f;
-float LifeForm::BUILD_RATE = 50.0f;
-float LifeForm::ENERGY_DECREASE_RATE = 0.0000001;
-
 LifeForm::LifeForm(Environment* environment, float2 pos,
                    Genome& genome)
     : Entity(pos), env(environment), genome(genome){
+    init();
     sequence(this, genome);
-    birthdate = Simulator::get().getStep();
 }
 
 void LifeForm::simulate(float dt) {
+    if (head == nullptr) return;
     pos = env->getPoint(head->pointIdx)->pos;
     grow(dt);
 
@@ -29,17 +25,15 @@ void LifeForm::simulate(float dt) {
 
 void LifeForm::render(VertexManager& vertexManager) {
     // Create mesh from cells;
+    for (auto& cell : cells) {
+        cell->render(vertexManager);
+    }
 }
 
 void LifeForm::grow(float dt) {
     if (head == nullptr) return;
-
     if (Simulator::get().getStep() % GROWTH_INTERVAL != 0) return;
-
-    grn.updateMorphogenLevels();
-    for (auto& cell : cells) {
-        cell->updateGeneExpression();
-    }
+    grn.update(dt);
 }
 
 LifeForm& LifeForm::clone(bool mutate){
@@ -54,7 +48,7 @@ LifeForm& LifeForm::clone(bool mutate){
 
     // Setup lifeForm parameters
     // TODO: Fix energy splitting
-    float energyChange = energy * 0.5;
+    float energyChange = energy * 0.5f;
     energy -= energyChange;
     clone->energy += energyChange;
     numChildren++;
@@ -94,12 +88,20 @@ void LifeForm::kill() {
     //env->removePoint(this->entityID);
 }
 
-void LifeForm::addInput(CellPartInstance* cellPartInstance) {
-    inputs.push_back(cellPartInstance);
+void LifeForm::addCell(Cell* cell) {
+    cells.push_back(unique_ptr<Cell>(cell));
 }
 
-void LifeForm::addOutput(CellPartInstance* cellPartInstance) {
-    outputs.push_back(cellPartInstance);
+void LifeForm::addCellLink(CellLink* cellLink) {
+    links.push_back(unique_ptr<CellLink>(cellLink));
+}
+
+void LifeForm::addInput(Protein* protein) {
+    inputs.push_back(protein);
+}
+
+void LifeForm::addOutput(Protein* protein) {
+    outputs.push_back(protein);
 }
 
 void LifeForm::init(){
@@ -109,6 +111,8 @@ void LifeForm::init(){
     outputs.clear();
     energy = 0;
     numChildren = 0;
+    birthdate = Simulator::get().getStep();
+
 }
 
 Environment* LifeForm::getEnv() const {

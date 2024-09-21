@@ -97,6 +97,12 @@ inline __host__ __device__ float distanceBetween(float2 p1, float2 p2) {
     return sqrt(sum(d*d));
 }
 
+inline __host__ __device__ float dir(float2 p1, float2 p2) {
+    float2 d = p1 - p2;
+    return std::atan2f(d.y, d.x);
+}
+
+
 inline __host__ __device__ uint3 operator+(const uint3 &a, const uint3 &b) {
     return {static_cast<uint8_t>(a.x + b.x), static_cast<uint8_t>(a.y + b.y), static_cast<uint8_t>(a.z + b.z)};
 }

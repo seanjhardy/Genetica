@@ -38,7 +38,7 @@ void ImageElement::onLayout() {
     }
 }
 
-void ImageElement::draw(sf::RenderTarget& target) const {
+void ImageElement::draw(sf::RenderTarget& target) {
     if (!visible) return;
     target.draw(sprite);
 }

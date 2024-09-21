@@ -23,7 +23,7 @@ UIElement* Screen::getElement(const std::string& key) {
     return nullptr;
 }
 
-void Screen::draw(sf::RenderTarget& target) const {
+void Screen::draw(sf::RenderTarget& target) {
     for (const auto& function : functions) {
         function();
     }

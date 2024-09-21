@@ -34,26 +34,26 @@ __host__ __device__ inline void constrainAngle(Point& point1, Point& point2, flo
 
 __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect bounds) {
     float updateDist = 0.0f;
-    float minMax[4] = {bounds.left + point.mass / 2,
-                       bounds.width - point.mass / 2,
-                       bounds.top + point.mass / 2,
-                       bounds.height - point.mass / 2};
+    float minMax[4] = {bounds.left + point.mass,
+                       bounds.width - point.mass,
+                       bounds.top + point.mass,
+                       bounds.height - point.mass};
 
     if (point.pos.x < minMax[0]) {
-        updateDist += std::abs(point.pos.x - minMax[0]);
+        point.prevPos.x = point.pos.x;
         point.pos.x = minMax[0];
     }
     if (point.pos.x > minMax[1]) {
-        updateDist += std::abs(point.pos.x - minMax[1]);
+        point.prevPos.x = point.pos.x;
         point.pos.x = minMax[1];
     }
 
     if (point.pos.y < minMax[2]) {
-        updateDist += std::abs(point.pos.y - minMax[2]);
+        point.prevPos.y = point.pos.y;
         point.pos.y = minMax[2];
     }
     if (point.pos.y > minMax[3]) {
-        updateDist += std::abs(point.pos.y - minMax[3]);
+        point.prevPos.y = point.pos.y;
         point.pos.y = minMax[3];
     }
 

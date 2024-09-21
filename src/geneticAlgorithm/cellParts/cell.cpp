@@ -1,56 +1,97 @@
 #include <simulator/entities/lifeform.hpp>
 #include <geneticAlgorithm/cellParts/cell.hpp>
+#include <modules/utils/print.hpp>
 
 Cell::Cell(LifeForm* lifeForm, Cell* mother, float2 pos, float radius)
 : lifeForm(lifeForm), mother(mother) {
     pointIdx = lifeForm->getEnv()->addPoint(lifeForm->entityID,
                                             pos.x, pos.y, radius);
-    color = sf::Color(150,100,100);
-    childDistance = 0;
-    growthProgress = 0;
-    internalDivisionRotation = 0;
-    externalDivisionRotation = 0;
+    if (mother == nullptr) return;
+    generation = mother->generation + 1;
+    color = mother->color;
+    products = mother->products;
+    rotation = mother->rotation + mother->divisionRotation;
 }
+
 
 void Cell::simulate(float dt) {
     Point* pointObj = lifeForm->getEnv()->getPoint(pointIdx);
 
     lifeForm->energy -= 0.0001f * dt; // Add a small constant to prevent part spam (penalises lots of points)
     lifeForm->energy -= LifeForm::ENERGY_DECREASE_RATE * pointObj->mass * dt;
-
-    // Grow cell
-    if (growthProgress == 1) return;
-
-    growthProgress += LifeForm::BUILD_RATE;
 }
 
-void Cell::updateGeneExpression() {
+void Cell::render(VertexManager& vertexManager) {
     Point* pointObj = lifeForm->getEnv()->getPoint(pointIdx);
+    float2 pos = pointObj->pos;
+    float radius = pointObj->mass;
 
-    // Define external factors for this cell
-    float externalFactors[10];
-    externalFactors[0] = distanceBetween(pointObj->pos, {lifeForm->pos.x, lifeForm->pos.y});
+    vertexManager.addCircle(pos, radius, color);
+    vertexManager.addLine(pos, pos + vec(rotation) * radius, sf::Color::White);
+    vertexManager.addLine(pos, pos + vec(rotation + divisionRotation) * radius, sf::Color::Red);
+}
 
-    for (auto& unit : lifeForm->grn.regulatoryUnits) {
-        std::map<Promoter*, float> promoterActivities;
-        for (auto& promoter : unit.promoters) {
-            float promoterActivity = promoter.calculateActivity(unit.genes,
-                                                                  lifeForm->grn.promoterFactorAffinities,
-                                                                  products);
-            promoterActivities.insert({&promoter, promoterActivity});
-        }
-        float activity = unit.calculateActivation(promoterActivities);
+void Cell::adjustSize(float sizeChange) {
+    Point* pointObj = lifeForm->getEnv()->getPoint(pointIdx);
+    pointObj->mass += sizeChange;
+    if (pointObj->mass < 0) {
+        die();
+    } else {
+        lifeForm->getEnv()->updatePoint(pointIdx, *pointObj);
     }
-};
+}
 
 void Cell::divide() {
-    Cell daughter = *this;
-    daughter.products = products;
-    // TODO: reset value of division products (?)
-    daughter.internalDivisionRotation = internalDivisionRotation;
+    auto* daughter = new Cell(*this);
     Point* motherPoint = lifeForm->getEnv()->getPoint(pointIdx);
-    Point* daughterPoint = lifeForm->getEnv()->getPoint(daughter.pointIdx);
-    daughterPoint->pos = motherPoint->pos
-      + vec(externalDivisionRotation) * childDistance;
-    lifeForm->cells.push_back(&daughter);
+    Point* daughterPoint = lifeForm->getEnv()->getPoint(daughter->pointIdx);
+
+    daughterPoint->setPos(motherPoint->pos + vec(rotation + divisionRotation) * CellLink::INITIAL_DISTANCE);
+
+    lifeForm->addCell(daughter);
+
+    // Create cell links
+    auto* cellLink = new CellLink(lifeForm, this, daughter, CellLink::INITIAL_DISTANCE);
+    lifeForm->addCellLink(cellLink);
+    for(auto& cell : lifeForm->cells) {
+        if (cell.get() == this || cell.get() == daughter) continue;
+        Point* otherPoint = lifeForm->getEnv()->getPoint(cell->pointIdx);
+        float distance = daughterPoint->distanceTo(*otherPoint);
+        // If overlapping another cell, create a link
+        if (distance < daughterPoint->mass + otherPoint->mass) {
+            auto* newCellLink = new CellLink(lifeForm, daughter, cell.get(), CellLink::INITIAL_DISTANCE);
+            lifeForm->addCellLink(newCellLink);
+        }
+    }
+}
+
+void Cell::fuse(Cell* other) {
+    lifeForm->getEnv()->removePoint(other->pointIdx);
+    // Move all cell links on other to this
+    for(auto& cellLink : lifeForm->links) {
+        if (cellLink->cell1 == other) {
+            cellLink->moveCell1(this);
+        }
+        if (cellLink->cell2 == other) {
+            cellLink->moveCell2(this);
+        }
+    }
+    other->die();
+}
+
+void Cell::die() {
+    // Remove this point from environment
+    lifeForm->getEnv()->removePoint(pointIdx);
+    // Remove this cell from lifeform
+    lifeForm->cells.erase(std::remove_if(lifeForm->cells.begin(), lifeForm->cells.end(),
+                                         [this](const std::unique_ptr<Cell>& cell) {
+                                             return cell.get() == this;
+                                         }), lifeForm->cells.end());
+    // Destroy all links
+    lifeForm->links.erase(std::remove_if(lifeForm->links.begin(), lifeForm->links.end(),
+                                         [this](const std::unique_ptr<CellLink>& cellLink) {
+                                             return cellLink->cell1 == this || cellLink->cell2 == this;
+                                         }), lifeForm->links.end());
+    // Finally delete the memory itself
+    delete this;
 }

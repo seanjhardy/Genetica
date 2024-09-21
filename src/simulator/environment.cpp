@@ -2,50 +2,61 @@
 #include <simulator/entities/lifeform.hpp>
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <modules/cuda/updatePoints.hpp>
-#include <modules/utils/print.hpp>
 #include <simulator/simulator.hpp>
 #include <modules/cuda/findNearest.hpp>
-#include <modules/physics/fluid.hpp>
 
 Environment::Environment(sf::FloatRect bounds) :
+    initialBounds(bounds),
     bounds(bounds), fluidSimulator(
       0.1, bounds.width, bounds.height,
       {}) {
+    planet = &Planet::planets["Delune"];
 }
 
 void Environment::simulate(float deltaTime) {
-    if (Simulator::get().getStep() % 500 == 0 && fluidEnabled) {
+    if (fluidEnabled && Simulator::get().getStep() % 500 == 0) {
         fluidSimulator.update(0.02);
     }
+    planet->update();
 
     points.syncToDevice();
-    updatePoints(points, connections, parentChildLinks, bounds, deltaTime);
+    updatePoints(points, connections, bounds, deltaTime);
     points.syncToHost();
 };
 
 void Environment::render(VertexManager& vertexManager) {
-    vertexManager.addFloatRect(bounds.hostData(), sf::Color(100, 100, 255, 50));
+    planet->render(vertexManager);
 
     if (fluidEnabled) {
         fluidSimulator.render(vertexManager, bounds.hostData());
     }
+
     // Draw a grid of columns and rows inside of bounds:
-    if (vertexManager.getSizeInView(1) > 0.5 && gridLinesVisible) {
-        sf::Color gridColor = sf::Color(0, 0, 0, 50);
+    if (vertexManager.getSizeInView(1) > 0.2 && gridLinesVisible) {
+        int opacity = (int)clamp(10.0f, vertexManager.camera->getZoom() * 10.0f, 30.0f);
+        float thickness = clamp(1.0f, 1.0f / vertexManager.camera->getZoom(), 5.0f);
+        sf::Color gridColor = sf::Color(255, 255, 255, opacity);
         for (float i = 0; i < bounds.hostData().width + 1; i += 20) {
             vertexManager.addLine({bounds.hostData().left + i, bounds.hostData().top},
-                                  {bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height}, gridColor, 1);
+                                  {bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height}, gridColor,
+                                  thickness);
         }
         for (float i = 0; i < bounds.hostData().height + 1; i += 20) {
             vertexManager.addLine({bounds.hostData().left, bounds.hostData().top + i},
-                                  {bounds.hostData().left + bounds.hostData().width, bounds.hostData().top + i}, gridColor, 1);
+                                  {bounds.hostData().left + bounds.hostData().width, bounds.hostData().top + i}, gridColor,
+                                  thickness);
         }
     }
+
     dragHandler.render(vertexManager, bounds.hostData());
 };
 
 bool Environment::handleEvent(const sf::Event& event, const sf::Vector2f mousePos, Entity** selectedEntity) {
     dragHandler.handleEvent(event);
+
+    if (!dragHandler.isDragging() && planet->getBounds() != bounds.hostData()) {
+        planet->setBounds(bounds.hostData());
+    }
 
     if (event.type == sf::Event::MouseButtonReleased) {
         if (event.mouseButton.button == sf::Mouse::Left) {
@@ -72,22 +83,21 @@ bool Environment::handleEvent(const sf::Event& event, const sf::Vector2f mousePo
     return false;
 }
 
-void Environment::update(const sf::Vector2f& mousePos) {
-    sf::Vector2f worldCoords = Simulator::get().getCamera().getCoords(mousePos);
-
+void Environment::update(const sf::Vector2f& worldCoords, float zoom) {
     if (heldPoint != nullptr) {
         heldPoint->setPos({worldCoords.x, worldCoords.y});
     }
 
-    sf::FloatRect deltaBounds = dragHandler.update(worldCoords, bounds.hostData());
+    sf::FloatRect deltaBounds = dragHandler.update(worldCoords, bounds.hostData(), 15.0f / zoom);
 
     if (deltaBounds.left != 0 || deltaBounds.top != 0 || deltaBounds.width != 0 || deltaBounds.height != 0) {
         bounds = {bounds.hostData().left + deltaBounds.left,
                   bounds.hostData().top + deltaBounds.top,
                   bounds.hostData().width + deltaBounds.width,
                   bounds.hostData().height + deltaBounds.height};
-        Simulator::get().getCamera().setBounds(bounds.hostData());
-        fluidSimulator = FluidSimulator(0.1, bounds.hostData().width, bounds.hostData().height, {});
+        if (fluidEnabled) {
+            fluidSimulator = FluidSimulator(0.1, bounds.hostData().width, bounds.hostData().height, {});
+        }
     }
 
     if (!fluidEnabled) return;
@@ -103,14 +113,15 @@ void Environment::update(const sf::Vector2f& mousePos) {
 void Environment::reset() {
     points.clear();
     connections.clear();
-    parentChildLinks.clear();
     fluidSimulator.init();
+    bounds = initialBounds;
+    planet->reset();
+    planet->setBounds(bounds.hostData());
 };
 
 void Environment::cleanup() {
     points.clear();
     connections.clear();
-    parentChildLinks.clear();
     fluidSimulator.reset();
 }
 
@@ -124,6 +135,10 @@ void Environment::removePoint(int index) {
     points.remove(index);
 }
 
+void Environment::updatePoint(int index, Point updatedPoint) {
+    points.update(index, updatedPoint);
+}
+
 void Environment::addEntity(int id, Entity* entity) {
     entities[id] = entity;
 }
@@ -132,28 +147,27 @@ Point* Environment::getPoint(int index) {
     return &points[index];
 }
 
-ParentChildLink* Environment::getParentChildLink(int index) {
-    return &parentChildLinks[index];
-}
-
-void Environment::addConnection(int a, int b, float distance){
+int Environment::addConnection(int a, int b, float distance){
     connections.push_back(Connection(a, b, distance));
+    return connections.size() - 1;
 }
 
 Connection* Environment::getConnection(int index) {
     return &connections[index];
 }
 
-int Environment::addParentChildLink(int a, int b, int parentStart, int parentEnd,
-                                    float2 pointOnParent, float targetAngle, float stiffness) {
-    parentChildLinks.push_back(ParentChildLink(a, b,
-                                               parentStart, parentEnd,
-                                               pointOnParent, targetAngle, stiffness));
-    return parentChildLinks.size() - 1;
+void Environment::updateConnection(int index, Connection updatedConnection) {
+    connections.update(index, updatedConnection);
 }
 
-sf::FloatRect Environment::getBounds() const {
-    return bounds.hostData();
+
+sf::FloatRect* Environment::getBounds() {
+    return bounds.hostDataPtr();
+}
+
+float2 Environment::randomPos() {
+    return {Random::random(bounds.hostData().left, bounds.hostData().left + bounds.hostData().width),
+            Random::random(bounds.hostData().top, bounds.hostData().top + bounds.hostData().height)};
 }
 
 void Environment::toggleGridLinesVisible() {
@@ -169,6 +183,14 @@ bool Environment::getFluidEnabled() const {
 }
 void Environment::toggleFluidEnabled() {
     fluidEnabled = !fluidEnabled;
+}
+
+Planet& Environment::getPlanet() {
+    return *planet;
+}
+void Environment::setPlanet(Planet* newPlanet) {
+    planet = newPlanet;
+    planet->setBounds(bounds.hostData());
 }
 
 int Environment::nextEntityID() {

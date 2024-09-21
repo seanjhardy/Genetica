@@ -9,7 +9,6 @@
 
 void updatePoints(GPUVector<Point>& points,
                   GPUVector<Connection>& connections,
-                  GPUVector<ParentChildLink>& parentChildLinks,
                   GPUValue<sf::FloatRect>& bounds,
                   float dt = 1.0f);
 

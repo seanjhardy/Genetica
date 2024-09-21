@@ -25,12 +25,12 @@ public:
     ~GPUValue();
 
     T* deviceData() { return d_data; }
-    const T* deviceData() const { return d_data; }
 
     void syncToHost();
     void syncToDevice();
 
-    const T& hostData() const { return h_data; }
+    T& hostData() { return h_data; }
+    T* hostDataPtr() { return &h_data; }
 };
 
 #include "../../../src/modules/cuda/GPUValue.tpp"

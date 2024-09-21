@@ -3,7 +3,6 @@
 #include "modules/utils/genomeUtils.hpp"
 #include "geneticAlgorithm/sequencer.hpp"
 #include <simulator/simulator.hpp>
-#include <geneticAlgorithm/genome.hpp>
 
 void GeneticAlgorithm::simulate(float dt) {
     for (LifeForm* lifeform : population) {
@@ -79,13 +78,9 @@ void GeneticAlgorithm::mutateGene(string& gene) const {
 LifeForm& GeneticAlgorithm::createRandomLifeForm() {
     Genome genome = Genome();
     genome.init();
-    float x = Simulator::get().getEnv().getBounds().left
-      + Random::random(Simulator::get().getEnv().getBounds().width);
-    float y = Simulator::get().getEnv().getBounds().top
-      + Random::random(Simulator::get().getEnv().getBounds().height);
-    auto* lifeForm = new LifeForm(&Simulator::get().getEnv(),
-                                  {x, y},
-                                  genome);
+
+    float2 pos = Simulator::get().getEnv().randomPos();
+    auto* lifeForm = new LifeForm(&Simulator::get().getEnv(), pos, genome);
     lifeForm->energy = 100;
     Simulator::get().getGA().addLifeForm(lifeForm);
     return *lifeForm;

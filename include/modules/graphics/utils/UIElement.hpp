@@ -21,7 +21,7 @@ class UIElement {
 public:
     explicit UIElement(const unordered_map<string, string>& properties, const vector<UIElement*>& children = {});
 
-    virtual void draw(sf::RenderTarget &target) const = 0;
+    virtual void draw(sf::RenderTarget &target) = 0;
 
     virtual bool handleEvent(const sf::Event &event) { return false; };
 
@@ -63,6 +63,7 @@ public:
     unordered_map<string, UIElement*> keys;
     bool visible = true;
     bool allowClick = true;
+    bool absolute = false;
     sf::Cursor cursor;
 
     unordered_map<string, function<void(const string &)>> styleSetters = {
@@ -75,13 +76,20 @@ public:
       {"cursor",   [this](const string &v) { CursorManager::set(cursor, v); }},
       {"visible",   [this](const string &v) { visible = (v == "true"); }},
       {"allowClick",   [this](const string &v) { allowClick = (v == "true"); }},
+      {"position", [this](const string &v) {
+          if (v == "absolute") {
+              absolute = true;
+          } else if (v == "relative") {
+              absolute = false;
+          }
+      }},
       {"transform", [this](const string &v) {
           transform = parseTransform(v);
           auto update = [this](float progress) {
               transform.setCurrentValue(progress);
               onLayout();
           };
-          animation = make_unique<Animation>(update);
+          animation = make_unique<Animation>(update, 0.0, 1.0, transform.getDuration());
           animation->completed = true;
       }}
     };

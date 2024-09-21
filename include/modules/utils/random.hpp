@@ -7,16 +7,6 @@
 
 class Random {
 public:
-    static bool randomBool() {
-        if (m_bits_left == 0) {
-            refreshRandom();
-        }
-        bool const ret = m_rand & 1;
-        --m_bits_left;
-        m_rand >>= 1;
-        return ret;
-    }
-
     static float random() {
         return (float)dist(rng);
     }
@@ -26,9 +16,18 @@ public:
     }
 
     static float random(float min, float max) {
-        return (max - min) * dist(rng) + min;
+        return (max - min) * (float)dist(rng) + min;
     }
 
+    static bool randomBool() {
+        if (m_bits_left == 0) {
+            refreshRandom();
+        }
+        bool const ret = m_rand & 1;
+        --m_bits_left;
+        m_rand >>= 1;
+        return ret;
+    }
     static std::string randomBase() {
         if (m_bits_left < 2) {
             refreshRandom();
