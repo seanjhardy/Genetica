@@ -1,5 +1,7 @@
 ![Genetica](./assets/Genetica.png)
 
+Based on an earlier project I made using Uava called [Hyperlife](https://github.com/seanjhardy/HyperLife)
+
 # PROJECT GENETICA
 A GPU-accelerated genetic algorithm using CUDA.
 
