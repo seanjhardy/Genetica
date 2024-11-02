@@ -13,7 +13,7 @@ public:
     void draw(sf::RenderTarget& target);
     bool handleEvent(const sf::Event& event);
     void resize(const sf::Vector2u& size);
-    void update(float dt, const sf::Vector2f& position);
+    bool update(float dt, const sf::Vector2f& position);
     void addFunction(const function<void()>& function);
     UIElement* getElement(const string& key);
     void reset();

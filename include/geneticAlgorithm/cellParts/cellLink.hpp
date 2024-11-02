@@ -8,7 +8,7 @@ class LifeForm;
 
 class CellLink {
 public:
-    static constexpr float INITIAL_DISTANCE = 0.1f;
+    static constexpr float INITIAL_DISTANCE = 2.0f;
 
     int connectionIdx;
     LifeForm* lifeForm;

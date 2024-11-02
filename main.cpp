@@ -6,14 +6,11 @@
 #include "stdexcept"
 #include <modules/graphics/fontManager.hpp>
 #include <modules/graphics/spriteManager.hpp>
-#include <modules/graphics/shaderManager.hpp>
 #include <modules/graphics/componentManager.hpp>
-#include <modules/utils/fastMath.hpp>
-#include <simulator/planet.hpp>
 
 int main() {
     try {
-        print("Starting Genetica v0.1");
+        print("Starting Genetica");
 
         // Initialising systems
         Styles::init();

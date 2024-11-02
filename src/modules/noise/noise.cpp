@@ -1,7 +1,7 @@
 #include <modules/noise/noise.hpp>
 #include <simulator/simulator.hpp>
 
-void Noise::applyToTexture(sf::RenderTexture* texture, sf::RenderStates states, float2 size, float seed) {
+void Noise::applyToTexture(sf::RenderTexture* texture, sf::RenderStates states, sf::FloatRect bounds, float seed) {
     ShaderManager::get("perlin")->setUniform("texture", sf::Shader::CurrentTexture);
     ShaderManager::get("perlin")->setUniform("seed", (float) (seed) / 10000.0f);
     auto *shaderMainColours = new sf::Glsl::Vec4[colours.size()];
@@ -13,8 +13,9 @@ void Noise::applyToTexture(sf::RenderTexture* texture, sf::RenderStates states, 
     }
     ShaderManager::get("perlin")->setUniformArray("colours", shaderMainColours, colours.size());
     ShaderManager::get("perlin")->setUniform("numColours", (int) colours.size());
+    ShaderManager::get("perlin")->setUniform("offset", sf::Glsl::Vec2(bounds.left,bounds.top));
     ShaderManager::get("perlin")->setUniform("resolution",
-                                             sf::Glsl::Vec2((float) size.x / 500.0f, (float) size.y / 500.0f));
+                                             sf::Glsl::Vec2((float) bounds.width, (float) bounds.height));
     if (animated) {
         ShaderManager::get("perlin")->setUniform("time", Simulator::get().getRealTime()/30.0f);
     }
@@ -25,27 +26,33 @@ void Noise::applyToTexture(sf::RenderTexture* texture, sf::RenderStates states, 
     texture->draw(sf::Sprite(texture->getTexture()), states);
 }
 
-void Add::applyToTexture(sf::RenderTexture* texture, float2 size, float seed) {
+void Add::applyToTexture(sf::RenderTexture* texture, sf::FloatRect bounds, float seed) {
     if (!update && !base.animated) {
         texture->draw(sf::Sprite(cachedTexture.getTexture()));
         return;
     }
-    print("UPDATE NOISE");
     sf::RenderStates states;
     cachedTexture.create(texture->getSize().x, texture->getSize().y);
     cachedTexture.clear(sf::Color::Transparent);
 
     states.texture = &cachedTexture.getTexture();//&texture->getTexture();
-    states.blendMode = sf::BlendAlpha;
+    states.blendMode = sf::BlendMode(
+      sf::BlendMode::One,      // Source factor (for color)
+      sf::BlendMode::OneMinusSrcColor,      // Destination factor (for color)
+      sf::BlendMode::Add,  // Subtraction equation (for color)
+      sf::BlendMode::One,      // Source factor (for alpha)
+      sf::BlendMode::One,      // Destination factor (for alpha)
+      sf::BlendMode::Add   // Subtraction equation (for alpha)
+    );
     states.shader = ShaderManager::get("perlin");
 
-    base.applyToTexture(&cachedTexture, states, size, seed);
+    base.applyToTexture(&cachedTexture, states, bounds, seed);
     cachedTexture.display();
     texture->draw(sf::Sprite(cachedTexture.getTexture()));
     update = false;
 }
 
-void Mask::applyToTexture(sf::RenderTexture* texture, float2 size, float seed) {
+void Mask::applyToTexture(sf::RenderTexture* texture, sf::FloatRect bounds, float seed) {
     if (!update) {
         texture->draw(sf::Sprite(cachedTexture.getTexture()));
         return;
@@ -62,7 +69,7 @@ void Mask::applyToTexture(sf::RenderTexture* texture, float2 size, float seed) {
     cachedTexture.clear(sf::Color::Transparent);
 
 
-    base.applyToTexture(&cachedTexture, baseStates, size, seed);
+    base.applyToTexture(&cachedTexture, baseStates, bounds, seed);
 
     sf::RenderStates maskStates;
     maskStates.texture = &cachedTexture.getTexture();
@@ -75,7 +82,7 @@ void Mask::applyToTexture(sf::RenderTexture* texture, float2 size, float seed) {
       sf::BlendMode::ReverseSubtract   // Subtraction equation (for alpha)
     );
     maskStates.shader = ShaderManager::get("perlin");
-    mask.applyToTexture(&cachedTexture, maskStates, size, seed + 10);
+    mask.applyToTexture(&cachedTexture, maskStates, bounds, seed + 10);
     cachedTexture.display();
 
     texture->draw(sf::Sprite(cachedTexture.getTexture()));

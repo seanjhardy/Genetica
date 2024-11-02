@@ -1,18 +1,12 @@
 #include <SFML/Graphics.hpp>
 #include <vector>
 #include <array>
-#include <cmath>
 #include <vector_types.h>
 #include <modules/graphics/vertexManager.hpp>
-#include <modules/utils/floatOps.hpp>
 #include <modules/utils/print.hpp>
 #include <modules/graphics/fontManager.hpp>
 #include <modules/graphics/spriteManager.hpp>
 #include <modules/graphics/shaderManager.hpp>
-
-#ifndef M_PI
-    #define M_PI 3.14159
-#endif
 
 
 VertexManager::VertexManager()
@@ -150,13 +144,29 @@ void VertexManager::addLine(const float2 start, const float2 end, const sf::Colo
     addTriangle(end - d, start - d, start + d, color);
 }
 
-void VertexManager::addText(const std::string text, const float2& pos, float size, const sf::Color& color) {
+void VertexManager::addText(const std::string& text, const float2& pos,
+                            float size, const sf::Color& color, const TextAlignment alignment, const float outline) {
     sf::Text label;
     label.setFont(*FontManager::get("russo"));
     label.setString(text);
-    label.setCharacterSize(size);
     label.setFillColor(color);
-    label.setPosition(pos.x, pos.y);
+    label.setOutlineThickness(outline);
+    label.setScale(size, size);
+
+    sf::FloatRect bounds = label.getGlobalBounds();
+    switch (alignment) {
+        case TextAlignment::Left:
+            label.setPosition(pos.x, pos.y);
+            break;
+
+        case TextAlignment::Center:
+            label.setPosition(pos.x - bounds.width / 2, pos.y - bounds.height / 2);
+            break;
+
+        case TextAlignment::Right:
+            label.setPosition(pos.x - bounds.width, pos.y);
+            break;
+    }
     labels.push_back(label);
 }
 

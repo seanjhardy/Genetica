@@ -1,10 +1,12 @@
 #ifndef POINT_HPP
 #define POINT_HPP
+
 #include "vector_types.h"
 #include "cuda_runtime.h"
 #include "SFML/Graphics.hpp"
 #include "iostream"
-#include <modules/graphics/vertexManager.hpp>
+
+class VertexManager;
 
 struct Connection {
     int p1;
@@ -47,9 +49,7 @@ public:
 
     __host__ __device__ void rotate(const float2& origin, float angle);
 
-    void render(VertexManager& viewer, sf::Color colour) const {
-        viewer.addCircle(pos, mass, colour);
-    }
+    void render(VertexManager& viewer, sf::Color colour) const;
 };
 
 

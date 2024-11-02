@@ -48,7 +48,7 @@ public:
     void render(VertexManager& window);
     void reset();
     bool handleEvent(const sf::Event& event, sf::Vector2f mousePos, Entity** selectedEntity);
-    void update(const sf::Vector2f& worldCoords, float zoom);
+    void update(const sf::Vector2f& worldCoords, float zoom, bool UIHovered);
     void cleanup();
 
     int addPoint(int id, float x, float y, float mass);

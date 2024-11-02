@@ -26,6 +26,7 @@ public:
     void handleEvent(const sf::Event &event);
     sf::FloatRect update(const sf::Vector2f& mousePos, const sf::FloatRect& bounds, float sensitivity = 15.0f);
     void render(VertexManager &vertexManager, const sf::FloatRect& bounds);
+    void reset();
 
     [[nodiscard]] int horizontalDirection() const;
     [[nodiscard]] int verticalDirection() const;

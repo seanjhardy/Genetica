@@ -208,6 +208,18 @@ Alignment parseAlignment(const string& value) {
     return Alignment::Start; // Default
 }
 
+
+TextAlignment parseTextAlignment(const string& value) {
+    if (value == "left") {
+        return TextAlignment::Left;
+    } else if (value == "center") {
+        return TextAlignment::Center;
+    } else if (value == "right") {
+        return TextAlignment::Right;
+    }
+    return TextAlignment::Left; // Default
+}
+
 UITransform parseTransform(const std::string& value) {
     std::istringstream iss(value);
     std::vector<std::string> tokens;

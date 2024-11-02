@@ -27,7 +27,7 @@ __global__ void findNearestKernel(Point *points, int numPoints,
     __shared__ float local_min_dist;
     __shared__ int local_min_idx;
 
-    // Initialize shared variables with extreme values
+    // Initialize shared variables with max values
     if (threadIdx.x == 0) {
         local_min_dist = minDistance * minDistance;
         local_min_idx = -1;
@@ -42,9 +42,9 @@ __global__ void findNearestKernel(Point *points, int numPoints,
         float dist_sq = dx * dx + dy * dy;
 
         // Use atomic operations to update the closest point
-        if (dist_sq < local_min_dist) {
-            atomicMinFloat(&local_min_dist, dist_sq);
-            local_min_idx = i;
+        atomicMinFloat(&local_min_dist, dist_sq);
+        if (dist_sq == local_min_dist) {
+            atomicExch(&local_min_idx, i);
         }
     }
     __syncthreads();
@@ -52,8 +52,8 @@ __global__ void findNearestKernel(Point *points, int numPoints,
     // Write the final result back to global memory
     if (threadIdx.x == 0) {
         if (local_min_idx != -1) {
-            *closestIndex = sqrt(local_min_dist);
-            *distance = local_min_idx;
+            *closestIndex = local_min_idx;
+            *distance = sqrt(local_min_dist);;
         } else {
             *closestIndex = -1.0f;
             *distance = -1;

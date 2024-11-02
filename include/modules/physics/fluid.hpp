@@ -66,7 +66,7 @@ public:
     float* vorticityField;
     float deltaTime = 0.0f;
 
-    float scale = 1;
+    float scale = 40;
     float width, height;
     sf::Texture texture;
     sf::Sprite sprite;

@@ -14,7 +14,7 @@ public:
     bool smoothNoise = false;
     bool animated = false;
 
-    void applyToTexture(sf::RenderTexture* texture, sf::RenderStates states, float2 size, float seed);
+    void applyToTexture(sf::RenderTexture* texture, sf::RenderStates states, sf::FloatRect bounds, float seed);
 };
 
 class NoiseLayer {
@@ -23,7 +23,7 @@ public:
     Noise base;
 
     explicit NoiseLayer(Noise base) : base(std::move(base)) {}
-    virtual void applyToTexture(sf::RenderTexture* texture, float2 size, float seed) = 0;
+    virtual void applyToTexture(sf::RenderTexture* texture, sf::FloatRect bounds, float seed) = 0;
 };
 
 class Add : public NoiseLayer {
@@ -32,7 +32,7 @@ public:
 
     explicit Add(Noise base) : NoiseLayer(std::move(base)) {}
 
-    void applyToTexture(sf::RenderTexture* texture, float2 size, float seed);
+    void applyToTexture(sf::RenderTexture* texture, sf::FloatRect bounds, float seed) override;
 };
 
 class Mask : public NoiseLayer {
@@ -42,7 +42,7 @@ public:
 
     Mask(Noise base, Noise mask) : NoiseLayer(std::move(base)), mask(std::move(mask)) {}
 
-    void applyToTexture(sf::RenderTexture* texture, float2 size, float seed);
+    void applyToTexture(sf::RenderTexture* texture, sf::FloatRect bounds, float seed) override;
 };
 
 

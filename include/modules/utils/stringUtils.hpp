@@ -10,5 +10,7 @@ string trim(const string& str);
 string stripHTML(const string &str);
 string readFile(const string& filename);
 vector<string> split(const string& str, const string& delimiter=" ");
+string roundToDecimalPlaces(float number, int decimalPlaces = 3);
+string formatNumber(float number, int precision=3);
 
 #endif

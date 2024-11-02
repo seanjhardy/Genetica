@@ -33,17 +33,35 @@ View::View(const unordered_map<string, string>& properties, vector<UIElement*> c
     };
 
     children = std::move(children);
+
+    std::vector<UIElement*> baseLayer;
+    for (auto child : children) {
+        if (child->absolute) {
+            layers.push_back({child});
+        } else {
+            baseLayer.push_back(child);
+        }
+    }
+    layers.push_back(baseLayer);
+
     setProperties(properties);
     restyle();
 }
 
 void View::onLayout() {
     UIElement::onLayout();
+    sf::FloatRect clampedBorder = border.getRadius();
+    float maxBorderRadius = std::min(layout.width/2, layout.height/2);
+    clampedBorder.left = clamp(0, clampedBorder.left, maxBorderRadius);
+    clampedBorder.top = clamp(0, clampedBorder.top, maxBorderRadius);
+    clampedBorder.width = clamp(0, clampedBorder.width, maxBorderRadius);
+    clampedBorder.height = clamp(0, clampedBorder.height, maxBorderRadius);
+
     if (shadow.getColor() != sf::Color::Transparent) {
         shadowShape = sf::RoundedRectangleShape(layout.getSize() +
                                                  sf::Vector2f(shadow.getSize(), shadow.getSize()));
         shadowShape.setFillColor(shadow.getColor());
-        shadowShape.setRadius(border.getRadius()[0]);
+        shadowShape.setRadius(clampedBorder);
         shadowShape.setPosition(layout.getPosition() +
                                  sf::Vector2f(shadow.getOffset()[0] - shadow.getSize()/2,
                                               shadow.getOffset()[1] - shadow.getSize()/2));
@@ -51,7 +69,7 @@ void View::onLayout() {
     shape.setFillColor(backgroundColor);
     shape.setOutlineColor(border.getColor());
     shape.setOutlineThickness(border.getStroke());
-    shape.setRadius(border.getRadius()[0]);
+    shape.setRadius(clampedBorder);
     shape.setPosition(layout.getPosition());
     shape.setSize(layout.getSize());
     updateLayout();
@@ -60,208 +78,6 @@ void View::onLayout() {
     }
 }
 
-void View::updateLayout() {
-    // Get all visible children
-    int numChildren = std::count_if(children.begin(), children.end(), [](UIElement* x) {
-        return x->visible && !x->absolute;
-    });
-    if (numChildren == 0) return;
-
-    sf::Vector2f containerSize = layout.getSize();
-
-    float horizontalPadding = padding[0].getValue() + padding[2].getValue();
-    float verticalPadding = padding[1].getValue() + padding[3].getValue();
-    containerSize -= sf::Vector2f(horizontalPadding, verticalPadding);
-
-    float availableMainSize = (flexDirection == Direction::Row) ? containerSize.x : containerSize.y;
-    float availableCrossSize = (flexDirection == Direction::Row) ? containerSize.y : containerSize.x;
-
-    availableMainSize -= gap * (numChildren - 1);
-
-    // First pass: calculate sizes for pixel and percent items, and count flex items
-    float totalFixedMainSize = 0;
-    int flexItemCount = 0;
-    float totalFlexGrow = 0;
-
-    for (const auto& child : children) {
-        if (!child->visible) continue;
-        if (child->absolute) continue;
-        const Size& mainSize = (flexDirection == Direction::Row) ? child->width : child->height;
-        switch (mainSize.getMode()) {
-            case Size::Mode::Pixel:
-                totalFixedMainSize += mainSize.getValue();
-                break;
-            case Size::Mode::Percent:
-                totalFixedMainSize += availableMainSize * mainSize.getValue() / 100.0f;
-                break;
-            case Size::Mode::Flex:
-                flexItemCount++;
-                totalFlexGrow += max(0.0f, mainSize.getValue());
-                break;
-        }
-    }
-
-    float remainingMainSize = max(0.0f, availableMainSize - totalFixedMainSize);
-    float flexUnit = (flexItemCount > 0) ? remainingMainSize / totalFlexGrow : 0;
-
-    // Second pass: set sizes and positions
-    float currentMainPos = (flexDirection == Direction::Row) ?
-            layout.left + padding[0].getValue() :
-            layout.top + padding[1].getValue();
-
-    for (const auto& child : children) {
-        UIElement* element = child;
-        if (!child->visible) continue;
-        const Size& mainSize = (flexDirection == Direction::Row) ? child->width : child->height;
-        const Size& crossSize = (flexDirection == Direction::Row) ? child->height : child->width;
-
-        float itemMainSize = 0;
-        float itemCrossSize = 0;
-
-        // Calculate main axis size
-        switch (mainSize.getMode()) {
-            case Size::Mode::Pixel:
-                itemMainSize = mainSize.getValue();
-                break;
-            case Size::Mode::Percent:
-                itemMainSize = availableMainSize * mainSize.getValue() / 100.0f;
-                break;
-            case Size::Mode::Flex:
-                itemMainSize = flexUnit * max(0.0f, mainSize.getValue());
-                break;
-        }
-
-        // Calculate cross axis size
-        switch (crossSize.getMode()) {
-            case Size::Mode::Pixel:
-                itemCrossSize = crossSize.getValue();
-                break;
-            case Size::Mode::Percent:
-                itemCrossSize = availableCrossSize * crossSize.getValue() / 100.0f;
-                break;
-            case Size::Mode::Flex:
-                itemCrossSize = availableCrossSize;
-                break;
-        }
-
-        // Set element size
-        sf::Vector2f elementSize = (flexDirection == Direction::Row)
-                                   ? sf::Vector2f(itemMainSize, itemCrossSize)
-                                   : sf::Vector2f(itemCrossSize, itemMainSize);
-        element->base_layout.width = elementSize.x;
-        element->base_layout.height = elementSize.y;
-
-        // Set element position
-        Alignment& alignment = (flexDirection == Direction::Row) ? columnAlignment : rowAlignment;
-        float crossPos = (flexDirection == Direction::Row) ?
-                layout.top + padding[1].getValue() :
-                layout.left + padding[0].getValue();
-
-        switch (alignment) {
-            case Alignment::Center:
-                crossPos += (availableCrossSize - itemCrossSize) / 2;
-                break;
-            case Alignment::End:
-                crossPos += availableCrossSize - itemCrossSize -
-                            ((flexDirection == Direction::Row) ? padding[2].getValue() : padding[3].getValue());
-                break;
-            default:
-                break;
-        }
-
-        if (child->absolute) {
-            float rowPos = layout.left + padding[0].getValue();
-            switch (rowAlignment) {
-                case Alignment::Center:
-                    rowPos += (availableMainSize - itemMainSize) / 2;
-                    break;
-                case Alignment::End:
-                    rowPos += availableMainSize - itemMainSize - padding[2].getValue();
-                    break;
-                default:
-                    break;
-            }
-            float columnPos = layout.top + padding[1].getValue();
-            switch (columnAlignment) {
-                case Alignment::Center:
-                    columnPos += (availableCrossSize - itemCrossSize) / 2;
-                    break;
-                case Alignment::End:
-                    columnPos += availableCrossSize - itemCrossSize - padding[3].getValue();
-                    break;
-                default:
-                    break;
-            }
-            element->base_layout.left = rowPos;
-            element->base_layout.top = columnPos;
-            continue;
-        }
-
-        sf::Vector2f elementPos = (flexDirection == Direction::Row)
-                                  ? sf::Vector2f(currentMainPos, crossPos)
-                                  : sf::Vector2f(crossPos, currentMainPos);
-        element->base_layout.left = elementPos.x;
-        element->base_layout.top = elementPos.y;
-        currentMainPos += itemMainSize + gap;
-    }
-
-    // Apply main alignment
-    float mainPadding = (flexDirection == Direction::Row)
-            ? padding[0].getValue() + padding[2].getValue()
-            : padding[1].getValue() + padding[3].getValue();
-    float totalChildrenSize = currentMainPos - gap - mainPadding;
-    float extraSpace = availableMainSize - totalChildrenSize;
-
-    if (extraSpace > 0) {
-        switch (columnAlignment) {
-            case Alignment::Center:
-                applyOffset(extraSpace / 2);
-                break;
-            case Alignment::End:
-                applyOffset(extraSpace);
-                break;
-            case Alignment::SpaceBetween:
-                distributeSpace(extraSpace, false, numChildren);
-                break;
-            case Alignment::SpaceAround:
-                distributeSpace(extraSpace, true, numChildren);
-                break;
-            default:
-                break;
-        }
-    }
-}
-
-void View::applyOffset(float offset) {
-    for (auto& child : children) {
-        if (!child->visible) continue;
-        if (child->absolute) continue;
-        if (flexDirection == Direction::Row) {
-            child->base_layout.left += offset;
-        } else {
-            child->base_layout.top += offset;
-        }
-    }
-}
-
-void View::distributeSpace(float space, bool includeEnds, int numVisibleChildren) {
-    int divisions = includeEnds ? numVisibleChildren + 1 : numVisibleChildren - 1;
-    if (divisions <= 0) return;
-
-    float gap = space / divisions;
-    float currentOffset = includeEnds ? gap : 0;
-
-    for (auto& child : children) {
-        if (!child->visible) continue;
-        if (child->absolute) continue;
-        if (flexDirection == Direction::Row) {
-            child->base_layout.left += currentOffset;
-        } else {
-            child->base_layout.top += currentOffset;
-        }
-        currentOffset += gap;
-    }
-}
 
 void View::draw(sf::RenderTarget& target) {
     if (!visible) return;
@@ -297,9 +113,207 @@ bool View::handleEvent(const sf::Event& event) {
     return false;
 }
 
-void View::update(float dt, const sf::Vector2f& position) {
-    UIElement::update(dt, position);
+bool View::update(float dt, const sf::Vector2f& position) {
+    bool hovered = false;
     for (auto& child : children) {
-        child->update(dt, position);
+        if (child->update(dt, position)) {
+            hovered = true;
+        };
     }
+    if (UIElement::update(dt, position) && allowClick && visible) {
+        hovered = true;
+    }
+    return hovered;
+}
+
+void View::updateLayout() {
+    for (auto& layer : layers) {
+        // Get all visible children
+        int numChildren = std::count_if(layer.begin(), layer.end(), [](UIElement* child) {
+            return child->visible;
+        });
+        if (numChildren == 0) continue;
+
+        sf::Vector2f containerSize = layout.getSize();
+
+        float horizontalPadding = padding[0].getValue() + padding[2].getValue();
+        float verticalPadding = padding[1].getValue() + padding[3].getValue();
+        containerSize -= sf::Vector2f(horizontalPadding, verticalPadding);
+
+        float availableMainSize = (flexDirection == Direction::Row) ? containerSize.x : containerSize.y;
+        float availableCrossSize = (flexDirection == Direction::Row) ? containerSize.y : containerSize.x;
+
+        availableMainSize -= gap * (numChildren - 1);
+
+        // First pass: calculate sizes for pixel and percent items, and count flex items
+        float totalFixedMainSize = 0;
+        int flexItemCount = 0;
+        float totalFlexGrow = 0;
+
+        for (const auto &child: layer) {
+            if (!child->visible) continue;
+            const Size &mainSize = (flexDirection == Direction::Row) ? child->width : child->height;
+            switch (mainSize.getMode()) {
+                case Size::Mode::Pixel:
+                    totalFixedMainSize += mainSize.getValue();
+                    break;
+                case Size::Mode::Percent:
+                    totalFixedMainSize += availableMainSize * mainSize.getValue() / 100.0f;
+                    break;
+                case Size::Mode::Flex:
+                    flexItemCount++;
+                    totalFlexGrow += max(0.0f, mainSize.getValue());
+                    break;
+            }
+        }
+
+        float remainingMainSize = max(0.0f, availableMainSize - totalFixedMainSize);
+        float flexUnit = (flexItemCount > 0) ? remainingMainSize / totalFlexGrow : 0;
+        float totalSpaceTaken = flexItemCount > 0 ? availableMainSize : totalFixedMainSize;
+
+        // Second pass: set sizes and positions
+        float currentMainPos = (flexDirection == Direction::Row) ?
+                               layout.left + padding[0].getValue() :
+                               layout.top + padding[1].getValue();
+
+        for (const auto &child: layer) {
+            UIElement *element = child;
+            if (!child->visible) continue;
+            Size childWidth = child->width.getValue() == 0 ? child->calculateWidth() : child->width;
+            Size childHeight = child->height.getValue() == 0 ? child->calculateHeight() : child->height;
+            Size mainSize = (flexDirection == Direction::Row) ? childWidth : childHeight;
+            Size crossSize = (flexDirection == Direction::Row) ? childHeight : childWidth;
+
+            float itemMainSize = 0;
+            float itemCrossSize = 0;
+
+            // Calculate main axis size
+            switch (mainSize.getMode()) {
+                case Size::Mode::Pixel:
+                    itemMainSize = mainSize.getValue();
+                    break;
+                case Size::Mode::Percent:
+                    itemMainSize = availableMainSize * mainSize.getValue() / 100.0f;
+                    break;
+                case Size::Mode::Flex:
+                    itemMainSize = flexUnit * max(0.0f, mainSize.getValue());
+                    break;
+            }
+
+            // Calculate cross axis size
+            switch (crossSize.getMode()) {
+                case Size::Mode::Pixel:
+                    itemCrossSize = crossSize.getValue();
+                    break;
+                case Size::Mode::Percent:
+                    itemCrossSize = availableCrossSize * crossSize.getValue() / 100.0f;
+                    break;
+                case Size::Mode::Flex:
+                    itemCrossSize = availableCrossSize;
+                    break;
+            }
+
+            // Set element size
+            sf::Vector2f elementSize = (flexDirection == Direction::Row)
+                                       ? sf::Vector2f(itemMainSize, itemCrossSize)
+                                       : sf::Vector2f(itemCrossSize, itemMainSize);
+            element->base_layout.width = elementSize.x;
+            element->base_layout.height = elementSize.y;
+
+            // Set element position
+            Alignment &alignment = (flexDirection == Direction::Row) ? columnAlignment : rowAlignment;
+            float crossPos = (flexDirection == Direction::Row) ?
+                             layout.top + padding[1].getValue() :
+                             layout.left + padding[0].getValue();
+
+            switch (alignment) {
+                case Alignment::Center:
+                    crossPos += (availableCrossSize - itemCrossSize) / 2;
+                    break;
+                case Alignment::End:
+                    crossPos += availableCrossSize - itemCrossSize -
+                                ((flexDirection == Direction::Row) ? padding[2].getValue() : padding[3].getValue());
+                    break;
+                default:
+                    break;
+            }
+
+            sf::Vector2f elementPos = (flexDirection == Direction::Row)
+                                      ? sf::Vector2f(currentMainPos, crossPos)
+                                      : sf::Vector2f(crossPos, currentMainPos);
+            element->base_layout.left = elementPos.x;
+            element->base_layout.top = elementPos.y;
+            currentMainPos += itemMainSize + gap;
+        }
+
+        // Apply main alignment
+        float extraSpace = max(availableMainSize - totalSpaceTaken, 0.0f);
+
+        if (extraSpace > 0) {
+            Alignment mainAlignment = (flexDirection == Direction::Row) ? rowAlignment : columnAlignment;
+            switch (mainAlignment) {
+                case Alignment::Center:
+                    applyOffset(layer, extraSpace / 2);
+                    break;
+                case Alignment::End:
+                    applyOffset(layer, extraSpace);
+                    break;
+                case Alignment::SpaceBetween:
+                    distributeSpace(layer, extraSpace, false, numChildren);
+                    break;
+                case Alignment::SpaceAround:
+                    distributeSpace(layer, extraSpace, true, numChildren);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+}
+
+void View::applyOffset(const std::vector<UIElement*>& elements, float offset) {
+    for (auto& child : elements) {
+        if (!child->visible) continue;
+        if (flexDirection == Direction::Row) {
+            child->base_layout.left += offset;
+        } else {
+            child->base_layout.top += offset;
+        }
+    }
+}
+
+void View::distributeSpace(const std::vector<UIElement*>& elements, float space, bool includeEnds, int numVisibleChildren) {
+    int divisions = includeEnds ? numVisibleChildren + 1 : numVisibleChildren - 1;
+    if (divisions <= 0) return;
+
+    float gap = space / divisions;
+    float currentOffset = includeEnds ? gap : 0;
+
+    for (auto& child : elements) {
+        if (!child->visible) continue;
+        if (flexDirection == Direction::Row) {
+            child->base_layout.left += currentOffset;
+        } else {
+            child->base_layout.top += currentOffset;
+        }
+        currentOffset += gap;
+    }
+}
+
+Size View::calculateWidth() {
+    float currentWidth = padding[0].getValue() + padding[2].getValue();
+    for (auto child : children) {
+        if (!child->visible || child->absolute) continue;
+        currentWidth += child->calculateWidth().getValue() + gap;
+    }
+    return Size::Pixel(currentWidth - gap);
+}
+
+Size View::calculateHeight() {
+    float currentHeight = padding[1].getValue() + padding[3].getValue();
+    for (auto child : children) {
+        if (!child->visible || child->absolute) continue;
+        currentHeight += child->calculateHeight().getValue() + gap;
+    }
+    return Size::Pixel(currentHeight - gap);
 }

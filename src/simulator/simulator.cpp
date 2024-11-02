@@ -11,10 +11,11 @@ Simulator& Simulator::get(){
 
 // Instantiate simulator
 Simulator::Simulator()
-      : env(sf::FloatRect(0, 0, 10000, 6000)),
+      : env(sf::FloatRect(0, 0, 500, 500)),
         window(sf::VideoMode(800, 600), "Genetica"),
         state(State::Playing),
         uiManager(&window){
+    window.setMouseCursor(CursorManager::getDefault());
 }
 
 void Simulator::setup() {
@@ -56,8 +57,8 @@ void Simulator::run() {
             }
         }
         // Handle continuous events (e.g. holding down a key/hovering over a UI element)
-        uiManager.update(deltaTime, mousePos);
-        env.update(worldCoords, simulation->getCamera()->getZoom());
+        bool UIHovered = uiManager.update(deltaTime, mousePos);
+        env.update(worldCoords, simulation->getCamera()->getZoom(), UIHovered);
 
         // Update simulation state if playing
         if (state == State::Playing) {
@@ -110,10 +111,9 @@ void Simulator::updateWindowView() {
 }
 
 void Simulator::setTab(Tab tab) {
-    uiManager.getScreen("simulation")->getElement("LifeformTab")->overrideProperty("style",
-                                                                                std::string(tab == Tab::LifeForm ? "visible: true" : "visible: false"));
-    uiManager.getScreen("simulation")->getElement("SimulationTab")->overrideProperty("style",
-                                                                                   std::string(tab == Tab::Simulation ? "visible: true" : "visible: false"));
+    string lifeFormTab = std::string(tab == Tab::LifeForm ? "visible: true" : "visible: false");
+    uiManager.getScreen("simulation")->getElement("genomeTab")->overrideProperty("style", lifeFormTab);
+    uiManager.getScreen("simulation")->getElement("grnTab")->overrideProperty("style", lifeFormTab);
     uiManager.getScreen("simulation")->resize(window.getSize());
 }
 

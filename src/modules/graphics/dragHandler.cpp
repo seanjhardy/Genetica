@@ -2,6 +2,7 @@
 #include "SFML/Graphics.hpp"
 #include "simulator/simulator.hpp"
 #include "modules/graphics/cursorManager.hpp"
+#include <modules/utils/stringUtils.hpp>
 
 void DragHandler::handleEvent(const sf::Event &event) {
     if (event.type == sf::Event::MouseButtonPressed) {
@@ -66,7 +67,6 @@ sf::FloatRect DragHandler::update(const sf::Vector2f& mousePos, const sf::FloatR
     }
 
     if (dragging) {
-
         int horizontal = horizontalDirection();
         int vertical = verticalDirection();
         return {horizontal == -1 ? delta.x : 0,
@@ -81,17 +81,43 @@ sf::FloatRect DragHandler::update(const sf::Vector2f& mousePos, const sf::FloatR
 void DragHandler::render(VertexManager &vertexManager, const sf::FloatRect& bounds) {
     if (dragHandle == DragHandle::None) return;
 
-    sf::Color highlight = sf::Color(0,255,0);
+    float zoom = vertexManager.camera->getZoom();
+    float labelSize = 0.5f / zoom;
+    vertexManager.addText("(" + formatNumber(bounds.left) + ", " + formatNumber(bounds.top) + ")",
+                          {bounds.left, bounds.top}, labelSize, sf::Color::White,
+                          TextAlignment::Center);
 
+    vertexManager.addText(formatNumber(bounds.width),
+                          {bounds.left + bounds.width/2,
+                             bounds.top - 20 / zoom}, labelSize, sf::Color::White,
+                          TextAlignment::Center);
+
+    vertexManager.addText(formatNumber(bounds.height),
+                          {bounds.left - 20 / zoom,
+                             bounds.top + bounds.height/2}, labelSize, sf::Color::White,
+                          TextAlignment::Right);
+
+    sf::Color highlight = sf::Color(0,255,0);
+    const float thickness = 2.0f / zoom;
     if (horizontalDirection() == -1) {
-        vertexManager.addLine({bounds.left, bounds.top}, {bounds.left, bounds.top + bounds.height}, highlight, 2);
+        vertexManager.addLine({bounds.left, bounds.top}, {bounds.left, bounds.top + bounds.height},
+                              highlight, thickness);
     } if (horizontalDirection() == 1) {
-        vertexManager.addLine({bounds.left + bounds.width, bounds.top}, {bounds.left + bounds.width, bounds.top + bounds.height}, highlight, 2);
+        vertexManager.addLine({bounds.left + bounds.width, bounds.top}, {bounds.left + bounds.width, bounds.top + bounds.height},
+                              highlight, thickness);
     } if (verticalDirection() == -1) {
-        vertexManager.addLine({bounds.left, bounds.top}, {bounds.left + bounds.width, bounds.top}, highlight, 2);
+        vertexManager.addLine({bounds.left, bounds.top}, {bounds.left + bounds.width, bounds.top},
+                              highlight, thickness);
     } if (verticalDirection() == 1) {
-        vertexManager.addLine({bounds.left, bounds.top + bounds.height}, {bounds.left + bounds.width, bounds.top + bounds.height}, highlight, 2);
+        vertexManager.addLine({bounds.left, bounds.top + bounds.height}, {bounds.left + bounds.width, bounds.top + bounds.height},
+                              highlight, thickness);
     }
+}
+
+void DragHandler::reset() {
+    dragHandle = DragHandle::None;
+    dragging = false;
+    Simulator::get().getWindow().setMouseCursor(CursorManager::getDefault());
 }
 
 int DragHandler::horizontalDirection() const {

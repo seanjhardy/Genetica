@@ -1,9 +1,6 @@
 #include <modules/utils/fastMath.hpp>
 #include <cmath>
-
-#ifndef M_PI_4
-#define M_PI_4 0.78539816339
-#endif
+#include <modules/utils/mathUtils.hpp>
 
 float FastMath::cosTable[FastMath::TABLE_SIZE];
 float FastMath::sinTable[FastMath::TABLE_SIZE];

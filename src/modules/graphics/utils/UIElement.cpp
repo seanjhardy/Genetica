@@ -2,7 +2,6 @@
 #include <string>
 #include "modules/graphics/utils/styleParser.hpp"
 #include "modules/graphics/utils/UIElement.hpp"
-#include <simulator/simulator.hpp>
 
 using namespace std;
 
@@ -33,7 +32,7 @@ void UIElement::setStyle(unordered_map<string, string> styleProps) {
     }
 }
 
-void UIElement::update(const float dt, const sf::Vector2f &position) {
+bool UIElement::update(const float dt, const sf::Vector2f &position) {
     if (!hovered && contains(position)) {
         hovered = true;
         //Simulator::get().setMouseCursor(depth, CursorManager::getDefault());
@@ -47,6 +46,7 @@ void UIElement::update(const float dt, const sf::Vector2f &position) {
     if (animation != nullptr && !animation->completed) {
         animation->update(dt);
     }
+    return hovered;
 }
 
 void UIElement::restyle() {
@@ -77,8 +77,8 @@ void UIElement::overrideProperty(const string& property, const string& s) {
 
 void UIElement::onLayout() {
     layout = base_layout;
-    layout.left += margin[0].getValue();
-    layout.top += margin[1].getValue();
+    layout.left += margin[0].getValue() + left;
+    layout.top += margin[1].getValue() + top;
     layout.width -= margin[0].getValue() + margin[2].getValue();
     layout.height -= margin[1].getValue() + margin[3].getValue();
 

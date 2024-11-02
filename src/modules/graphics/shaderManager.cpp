@@ -11,6 +11,7 @@ void ShaderManager::init() {
     // Hardcoded map of key to file path
     loadShader("texture", "./assets/shaders/texture.vert", "./assets/shaders/texture.frag");
     loadShader("perlin", "", "./assets/shaders/perlin.frag");
+    loadShader("genome", "", "./assets/shaders/genome.frag");
 }
 
 void ShaderManager::loadShader(const std::string &key, const std::string &vertexPath, const std::string &fragmentPath) {

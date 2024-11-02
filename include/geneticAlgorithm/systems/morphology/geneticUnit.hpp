@@ -31,8 +31,8 @@ public:
         }
         distance = std::sqrt(distance);
         if (distance > GeneticUnit::DISTANCE_THRESHOLD) return 0.0;
-
-        return ((sign * other.sign) ? 1.0f : -1.0f) *
+        float affinitySign = (sign == other.sign) ? 1.0f : -1.0f;
+        return affinitySign *
              (2.0f * std::abs(modifier * other.modifier)
                 * (GeneticUnit::DISTANCE_THRESHOLD - distance)) /
              (10.0f * distance + std::abs(modifier * other.modifier));

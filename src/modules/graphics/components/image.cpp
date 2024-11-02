@@ -8,6 +8,9 @@ ImageElement::ImageElement(const unordered_map<string, string>& properties)
     styleSetters["resizeMode"] = [this](const string& value) {
         resizeMode = value;
     };
+    styleSetters["tint"] = [this](const string& value) {
+        tintColor = parseColor(value);
+    };
     styleSetters["image"] = [this](const string& value) {
         sprite = *SpriteManager::get(value);
     };
@@ -36,9 +39,21 @@ void ImageElement::onLayout() {
         sprite.setScale(layout.width / sprite.getTextureRect().getSize().x,
                         layout.height / sprite.getTextureRect().getSize().y);
     }
+
+    if (tintColor != sf::Color::Transparent) {
+        sprite.setColor(tintColor);
+    }
 }
 
 void ImageElement::draw(sf::RenderTarget& target) {
     if (!visible) return;
     target.draw(sprite);
+}
+
+Size ImageElement::calculateWidth() {
+    return Size::Pixel(width.getValue() + padding[0].getValue() + padding[2].getValue());
+}
+
+Size ImageElement::calculateHeight() {
+    return Size::Pixel(height.getValue() + padding[1].getValue() + padding[3].getValue());
 }

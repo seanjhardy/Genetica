@@ -7,6 +7,8 @@ void sequence(LifeForm* lifeForm, const Genome& genome) {
 
     // Create head cell
     Cell* head = new Cell(lifeForm, nullptr, {lifeForm->pos.x, lifeForm->pos.y}, 5.0f);
+    head->rotation = Random::random(0, M_PI_2);
+
     // Add initial products to cell
     for (auto& product: lifeForm->grn.factors) {
         head->products[&product] = 0.0f;

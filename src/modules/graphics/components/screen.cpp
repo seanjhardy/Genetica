@@ -48,12 +48,14 @@ bool Screen::handleEvent(const sf::Event& event) {
     return false;
 }
 
-void Screen::update(const float dt, const sf::Vector2f& position) {
+bool Screen::update(const float dt, const sf::Vector2f& position) {
+    bool hovered = false;
     for (auto& element : elements) {
-        if (element->contains(position)) {
-            element->update(dt, position);
-        }
+        if (element->update(dt, position)) {
+            hovered = true;
+        };
     }
+    return hovered;
 }
 
 void Screen::reset() {

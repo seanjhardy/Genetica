@@ -75,5 +75,5 @@ void updatePoints(GPUVector<Point> &points,
                        (numRocks + threadsPerBlock - 1) / threadsPerBlock, 1);
     computeCollisions<<<blocksPerGrid, threadsPerBlockDim>>>(points.deviceData(),
                                                 numPoints, rocks.deviceData(), numRocks);*/
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
 }

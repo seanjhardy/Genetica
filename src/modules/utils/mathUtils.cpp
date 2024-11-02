@@ -3,9 +3,6 @@
 #include <modules/physics/point.hpp>
 #include <modules/utils/floatOps.hpp>
 #include <modules/utils/mathUtils.hpp>
-#ifndef M_PI_2
-    #define M_PI_2 6.283185f
-#endif
 
 std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& point2, float r1, float r2) {
     float x1 = point1.pos.x, y1 = point1.pos.y;
@@ -35,7 +32,11 @@ sf::Color interpolate(const sf::Color c1, const sf::Color c2, float x) {
     int r = static_cast<int>(c1.r + (c2.r - c1.r) * x);
     int g = static_cast<int>(c1.g + (c2.g - c1.g) * x);
     int b = static_cast<int>(c1.b + (c2.b - c1.b) * x);
-    return sf::Color(r, g, b);
+    int a = static_cast<int>(c1.a + (c2.a - c1.a) * x);
+    return sf::Color(clamp(0, r, 255),
+                     clamp(0, g, 255),
+                     clamp(0, b, 255),
+                     clamp(0, a, 255));
 }
 
 float clamp(float min_val, float x, float max_val) {

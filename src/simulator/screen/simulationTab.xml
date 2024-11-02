@@ -1,7 +1,0 @@
-<View key="SimulationTab" class="container" style="flex-direction: row; width: 100%; height: 100%;">
-    <!-- Control panel and info -->
-    <ControlPanel/>
-    <View class="container" style="background: #215057; flex-direction: column; width: 200px; height: 100%;">
-        <Text key="simulationInfoLabel" style="font-size: 18px;"/>
-    </View>
-</View>

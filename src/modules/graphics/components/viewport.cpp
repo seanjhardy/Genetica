@@ -6,7 +6,7 @@ Viewport::Viewport(const unordered_map<string, string> &properties) : UIElement(
         backgroundColor = parseColor(value);
     };
     propertySetters["camera"] = [this](const string &value) {
-        //camera.setLocked(value == "locked");
+        camera.setLocked(value == "locked");
     };
     propertySetters["bounds"] = [this](const string &value) {
         Size boundArray[4] = {Size::Pixel(0), Size::Pixel(0), Size::Pixel(0), Size::Pixel(0)};
@@ -40,9 +40,10 @@ bool Viewport::handleEvent(const sf::Event &event) {
     return false;
 }
 
-void Viewport::update(float dt, const sf::Vector2f &position) {
+bool Viewport::update(float dt, const sf::Vector2f &position) {
     UIElement::update(dt, position);
     camera.update(dt);
+    return false;
 }
 
 sf::Vector2f Viewport::mapPixelToCoords(sf::Vector2f mousePos) {
@@ -69,4 +70,12 @@ void Viewport::onLayout() {
         camera.setView(sf::View(sf::FloatRect(0, 0, layout.width, layout.height)));
     }
     camera.updateView();
+}
+
+Size Viewport::calculateWidth() {
+    return width;
+}
+
+Size Viewport::calculateHeight() {
+    return height;
 }

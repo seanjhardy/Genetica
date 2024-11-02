@@ -11,7 +11,7 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
     for (auto [id, sequence] : genome.hoxGenes) {
         std::string rna = std::move(sequence); // Create rna copy
         try {
-            int type = readBase(rna);
+            int type = (int)(readUniqueBaseRange(rna, 2) * 16) % 5;
             bool sign = readBase(rna) >= 2;
             bool active = readBase(rna) >= 1;
             if (!active) continue;
@@ -40,16 +40,7 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
                 int subType = (int)(readUniqueBaseRange(rna, 3) * 64) % 6;
                 Gene::FactorType externalFactorType = externalFactorTypes[subType];
 
-                // If this grn already contains a special node
-                // (e.g. maternal factor, crowding, etc.) of this type, skip
-                if (std::any_of(lifeForm->grn.factors.begin(), lifeForm->grn.factors.end(),
-                                [externalFactorType](const Gene& gene) {
-                                    return gene.factorType == externalFactorType;
-                                })) {
-                    continue;
-                }
-                float2 extra = {(readBase(rna) >= 2 ? -1 : 1) * readUniqueBaseRange(rna, 8),
-                                (readBase(rna) >= 2 ? -1 : 1) * readUniqueBaseRange(rna, 8)};
+                float2 extra = {readUniqueBaseRange(rna, 8), readUniqueBaseRange(rna, 8)};
                 Gene externalFactor = Gene(externalFactorType,
                                            sign, modifier, embedding, extra);
                 lifeForm->grn.factors.push_back(externalFactor);
@@ -57,8 +48,19 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
 
             // Gene effectors (outputs of grn)
             if (type == 1) {
-                int subType = (int)(readUniqueBaseRange(rna, 3) * 64) % 7;
-                Effector effector = Effector(static_cast<Effector::EffectorType>(subType),
+                Effector::EffectorType subType = static_cast<Effector::EffectorType>(
+                  (int)(readUniqueBaseRange(rna, 4) * 256) % (int)Effector::EffectorType::EFFECTOR_LENGTH);
+
+                // If this grn already contains a special node
+                // (e.g. maternal factor, crowding, etc.) of this type, skip
+                if (std::any_of(lifeForm->grn.effectors.begin(), lifeForm->grn.effectors.end(),
+                                [subType](const Effector& effector) {
+                                    return effector.effectorType == subType;
+                                })) {
+                    continue;
+                }
+
+                Effector effector = Effector(subType,
                                              sign, modifier, embedding);
                 lifeForm->grn.effectors.push_back(effector);
             }
@@ -71,13 +73,14 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
                                                       ? Promoter::PromoterType::Additive
                                                       : Promoter::PromoterType::Multiplicative;
                 Promoter promoter = Promoter(promoterType, sign, modifier, embedding);
-                if (readingPromoters) {
-                    regulatoryUnit.promoters.push_back(lifeForm->grn.promoters.size());
-                } else {
+
+                if (!readingPromoters) {
                     lifeForm->grn.regulatoryUnits.push_back(regulatoryUnit);
                     regulatoryUnit = RegulatoryUnit();
                     readingPromoters = true;
                 }
+
+                regulatoryUnit.promoters.push_back(lifeForm->grn.promoters.size());
                 lifeForm->grn.promoters.push_back(promoter);
             }
 
@@ -90,6 +93,7 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
 
                 Gene gene = Gene(geneTypes[type - 3], sign, modifier, embedding);
 
+                if (regulatoryUnit.promoters.empty()) continue;
                 readingPromoters = false;
                 regulatoryUnit.factors.push_back(lifeForm->grn.factors.size());
                 lifeForm->grn.factors.push_back(gene);

@@ -2,7 +2,7 @@
 #include <sstream>
 #include <regex>
 #include <fstream>
-#include <modules/utils/print.hpp>
+#include <iomanip>
 
 using namespace std;
 
@@ -70,4 +70,21 @@ vector<string> split(const string& str, const string& delimiter) {
     }
     tokens.push_back(str.substr(start));
     return tokens;
+}
+
+string roundToDecimalPlaces(float number, int decimalPlaces) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(decimalPlaces) << number;
+    std::string str = oss.str();
+    return str;
+}
+
+string formatNumber(float number, int precision=3) {
+    if (round(number) == 0) return "0";
+
+    int digits = log10(number) + 1; // Find the number of digits
+    int factor = pow(10, digits - precision); // Calculate the rounding factor
+
+    int rounded = (number / factor) * factor; // Round the number
+    return to_string(rounded);
 }

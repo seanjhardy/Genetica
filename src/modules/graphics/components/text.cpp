@@ -12,6 +12,9 @@ Text::Text(const unordered_map<string, string>& properties, const string& value)
     styleSetters["font-size"] = [this](const string& v) {
         fontSize = parseValue(v);
     };
+    styleSetters["text-align"] = [this](const string& v) {
+        textAlignment = parseTextAlignment(v);
+    };
     styleSetters["font"] = [this](const string& v) {
         font = FontManager::get(v);
     };
@@ -46,4 +49,12 @@ void Text::setText(const string& value) {
     labelElement.setString(text);
     labelElement.setOrigin(labelElement.getGlobalBounds().getSize() / 2.f + labelElement.getLocalBounds().getPosition());
     labelElement.setPosition(layout.getPosition() + (layout.getSize() / 2.f));
+}
+
+Size Text::calculateWidth() {
+    return Size::Pixel(labelElement.getGlobalBounds().width + padding[0].getValue() + padding[2].getValue());
+}
+
+Size Text::calculateHeight() {
+    return Size::Pixel(labelElement.getGlobalBounds().height + padding[1].getValue() + padding[3].getValue());
 }

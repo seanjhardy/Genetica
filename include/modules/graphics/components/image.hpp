@@ -11,8 +11,12 @@ public:
     void onLayout() override;
     void getSprite();
 
+    Size calculateWidth() override;
+    Size calculateHeight() override;
+
 private:
     sf::Sprite sprite;
+    sf::Color tintColor = sf::Color::Transparent;
     string resizeMode = "contain";
 };
 

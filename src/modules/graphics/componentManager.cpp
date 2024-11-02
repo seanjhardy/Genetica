@@ -1,5 +1,8 @@
 #include <modules/graphics/componentManager.hpp>
 #include <modules/graphics/utils/HTMLParser.hpp>
+#include <iostream>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <string>
 
@@ -8,14 +11,16 @@ using namespace std;
 unordered_map<string, string> ComponentManager::components;
 
 void ComponentManager::init() {
-    std::unordered_map<std::string, std::string> componentMappings = {
-      //Simulation Screen
-      {"simulationScreen", "./assets/components/simulationScreen.xml"},
-      {"ControlPanel", "./assets/components/controlPanel.xml"},
-      {"SimulationTab", "./assets/components/simulationTab.xml"},
-      {"LifeformTab", "./assets/components/lifeformTab.xml"},
-      // Main menu
-    };
+    std::unordered_map<std::string, std::string> componentMappings;
+
+    // Recursively fetch all .xml components
+    for (const auto& entry : std::filesystem::recursive_directory_iterator("./assets/components/")) {
+        if (entry.is_regular_file() && entry.path().extension() == ".xml") {
+            std::string filename = entry.path().stem().string(); // Get filename without extension
+            std::string filepath = entry.path().string();
+            componentMappings[filename] = filepath;
+        }
+    }
 
     for (const auto& pair : componentMappings) {
         const std::string& key = pair.first;

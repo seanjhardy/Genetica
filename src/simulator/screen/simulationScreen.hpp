@@ -44,15 +44,37 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         }
     });
 
-    FunctionManager::add("showUI", [simulator, screen]() {
-        screen->getElement("bottomBar")->overrideProperty("style", "visible: true");
+    FunctionManager::add("showUI", [screen]() {
+        screen->getElement("UI")->overrideProperty("style", "visible: true");
         screen->getElement("showUIView")->overrideProperty("style", "visible: false");
         screen->getElement("root")->onLayout();
     });
 
-    FunctionManager::add("hideUI", [simulator, screen]() {
-        screen->getElement("bottomBar")->overrideProperty("style", "visible: false");
+    FunctionManager::add("hideUI", [screen]() {
+        screen->getElement("UI")->overrideProperty("style", "visible: false");
         screen->getElement("showUIView")->overrideProperty("style", "visible: true");
+        screen->getElement("root")->onLayout();
+    });
+
+    FunctionManager::add("toggleGenomeTab", [screen]() {
+        if (screen->getElement("genomePanel")->visible) {
+            screen->getElement("genomePanel")->overrideProperty("style", "visible: false; ");
+        } else {
+            screen->getElement("genomePanel")->overrideProperty("style", "visible: true; ");
+        }
+        screen->getElement("root")->onLayout();
+    });
+
+    FunctionManager::add("copyGenome", [simulator]() {
+        //dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->genome;
+    });
+
+    FunctionManager::add("toggleGRNTab", [screen]() {
+        if (screen->getElement("grnPanel")->visible) {
+            screen->getElement("grnPanel")->overrideProperty("style", "visible: false; ");
+        } else {
+            screen->getElement("grnPanel")->overrideProperty("style", "visible: true; ");
+        }
         screen->getElement("root")->onLayout();
     });
 
@@ -81,6 +103,7 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->kill();
     });
 
+
     FunctionManager::add("randomPlanet", [screen, simulator]() {
         Planet* planet;
         do {
@@ -95,28 +118,61 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
     });
 
     screen->addFunction([simulator, screen]() {
-        if (simulator->getSelectedEntity() == nullptr) {
-            string text = "Time: " + simulator->getTimeString() +
-                   "\nStep: " + std::to_string(simulator->getStep()) +
-                   "\nSpeed: " + std::format("{:.2f}", simulator->getSpeed()) +
-                   "\nLifeForms: " + std::to_string(simulator->getGA().getPopulation().size()) +
-                   "\nCells: " + std::to_string(simulator->getEnv().getPoints().size()) +
-                   "\nSpecies: " + std::to_string(simulator->getGA().getSpecies().size());
-            dynamic_cast<Text*>(screen->getElement("simulationInfoLabel"))->setText(text);
-        } else if (dynamic_cast<LifeForm*>(simulator->getSelectedEntity())) {
+        dynamic_cast<Text*>(screen->getElement("time"))->setText(simulator->getTimeString());
+        dynamic_cast<Text*>(screen->getElement("step"))->setText(std::to_string(simulator->getStep()));
+        dynamic_cast<Text*>(screen->getElement("speed"))->setText("x" + roundToDecimalPlaces(simulator->getSpeed(), 2));
+
+        dynamic_cast<Text*>(screen->getElement("species"))->setText(std::to_string(simulator->getGA().getSpecies().size()));
+        dynamic_cast<Text*>(screen->getElement("lifeforms"))->setText(std::to_string(simulator->getGA().getPopulation().size()));
+        dynamic_cast<Text*>(screen->getElement("cells"))->setText(std::to_string(simulator->getEnv().getPoints().size()));
+
+        float temperature = simulator->getEnv().getPlanet().temperature;
+        float octave1 = sin(0.1 * simulator->getRealTime());
+        float octave2 = sin(0.05 * simulator->getRealTime());
+        float octave3 = sin(2.0 * simulator->getRealTime());
+        temperature += octave1 * 5 + octave2 * 1 + octave3 * 0.2;
+        float thermometerTemperature = clamp(-10, temperature, 50);
+        sf::Color thermometerColor;
+        if (temperature <= 10) {
+            thermometerColor = interpolate(sf::Color(50, 50, 255), sf::Color(200, 200, 255),
+                                                     (thermometerTemperature + 20)/30);
+        } else {
+            thermometerColor = interpolate(sf::Color(255, 200, 100), sf::Color(255, 100, 0),
+                                                     (thermometerTemperature)/50);
+        }
+        std::string thermometerColorString = "rgb("
+          + std::to_string(thermometerColor.r) + ","
+          + std::to_string(thermometerColor.g) + ","
+          + std::to_string(thermometerColor.b) + ")";
+        dynamic_cast<Text*>(screen->getElement("temperature"))
+        ->setText(roundToDecimalPlaces(temperature, 2) + "C");
+        dynamic_cast<ImageElement*>(screen->getElement("thermometer"))
+        ->overrideProperty("style", "tint: " + thermometerColorString);
+
+        if (dynamic_cast<LifeForm*>(simulator->getSelectedEntity())) {
             auto selectedLifeform = dynamic_cast<LifeForm*>(simulator->getSelectedEntity());
             string text = "Energy: " + std::to_string(selectedLifeform->energy);
-            dynamic_cast<Text*>(screen->getElement("lifeformInfoLabel"))->setText(text);
 
-            selectedLifeform->grn.render(((Viewport*)screen->getElement("geneRegulatoryNetwork"))->getVertexManager());
-            sf::FloatRect layout = ((Viewport*)screen->getElement("geneRegulatoryNetwork"))->layout;
-            float zoom = std::min(layout.width, layout.height);
-            ((Viewport*)screen->getElement("geneRegulatoryNetwork"))->getCamera()->setZoom(zoom);
-            ((Viewport*)screen->getElement("geneRegulatoryNetwork"))->getCamera()->setPosition({0.5, 0.5});
+            if (screen->getElement("genomePanel")->visible) {
+                selectedLifeform->genome.render(
+                  ((Viewport *) screen->getElement("genome"))->getVertexManager());
+            }
+
+            if (screen->getElement("grnPanel")->visible) {
+                auto* grn = (Viewport *) screen->getElement("geneRegulatoryNetwork");
+                if (grn != nullptr) {
+                    selectedLifeform->grn.render(
+                      (grn)->getVertexManager());
+                    sf::FloatRect layout = ((Viewport *) screen->getElement("geneRegulatoryNetwork"))->layout;
+                    float zoom = std::min(layout.width, layout.height);
+                    ((Viewport *) screen->getElement("geneRegulatoryNetwork"))->getCamera()->setZoom(zoom);
+                    ((Viewport *) screen->getElement("geneRegulatoryNetwork"))->getCamera()->setPosition({0.5, 0.5});
+                }
+            }
        }
     });
 
-    vector<UIElement*> elements = ComponentManager::get("simulationScreen");
+    vector<UIElement*> elements = ComponentManager::get("SimulationScreen");
     for (const auto& child : elements) {
         screen->addElement(child);
     }

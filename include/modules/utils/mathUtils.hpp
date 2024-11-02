@@ -4,6 +4,20 @@
 #include <modules/physics/point.hpp>
 #include <modules/utils/floatOps.hpp>
 
+#ifndef M_PI
+    #define M_PI 3.14159265358979323846
+#endif
+#ifndef M_PI_2
+    #define M_PI_2 6.28318530718
+#endif
+#ifndef M_PI_4
+    #define M_PI_4 0.78539816339
+#endif
+#ifndef SQRT_2
+    #define SQRT_2 1.41421356237
+#endif
+
+
 std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& point2, float r1, float r2);
 
 float getVelocity(const Point& point);

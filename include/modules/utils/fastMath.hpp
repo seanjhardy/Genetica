@@ -5,10 +5,6 @@
 #include <iostream>
 #include <cuda_runtime.h>
 
-#ifndef M_PI_2
-    #define M_PI_2 6.283185f
-#endif
-
 class FastMath {
 public:
     static const int TABLE_SIZE = 360;

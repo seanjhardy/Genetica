@@ -14,9 +14,14 @@ public:
 
     void draw(sf::RenderTarget& target) override;
     bool handleEvent(const sf::Event& event) override;
-    void update(float dt, const sf::Vector2f& position) override;
+    bool update(float dt, const sf::Vector2f& position) override;
     void onLayout() override;
 
+
+    Size calculateWidth() override;
+    Size calculateHeight() override;
+
+    std::vector<std::vector<UIElement*>> layers;
     sf::RoundedRectangleShape shape;
     Direction flexDirection = Direction::Row;
     Alignment rowAlignment = Alignment::Start;
@@ -29,8 +34,8 @@ public:
 
 private:
     void updateLayout();
-    void applyOffset(float offset);
-    void distributeSpace(float space, bool includeEnds, int numVisibleChildren);
+    void applyOffset(const std::vector<UIElement*>& elements, float offset);
+    void distributeSpace(const std::vector<UIElement*>& elements, float space, bool includeEnds, int numVisibleChildren);
 };
 
 #endif

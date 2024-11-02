@@ -54,9 +54,9 @@ void Environment::render(VertexManager& vertexManager) {
 bool Environment::handleEvent(const sf::Event& event, const sf::Vector2f mousePos, Entity** selectedEntity) {
     dragHandler.handleEvent(event);
 
-    if (!dragHandler.isDragging() && planet->getBounds() != bounds.hostData()) {
+    /*if (!dragHandler.isDragging() && planet->getBounds() != bounds.hostData()) {
         planet->setBounds(bounds.hostData());
-    }
+    }*/
 
     if (event.type == sf::Event::MouseButtonReleased) {
         if (event.mouseButton.button == sf::Mouse::Left) {
@@ -83,21 +83,25 @@ bool Environment::handleEvent(const sf::Event& event, const sf::Vector2f mousePo
     return false;
 }
 
-void Environment::update(const sf::Vector2f& worldCoords, float zoom) {
+void Environment::update(const sf::Vector2f& worldCoords, float zoom, bool UIHovered) {
     if (heldPoint != nullptr) {
         heldPoint->setPos({worldCoords.x, worldCoords.y});
     }
 
-    sf::FloatRect deltaBounds = dragHandler.update(worldCoords, bounds.hostData(), 15.0f / zoom);
-
-    if (deltaBounds.left != 0 || deltaBounds.top != 0 || deltaBounds.width != 0 || deltaBounds.height != 0) {
-        bounds = {bounds.hostData().left + deltaBounds.left,
-                  bounds.hostData().top + deltaBounds.top,
-                  bounds.hostData().width + deltaBounds.width,
-                  bounds.hostData().height + deltaBounds.height};
-        if (fluidEnabled) {
-            fluidSimulator = FluidSimulator(0.1, bounds.hostData().width, bounds.hostData().height, {});
+    if (!UIHovered) {
+        sf::FloatRect deltaBounds = dragHandler.update(worldCoords, bounds.hostData(), 15.0f / zoom);
+        if (deltaBounds.left != 0 || deltaBounds.top != 0 || deltaBounds.width != 0 || deltaBounds.height != 0) {
+            bounds = {bounds.hostData().left + deltaBounds.left,
+                      bounds.hostData().top + deltaBounds.top,
+                      bounds.hostData().width + deltaBounds.width,
+                      bounds.hostData().height + deltaBounds.height};
+            planet->setBounds(bounds.hostData());
+            if (fluidEnabled) {
+                fluidSimulator = FluidSimulator(0.05, bounds.hostData().width, bounds.hostData().height, {});
+            }
         }
+    } else {
+        dragHandler.reset();
     }
 
     if (!fluidEnabled) return;
@@ -137,6 +141,7 @@ void Environment::removePoint(int index) {
 
 void Environment::updatePoint(int index, Point updatedPoint) {
     points.update(index, updatedPoint);
+
 }
 
 void Environment::addEntity(int id, Entity* entity) {

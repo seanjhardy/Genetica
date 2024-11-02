@@ -19,6 +19,7 @@ using namespace std;
 
 enum class Direction { Row, Column };
 enum class Alignment { Start, Center, End, SpaceBetween, SpaceAround };
+enum class TextAlignment { Left, Center, Right };
 
 unordered_map<string, string> parseStyleString(const string& styleString);
 
@@ -30,6 +31,7 @@ sf::Color parseColor(const string& value);
 void parseMultiValue(const string& value, Size (&result)[4]);
 Direction parseDirection(const string& value);
 Alignment parseAlignment(const string& value);
+TextAlignment parseTextAlignment(const string& value);
 UITransform parseTransform(const string& value);
 
 #endif

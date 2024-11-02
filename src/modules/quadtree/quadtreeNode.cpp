@@ -2,6 +2,7 @@
 #include "modules/utils/floatOps.hpp"
 #include "modules/quadtree/quadtree.hpp"
 #include <modules/utils/print.hpp>
+#include <modules/graphics/vertexManager.hpp>
 
 QuadtreeNode::QuadtreeNode(float2 center, float2 halfDimension, int depth)
     : center(center), halfDimension(halfDimension), depth(depth) {

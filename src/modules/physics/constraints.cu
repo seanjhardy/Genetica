@@ -2,9 +2,7 @@
 #include <modules/utils/floatOps.hpp>
 #include <modules/utils/print.hpp>
 #include "cmath"
-#ifndef M_PI
-    #define M_PI 3.14159265358979323846
-#endif
+#include <modules/utils/mathUtils.hpp>
 
 __host__ __device__ inline void constrainDistance(Point& point1, Point& point2, float distance, float factor = 1.0f) {
     float currentDistance = point1.distanceTo(point2);

@@ -21,8 +21,8 @@ bool UIManager::handleEvent(const sf::Event& event) {
     return screens.at(currentScreen)->handleEvent(event);
 }
 
-void UIManager::update(float dt, const sf::Vector2f& position) {
-    screens.at(currentScreen)->update(dt, position);
+bool UIManager::update(float dt, const sf::Vector2f& position) {
+    return screens.at(currentScreen)->update(dt, position);
 }
 
 void UIManager::setCurrentScreen(const std::string& screen) {

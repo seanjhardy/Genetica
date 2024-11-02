@@ -12,6 +12,7 @@ uniform float noiseFrequency;
 uniform int noiseOctaves;
 uniform bool smoothNoise;
 uniform float time;
+uniform vec2 offset;
 
 varying vec2 vTexCoord;
 
@@ -114,8 +115,8 @@ float fbm_warped(vec2 pos) {
 }
 
 void main() {
-    float x = gl_TexCoord[0].x * resolution.x + seed*10000;
-    float y = gl_TexCoord[0].y * resolution.y;
+    float x = (gl_TexCoord[0].x * resolution.x + offset.x)/500 + seed*1000;
+    float y = (gl_TexCoord[0].y * resolution.y + offset.y)/500;
 
     float noiseValue = fbm_warped(vec2(x, y));
 
@@ -134,7 +135,7 @@ void main() {
             float lowerBound = bandSize * float(i);
             float upperBound = bandSize * float(i + 1);
 
-            if (noiseValue >= lowerBound && noiseValue <= upperBound) {
+            if (noiseValue >= lowerBound && (noiseValue <= upperBound || i == numColours - 2)) {
                 float t = (noiseValue - lowerBound) / bandSize;
                 color = mix(colours[i], colours[i + 1], t);
                 break;

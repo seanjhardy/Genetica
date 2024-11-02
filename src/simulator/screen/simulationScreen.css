@@ -25,10 +25,10 @@ miniBtn:hover {
 
 mainBtn {
     flex: 1;
-    border: 2px rgba(0,0,0,100) 5px;
     font-size: 18px;
     padding: 5px;
-    background: #0e3c42;
+    background: rgba(255,255,255,70);
+    border: 0px 20px;
     shadow: 5px rgba(0,0,0,50) 0px 3px;
     align-row: center;
     align-col: center;
@@ -42,8 +42,34 @@ container {
     flex-direction: column;
     align-row: center;
     align-col: center;
-    background: #2f5b61;
     padding: 5px;
+    gap: 20px;
+}
+
+panel {
+    flex-direction: column;
+    align-row: center;
+    align-col: center;
+    padding: 10px;
+    gap: 5px;
+    background: rgba(0,0,0,200);
+    border: 2px rgba(255,255,255,50) 20px;
+    shadow: 10px rgba(0,0,0,80) 0px 5px;
+}
+
+tab {
+    flex-direction: row;
     gap: 10px;
-    border: 2px transparent 5px;
+    height: 35px;
+    border: 2px #5E5E5E 20px;
+    margin: 0px -20px 0px 0px;
+    padding: 10px 15px 10px 0px;
+    background: rgba(0,0,0,204);
+    shadow: 10px rgba(0,0,0,80) 0px 5px;
+}
+
+
+tabHover:hover {
+    background: #20868a;
+    border: 2px #38c4c9 20px;
 }

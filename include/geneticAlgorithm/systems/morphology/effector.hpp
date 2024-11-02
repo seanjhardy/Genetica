@@ -12,7 +12,7 @@ public:
         Freeze,
 
         //Parameters
-        DaughterDistance,
+        Distance,
         Radius,
         Red,
         Green,
@@ -21,6 +21,7 @@ public:
         //Proteins
         Chloroplast,
         TouchSensor,
+        EFFECTOR_LENGTH
     } effectorType;
 
     Effector(EffectorType effectorType,

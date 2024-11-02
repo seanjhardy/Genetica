@@ -3,7 +3,7 @@
 
 #include <modules/physics/point.hpp>
 #include <modules/utils/floatOps.hpp>
-#include <modules/utils/fastMath.hpp>
+#include <modules/graphics/vertexManager.hpp>
 
  __host__ __device__ float2 Point::getVelocity() const {
     float2 d = pos - prevPos;
@@ -40,6 +40,10 @@ __host__ __device__ void Point::rotate(const float2& origin, float angle) {
     float2 d = pos - origin;
     pos.x = origin.x + cosf(angle) * d.x - sinf(angle) * d.y;
     pos.y = origin.y + sinf(angle) * d.x + cosf(angle) * d.y;
+}
+
+void Point::render(VertexManager& viewer, sf::Color colour) const {
+    viewer.addCircle(pos, mass, colour);
 }
 
 #endif

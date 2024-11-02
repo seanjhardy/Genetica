@@ -22,7 +22,7 @@ using namespace std;
 
 class LifeForm : public Entity {
 public:
-    static constexpr int GROWTH_INTERVAL = 50;
+    static constexpr int GROWTH_INTERVAL = 200;
     static constexpr float BUILD_COST_SCALE = 0.00001f;
     static constexpr float BUILD_RATE = 50.0f;
     static constexpr float ENERGY_DECREASE_RATE = 0.0000001;
@@ -33,13 +33,13 @@ public:
 
     GeneRegulatoryNetwork grn;
     Cell* head{};
-    std::vector<std::unique_ptr<Cell>> cells;
+    std::vector<Cell*> cells;
     std::vector<std::unique_ptr<CellLink>> links;
 
     vector<Protein*> inputs;
     vector<Protein*> outputs;
 
-    float energy = 0;
+    double energy = 0;
     int numChildren = 0;
     int birthdate = 0;
 

@@ -19,12 +19,23 @@ LifeForm::LifeForm(Environment* environment, float2 pos,
 void LifeForm::simulate(float dt) {
     if (head == nullptr) return;
     pos = env->getPoint(head->pointIdx)->pos;
+    for (auto& cell : cells) {
+        cell->simulate(dt);
+    }
+
     grow(dt);
 
 }
 
 void LifeForm::render(VertexManager& vertexManager) {
     // Create mesh from cells;
+    for (auto& link : links) {
+        auto& cell1 = link->cell1;
+        auto& cell2 = link->cell2;
+        Point* point1 = env->getPoint(cell1->pointIdx);
+        Point* point2 = env->getPoint(cell2->pointIdx);
+        vertexManager.addLine(point1->pos, point2->pos, sf::Color::Blue, 0.2f);
+    }
     for (auto& cell : cells) {
         cell->render(vertexManager);
     }
@@ -32,8 +43,9 @@ void LifeForm::render(VertexManager& vertexManager) {
 
 void LifeForm::grow(float dt) {
     if (head == nullptr) return;
-    if (Simulator::get().getStep() % GROWTH_INTERVAL != 0) return;
-    grn.update(dt);
+    if (Simulator::get().getStep() % GROWTH_INTERVAL == 0) {
+        grn.update(dt);
+    };
 }
 
 LifeForm& LifeForm::clone(bool mutate){
@@ -89,7 +101,7 @@ void LifeForm::kill() {
 }
 
 void LifeForm::addCell(Cell* cell) {
-    cells.push_back(unique_ptr<Cell>(cell));
+    cells.push_back(cell);
 }
 
 void LifeForm::addCellLink(CellLink* cellLink) {

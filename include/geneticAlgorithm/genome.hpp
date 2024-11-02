@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <modules/graphics/vertexManager.hpp>
 
 using namespace std;
 
@@ -27,12 +28,19 @@ public:
 
     map<int, string> hoxGenes;
     vector<int> hoxGeneOrder;
+
+    sf::RenderTexture cachedTexture;
     //map<int, string> neurologicalGenes;
 
     Genome();
-    Genome(const Genome& other) = default;
+    Genome(const Genome& other) {
+        hoxGenes = other.hoxGenes;
+        hoxGeneOrder = other.hoxGeneOrder;
+    }
+
     void init(Template templateType = Template::RANDOM);
 
+    void render(VertexManager& vertexManager);
     static constexpr int HOX_SIZE = 100;
 
     void addHoxGene(int key, const string& value, int position=-1);

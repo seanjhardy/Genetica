@@ -3,6 +3,7 @@
 #include "SFML/Graphics.hpp"
 #include "modules/physics/point.hpp"
 #include "modules/utils/floatOps.hpp"
+#include <modules/graphics/vertexManager.hpp>
 #include "entity.hpp"
 
 class Rock : public Entity {

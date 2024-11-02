@@ -22,16 +22,13 @@ public:
     explicit UIElement(const unordered_map<string, string>& properties, const vector<UIElement*>& children = {});
 
     virtual void draw(sf::RenderTarget &target) = 0;
-
     virtual bool handleEvent(const sf::Event &event) { return false; };
-
-    virtual void update(float dt, const sf::Vector2f &position);
-
+    virtual bool update(float dt, const sf::Vector2f &position);
     virtual void onLayout();
-
     virtual void overrideProperty(const string& property, const string &s);
-
     virtual void restyle();
+    virtual Size calculateWidth() = 0;
+    virtual Size calculateHeight() = 0;
 
     [[nodiscard]] virtual bool contains(const sf::Vector2f &point) const {
         return layout.contains(point);
@@ -47,8 +44,8 @@ public:
     bool hovered = false;
     int depth;
 
-    sf::FloatRect base_layout;
-    sf::FloatRect layout;
+    sf::FloatRect base_layout = {0, 0, 0, 0};
+    sf::FloatRect layout = {0, 0, 0, 0};
     string key;
     Size width = Size::Flex(1);
     Size height = Size::Flex(1);
@@ -64,25 +61,31 @@ public:
     bool visible = true;
     bool allowClick = true;
     bool absolute = false;
+    int left = 0;
+    int top = 0;
     sf::Cursor cursor;
 
     unordered_map<string, function<void(const string &)>> styleSetters = {
       {"key",       [this](const string &v) { key = v; }},
       {"width",     [this](const string &v) { width = parseSize(v); }},
       {"height",    [this](const string &v) { height = parseSize(v); }},
-      {"border",    [this](const string &v) { border = parseBorder(v); }},
+      {"border",    [this](const string &v) {
+          border = parseBorder(v);
+      }},
       {"margin",    [this](const string &v) { parseMultiValue(v, margin); }},
       {"padding",   [this](const string &v) { parseMultiValue(v, padding); }},
       {"cursor",   [this](const string &v) { CursorManager::set(cursor, v); }},
       {"visible",   [this](const string &v) { visible = (v == "true"); }},
-      {"allowClick",   [this](const string &v) { allowClick = (v == "true"); }},
+      {"allow-click",   [this](const string &v) { allowClick = (v == "true"); }},
       {"position", [this](const string &v) {
           if (v == "absolute") {
               absolute = true;
-          } else if (v == "relative") {
+          } else {
               absolute = false;
           }
       }},
+      {"left",      [this](const string &v) { left = parseValue(v); }},
+      {"top",       [this](const string &v) { top = parseValue(v); }},
       {"transform", [this](const string &v) {
           transform = parseTransform(v);
           auto update = [this](float progress) {
