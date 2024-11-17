@@ -1,5 +1,5 @@
 template<typename T>
-GPUValue<T>::GPUValue(T& value) {
+CGPUValue<T>::CGPUValue(T& value) {
     h_data = value;
     T* d_ptr;
     cudaMalloc(&d_ptr, sizeof(T));
@@ -8,14 +8,14 @@ GPUValue<T>::GPUValue(T& value) {
 }
 
 template<typename T>
-GPUValue<T>::~GPUValue() {
+CGPUValue<T>::~CGPUValue() {
     if (d_data) {
         cudaFree(d_data);
     }
 }
 
 template<typename T>
-GPUValue<T>& GPUValue<T>::operator=(T value) {
+CGPUValue<T>& CGPUValue<T>::operator=(T value) {
     h_data = value;
     cudaMemcpy(d_data, &value, sizeof(T), cudaMemcpyHostToDevice);
     return *this;
@@ -23,11 +23,11 @@ GPUValue<T>& GPUValue<T>::operator=(T value) {
 
 
 template<typename T>
-void GPUValue<T>::syncToHost() {
+void CGPUValue<T>::syncToHost() {
     cudaMemcpy(h_data.data(), d_data, sizeof(T), cudaMemcpyDeviceToHost);
 }
 
 template<typename T>
-void GPUValue<T>::syncToDevice() {
+void CGPUValue<T>::syncToDevice() {
     cudaMemcpy(d_data, h_data.data(), sizeof(T), cudaMemcpyHostToDevice);
 }

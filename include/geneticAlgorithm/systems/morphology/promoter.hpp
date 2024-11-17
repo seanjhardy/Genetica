@@ -8,20 +8,14 @@
 /**
  * An element that promotes the level of other elements
  */
-class Promoter : public GeneticUnit {
-public:
+struct Promoter : GeneticUnit {
     enum class PromoterType {
         Additive,
         Multiplicative
     } promoterType;
 
-    virtual ~Promoter() = default;
-    Promoter(PromoterType promoterType,
-             bool sign,
-             float modifier,
-             const float* embedding)
-      : GeneticUnit(sign, modifier, embedding),
-        promoterType(promoterType) {}
+    Promoter(PromoterType promoterType, bool sign, float modifier, float3 embedding)
+        : GeneticUnit(sign, modifier, embedding), promoterType(promoterType) {}
 
     float calculateActivity(std::unordered_map<Gene*, float>& levels,
                             std::map<std::pair<Promoter*, Gene*>, float>& promoterFactorAffinities) {

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(Genetica LANGUAGES CXX CUDA)
 
+set(CMAKE_CUDA_ARCHITECTURES "native")
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CUDA_STANDARD 26)
 
@@ -20,7 +21,7 @@ add_executable(Genetica main.cpp ${SRCS} ${CUDA_SRCS})
 file(GLOB_RECURSE INCLUDE_LIBS "${CMAKE_SOURCE_DIR}/libs/*/include")
 
 include_directories(./include ${CMAKE_SOURCE_DIR}/libs/SFML/include
-        "c:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.5/include")
+        "D:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include")
 
 file(GLOB_RECURSE LIBS "${CMAKE_SOURCE_DIR}/libs/*.lib")
 target_link_libraries(Genetica ${LIBS})

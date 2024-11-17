@@ -3,8 +3,7 @@
 
 #include "./geneticUnit.hpp"
 
-class Effector : public GeneticUnit {
-public:
+struct Effector : GeneticUnit {
     enum class EffectorType {
         //Actions
         Divide,
@@ -24,12 +23,8 @@ public:
         EFFECTOR_LENGTH
     } effectorType;
 
-    Effector(EffectorType effectorType,
-             bool sign,
-             float modifier,
-             const float* embedding)
-      : GeneticUnit(sign, modifier, embedding),
-        effectorType(effectorType) {}
+    Effector(EffectorType efectorType, bool sign, float modifier, float3 embedding)
+        : GeneticUnit(sign, modifier, embedding), effectorType(efectorType) {}
 };
 
 #endif

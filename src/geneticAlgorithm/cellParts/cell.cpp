@@ -47,15 +47,12 @@ void Cell::divide() {
     lastDivideTime = Simulator::get().getStep();
     motherPoint->mass /= SQRT_2;
     float2 pos = motherPoint->pos + vec(rotation + divisionRotation) * CellLink::INITIAL_DISTANCE;
-    print(pos);
     auto* daughter = new Cell(lifeForm, this, pos, motherPoint->mass);
     Point* daughterPoint = lifeForm->getEnv()->getPoint(daughter->pointIdx);
 
-    //lifeForm->getEnv()->updatePoint(pointIdx, *motherPoint);
+    lifeForm->getEnv()->updatePoint(pointIdx, *motherPoint);
     lifeForm->getEnv()->updatePoint(daughter->pointIdx, *daughterPoint);
     lifeForm->addCell(daughter);
-
-    print(motherPoint->pos, daughterPoint->pos);
 
     // Create cell links
     auto* cellLink = new CellLink(lifeForm, this, daughter, CellLink::INITIAL_DISTANCE);
@@ -115,5 +112,5 @@ void Cell::die() {
                                              return cellLink->cell1 == this || cellLink->cell2 == this;
                                          }), lifeForm->links.end());
     // Finally delete the memory itself
-    //delete this;
+    delete this;
 }

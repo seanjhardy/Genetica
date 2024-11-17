@@ -7,22 +7,22 @@
 #include "cuda_runtime.h"
 
 template<typename T>
-class GPUValue {
+class CGPUValue {
 private:
     T* d_data;
     T h_data;
 
 public:
     // Disable copy constructor and assignment operator
-    GPUValue(const GPUValue&) = delete;
-    GPUValue& operator=(const GPUValue&) = delete;
+    CGPUValue(const CGPUValue&) = delete;
+    CGPUValue& operator=(const CGPUValue&) = delete;
 
     // Move constructor and assignment operator
-    explicit GPUValue(T& value);
-    GPUValue& operator=(T value);
+    explicit CGPUValue(T& value);
+    CGPUValue& operator=(T value);
 
     //Destructor
-    ~GPUValue();
+    ~CGPUValue();
 
     T* deviceData() { return d_data; }
 
@@ -33,6 +33,6 @@ public:
     T* hostDataPtr() { return &h_data; }
 };
 
-#include "../../../src/modules/cuda/GPUValue.tpp"
+#include "../../../src/modules/cuda/CGPUValue.tpp"
 
 #endif

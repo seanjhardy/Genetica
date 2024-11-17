@@ -2,12 +2,8 @@
 #define GPU_VECTOR_H
 
 #include "vector"
-#include "cuda_runtime.h"
-#include "cuda_runtime_api.h"
-
 template<typename T>
 class GPUVector {
-private:
     T* d_data;        // Device data
     std::vector<T> h_data;  // Host mirror
     size_t size_;     // Current size

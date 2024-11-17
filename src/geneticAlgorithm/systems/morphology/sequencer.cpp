@@ -2,11 +2,17 @@
 #include "modules/utils/genomeUtils.hpp"
 #include <string>
 #include <utility>
+#include <modules/utils/GPU/GPUUtils.hpp>
+#include <geneticAlgorithm/systems/morphology/updateGRN.hpp>
 
 void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
-    lifeForm->grn.lifeForm = lifeForm;
-
+    // Temporary vars
+    std::vector<Gene> factors;
+    std::vector<Promoter> promoters;
+    std::vector<Effector> effectors;
+    std::vector<RegulatoryUnit> regulatoryUnits;
     RegulatoryUnit regulatoryUnit;
+
     bool readingPromoters = true;
     for (auto [id, sequence] : genome.hoxGenes) {
         std::string rna = std::move(sequence); // Create rna copy
@@ -19,13 +25,10 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
             // Uniformly distributed modifiers (also allows for large jumps genetically)
             float modifier = readUniqueBaseRange(rna, 8);
 
-            float embedding[GeneticUnit::N];
-            for (float & i : embedding) {
-                // spatial fidelity = (4 values * 20 per dimension) = 80
-                // 80^(3 dimensions) = 512000 unique positions
-                // Uniform distribution using readUniqueBaseRange
-                i = readUniqueBaseRange(rna, 8);
-            }
+            float3 embedding = make_float3(
+                readUniqueBaseRange(rna, 8),
+                readUniqueBaseRange(rna, 8),
+                readUniqueBaseRange(rna, 8));
 
             // External factors (inputs to grn)
             if (type == 0) {
@@ -43,7 +46,7 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
                 float2 extra = {readUniqueBaseRange(rna, 8), readUniqueBaseRange(rna, 8)};
                 Gene externalFactor = Gene(externalFactorType,
                                            sign, modifier, embedding, extra);
-                lifeForm->grn.factors.push_back(externalFactor);
+                factors.push_back(externalFactor);
             }
 
             // Gene effectors (outputs of grn)
@@ -53,7 +56,7 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
 
                 // If this grn already contains a special node
                 // (e.g. maternal factor, crowding, etc.) of this type, skip
-                if (std::any_of(lifeForm->grn.effectors.begin(), lifeForm->grn.effectors.end(),
+                if (std::any_of(effectors.begin(), effectors.end(),
                                 [subType](const Effector& effector) {
                                     return effector.effectorType == subType;
                                 })) {
@@ -62,7 +65,7 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
 
                 Effector effector = Effector(subType,
                                              sign, modifier, embedding);
-                lifeForm->grn.effectors.push_back(effector);
+                effectors.push_back(effector);
             }
 
             // Regulatory units (nodes in grn)
@@ -75,13 +78,13 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
                 Promoter promoter = Promoter(promoterType, sign, modifier, embedding);
 
                 if (!readingPromoters) {
-                    lifeForm->grn.regulatoryUnits.push_back(regulatoryUnit);
+                    regulatoryUnits.push_back(regulatoryUnit);
                     regulatoryUnit = RegulatoryUnit();
                     readingPromoters = true;
                 }
 
-                regulatoryUnit.promoters.push_back(lifeForm->grn.promoters.size());
-                lifeForm->grn.promoters.push_back(promoter);
+                regulatoryUnit.promoters.push_back(promoters.size());
+                promoters.push_back(promoter);
             }
 
             // Genes - internal product, external product, receptor
@@ -95,13 +98,25 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
 
                 if (regulatoryUnit.promoters.empty()) continue;
                 readingPromoters = false;
-                regulatoryUnit.factors.push_back(lifeForm->grn.factors.size());
-                lifeForm->grn.factors.push_back(gene);
+                regulatoryUnit.factors.push_back(factors.size());
+                factors.push_back(gene);
             }
         } catch (RNAExhaustedException& e) {
             // "RNA exhausted"
         }
     }
 
-    lifeForm->grn.precomputeAffinities();
+    saveGPUArray(lifeForm->grn.factors, factors);
+    lifeForm->grn.numFactors = factors.size();
+
+    saveGPUArray(lifeForm->grn.promoters, promoters);
+    lifeForm->grn.numPromoters = promoters.size();
+
+    saveGPUArray(lifeForm->grn.effectors, effectors);
+    lifeForm->grn.numEffectors = effectors.size();
+
+    saveGPUArray(lifeForm->grn.regulatoryUnits, regulatoryUnits);
+    lifeForm->grn.numRegulatoryUnits = regulatoryUnits.size();
+
+    computeAffinities(lifeForm->grn);
 }

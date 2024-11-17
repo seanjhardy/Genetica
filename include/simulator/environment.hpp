@@ -2,16 +2,13 @@
 #ifndef ENVIRONMENT
 #define ENVIRONMENT
 
-#include <vector>
-#include <random>
 #include <modules/physics/point.hpp>
 #include <modules/cuda/GPUVector.hpp>
-#include <modules/cuda/GPUValue.hpp>
+#include <modules/cuda/CGPUValue.hpp>
 #include <modules/graphics/vertexManager.hpp>
 #include <simulator/entities/entity.hpp>
 #include "modules/graphics/dragHandler.hpp"
 #include "modules/physics/fluid.hpp"
-#include "modules/utils/random.hpp"
 #include <simulator/planet.hpp>
 
 class LifeForm;
@@ -22,11 +19,10 @@ class LifeForm;
  * the bounds of the environment and more
  */
 class Environment {
-private:
     Planet* planet = nullptr;
 
     sf::FloatRect initialBounds;
-    GPUValue<sf::FloatRect> bounds;
+    CGPUValue<sf::FloatRect> bounds;
 
     GPUVector<Point> points = GPUVector<Point>();
     GPUVector<Connection> connections = GPUVector<Connection>();

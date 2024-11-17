@@ -1,4 +1,4 @@
-#include <modules/utils/fastMath.hpp>
+#include <modules/utils/GPU/fastMath.hpp>
 #include <cmath>
 #include <modules/utils/mathUtils.hpp>
 

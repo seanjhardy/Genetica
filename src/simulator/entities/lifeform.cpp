@@ -24,7 +24,6 @@ void LifeForm::simulate(float dt) {
     }
 
     grow(dt);
-
 }
 
 void LifeForm::render(VertexManager& vertexManager) {

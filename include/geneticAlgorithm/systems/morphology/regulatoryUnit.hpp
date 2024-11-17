@@ -6,8 +6,7 @@
 #include <modules/graphics/vertexManager.hpp>
 #include <modules/utils/stringUtils.hpp>
 
-class RegulatoryUnit {
-public:
+struct RegulatoryUnit {
     static constexpr float W = 10.0f;
 
     std::vector<int> promoters{};

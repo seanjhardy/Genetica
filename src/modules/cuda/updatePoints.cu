@@ -51,7 +51,7 @@ __global__ void computeCollisions(Point *points, int numPoints, Rock *rocks, int
 
 void updatePoints(GPUVector<Point> &points,
                   GPUVector<Connection> &connections,
-                  GPUValue<sf::FloatRect> &bounds,
+                  CGPUValue<sf::FloatRect> &bounds,
                   float dt) {
     int numPoints = points.size();
     int numConnections = connections.size();

@@ -41,6 +41,30 @@ inline __host__ __device__ float2 operator/(const float2 &a, const float &b) {
     return make_float2(a.x / b, a.y / b);
 }
 
+inline __host__ __device__ uint3 operator+(const uint3 &a, const uint3 &b) {
+    return {static_cast<uint8_t>(a.x + b.x), static_cast<uint8_t>(a.y + b.y), static_cast<uint8_t>(a.z + b.z)};
+}
+
+inline __host__ __device__ uint4 operator*(const uint3 &a, const float &b) {
+    return {static_cast<uint8_t>(a.x * b), static_cast<uint8_t>(a.y * b), static_cast<uint8_t>(a.z * b)};
+}
+
+
+inline __host__ __device__ float3 operator+(const float3 &a, const float3 &b) {
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+inline __host__ __device__ float3 operator-(const float3 &a, const float3 &b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+inline __host__ __device__ float3 operator*(const float3 &a, const float3 &b) {
+    return {a.x * b.x, a.y * b.y, a.z * b.z};
+}
+
+inline __host__ __device__ float3 operator*(const float3 &a, const float &b) {
+    return {a.x * b, a.y * b, a.z * b};
+}
+
 
 inline __host__ __device__ float2 operator+=(float2 &a, const float2 &b) {
     a.x += b.x;
@@ -92,32 +116,23 @@ inline __host__ __device__ float sum(float2 p1) {
     return p1.x + p1.y;
 }
 
+inline __host__ __device__ float sum(float3 p1) {
+    return p1.x + p1.y + p1.z;
+}
+
 inline __host__ __device__ float distanceBetween(float2 p1, float2 p2) {
     float2 d = p1 - p2;
+    return sqrt(sum(d*d));
+}
+
+inline __host__ __device__ float distanceBetween(float3 p1, float3 p2) {
+    float3 d = p1 - p2;
     return sqrt(sum(d*d));
 }
 
 inline __host__ __device__ float dir(float2 p1, float2 p2) {
     float2 d = p1 - p2;
     return std::atan2f(d.y, d.x);
-}
-
-
-inline __host__ __device__ uint3 operator+(const uint3 &a, const uint3 &b) {
-    return {static_cast<uint8_t>(a.x + b.x), static_cast<uint8_t>(a.y + b.y), static_cast<uint8_t>(a.z + b.z)};
-}
-
-inline __host__ __device__ uint4 operator*(const uint3 &a, const float &b) {
-    return {static_cast<uint8_t>(a.x * b), static_cast<uint8_t>(a.y * b), static_cast<uint8_t>(a.z * b)};
-}
-
-
-inline __host__ __device__ float3 operator+(const float3 &a, const float3 &b) {
-    return {a.x + b.x, a.y + b.y, a.z + b.z};
-}
-
-inline __host__ __device__ float3 operator*(const float3 &a, const float &b) {
-    return {a.x * b, a.y * b, a.z * b};
 }
 
 #endif

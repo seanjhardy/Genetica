@@ -8,8 +8,7 @@
 /**
  * A gene is a genetic unit that can be expressed in a cell
  */
-class Gene : public GeneticUnit {
-public:
+struct Gene : GeneticUnit {
     enum class FactorType {
         // External Factors
         Constant, // A value of 1
@@ -27,14 +26,10 @@ public:
 
     float2 extra;
 
-    Gene(FactorType factorType,
-         bool sign,
-         float modifier,
-         const float* embedding,
-         float2 extra={0,0})
-      : GeneticUnit(sign, modifier, embedding),
-        factorType(factorType), extra(extra){}
-
+    Gene(FactorType factorType, bool sign, float modifier, float3 embedding)
+        : GeneticUnit(sign, modifier, embedding), factorType(factorType) {}
+    Gene(FactorType factorType, bool sign, float modifier, float3 embedding, float2 extra)
+        : GeneticUnit(sign, modifier, embedding), factorType(factorType), extra(extra) {}
 };
 
 #endif

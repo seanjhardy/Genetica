@@ -32,31 +32,6 @@ void GeneRegulatoryNetwork::update(float dt) {
     updateGeneExpression(dt);
 }
 
-void GeneRegulatoryNetwork::precomputeAffinities() {
-    for (auto& factor : factors) {
-        for (auto& promoter : promoters) {
-            auto pair = std::make_pair(&promoter,&factor);
-            const float affinity = promoter.calculateAffinity(factor);
-            promoterFactorAffinities.insert({pair, affinity});
-        }
-    }
-    for (auto& factor : factors) {
-        for (auto& effector : effectors) {
-            auto pair = std::make_pair(&factor, &effector);
-            const float affinity = effector.calculateAffinity(factor);
-            factorEffectorAffinities.insert({pair, affinity});
-        }
-    }
-    for (auto& factor : factors) {
-        for (auto& receptor : factors) {
-            if (&factor == &receptor) continue;
-            auto pair = std::make_pair(&factor,&receptor);
-            const float affinity = receptor.calculateAffinity(factor);
-            factorReceptorAffinities.insert({pair, affinity});
-        }
-    }
-}
-
 void GeneRegulatoryNetwork::precomputeDistances(){
     cellDistances.clear();
     for (auto& cell : lifeForm->cells) {
