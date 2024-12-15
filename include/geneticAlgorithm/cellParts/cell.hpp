@@ -15,11 +15,11 @@ public:
     LifeForm* lifeForm;
     Cell* mother;
     int pointIdx;
-    int generation = 0.0f;
+    int generation = 0;
     int lastDivideTime = 0;
     int divisionFrequency = 10 + Random::random(20);
 
-    std::unordered_map<Gene*, float> products;
+    float* products;
 
     float rotation = 0.0f;
     float divisionRotation = 0.0f;

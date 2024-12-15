@@ -17,8 +17,8 @@ struct Promoter : GeneticUnit {
     Promoter(PromoterType promoterType, bool sign, float modifier, float3 embedding)
         : GeneticUnit(sign, modifier, embedding), promoterType(promoterType) {}
 
-    float calculateActivity(std::unordered_map<Gene*, float>& levels,
-                            std::map<std::pair<Promoter*, Gene*>, float>& promoterFactorAffinities) {
+    float calculateActivity(float* levels,
+                            float* promoterFactorAffinities) {
         float activity = 0.0f;
         for (auto& [factor, level] : levels) {
             float affinity = promoterFactorAffinities.at({this, factor});

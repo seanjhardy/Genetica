@@ -11,7 +11,11 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
     std::vector<Promoter> promoters;
     std::vector<Effector> effectors;
     std::vector<RegulatoryUnit> regulatoryUnits;
+
+    // Temporary variables for regulatory units
     RegulatoryUnit regulatoryUnit;
+    std::vector<int> regulatoryPromoters;
+    std::vector<int> regulatoryFactors;
 
     bool readingPromoters = true;
     for (auto [id, sequence] : genome.hoxGenes) {
@@ -78,12 +82,16 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
                 Promoter promoter = Promoter(promoterType, sign, modifier, embedding);
 
                 if (!readingPromoters) {
+                    saveGPUArray(regulatoryUnit.promoters, regulatoryPromoters);
+                    saveGPUArray(regulatoryUnit.factors, regulatoryFactors);
+                    regulatoryUnit.numFactors = regulatoryFactors.size();
+                    regulatoryUnit.numPromoters = regulatoryPromoters.size();
                     regulatoryUnits.push_back(regulatoryUnit);
                     regulatoryUnit = RegulatoryUnit();
                     readingPromoters = true;
                 }
 
-                regulatoryUnit.promoters.push_back(promoters.size());
+                regulatoryPromoters.push_back(promoters.size());
                 promoters.push_back(promoter);
             }
 
@@ -96,9 +104,9 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
 
                 Gene gene = Gene(geneTypes[type - 3], sign, modifier, embedding);
 
-                if (regulatoryUnit.promoters.empty()) continue;
+                if (regulatoryPromoters.empty()) continue;
                 readingPromoters = false;
-                regulatoryUnit.factors.push_back(factors.size());
+                regulatoryFactors.push_back(factors.size());
                 factors.push_back(gene);
             }
         } catch (RNAExhaustedException& e) {

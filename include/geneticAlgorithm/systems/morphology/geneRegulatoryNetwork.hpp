@@ -23,6 +23,8 @@ public:
     Effector* effectors;
     int numEffectors;
 
+    int numProducts;
+
     RegulatoryUnit* regulatoryUnits;
     int numRegulatoryUnits;
 
@@ -30,7 +32,7 @@ public:
     float* factorEffectorAffinities;
     float* factorReceptorAffinities;
 
-    std::map<std::pair<const Cell*, const Cell*>, float> cellDistances;
+    float* cellDistances;
 
     void render(VertexManager& vertexManager);
 

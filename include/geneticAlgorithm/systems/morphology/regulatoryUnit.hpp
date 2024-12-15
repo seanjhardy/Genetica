@@ -2,28 +2,31 @@
 #define REGULATORY_UNIT
 
 #include <vector>
-#include "./geneticUnit.hpp"
 #include <modules/graphics/vertexManager.hpp>
 #include <modules/utils/stringUtils.hpp>
 
 struct RegulatoryUnit {
     static constexpr float W = 10.0f;
 
-    std::vector<int> promoters{};
-    std::vector<int> factors{};
+    int* promoters;
+    int numPromoters;
+    int* factors;
+    int numFactors;
 
-    std::unordered_map<Gene*, float> calculateActivation(
-      std::vector<Promoter>& grnPromoters,
-        std::vector<Gene>& grnFactors,
-      std::unordered_map<Gene*, float> factorLevels,
-        std::map<std::pair<Promoter*, Gene*>, float> promoterFactorAffinities) {
+
+    float* calculateActivation(
+      Promoter* grnPromoters,
+      Gene* grnFactors,
+      int numFactors,
+      float* factorLevels,
+      float* promoterFactorAffinities) {
 
         // Calculate activity of promoters based on input factors
         // and combine those activities into one overall regulatory unit activity
         float additivePromoterValue = 0;
-        float multiplicativePromoterValue = 1;
-        for (auto promoterIndex : promoters) {
-            Promoter* promoter = &grnPromoters[promoterIndex];
+        float multiplicativePromoterValue = 1;-
+        for (int i = 0; i < numPromoters; i++) {
+            Promoter* promoter = &grnPromoters[i];
             float promoterActivity = promoter->calculateActivity(factorLevels, promoterFactorAffinities);
 
             if (promoter->promoterType == Promoter::PromoterType::Additive) {
@@ -41,15 +44,15 @@ struct RegulatoryUnit {
         if (value < 0.01f) transformedValue = 0.0f;
 
         // Calculate the amount of each factor produced based on the unit's activity
-        std::unordered_map<Gene*, float> deltaFactorLevels;
-        for (auto& factorIndex : factors) {
-            auto* gene = &grnFactors[factorIndex];
+        float* deltaFactorLevels = new float[numFactors];
+        for (int i = 0; i < numFactors; i++) {
+            auto* gene = &grnFactors[i];
             // Only update internal and external products
             if (gene->factorType != Gene::FactorType::InternalProduct &&
                 gene->factorType != Gene::FactorType::ExternalProduct) {
                 continue;
             }
-            deltaFactorLevels[gene] += transformedValue;
+            deltaFactorLevels[i] += transformedValue;
         }
         return deltaFactorLevels;
     }
@@ -58,7 +61,7 @@ struct RegulatoryUnit {
                 std::vector<Promoter>& grnPromoters,
                 std::vector<Gene>& grnFactors,
                 std::unordered_map<Gene*, float> factorLevels) {
-        pos -= make_float2(scale, scale/2);
+        /*pos -= make_float2(scale, scale/2);
         float promoterWidth = scale * 2.0f / promoters.size();
         for (int promoterIndex = 0; promoterIndex < promoters.size(); promoterIndex++) {
             vertexManager.addFloatRect({promoterWidth*(float)promoterIndex + pos.x, pos.y,
@@ -78,7 +81,7 @@ struct RegulatoryUnit {
         vertexManager.addText(factorLevel,
                               {pos.x + scale,
                                pos.y + 0.1f},
-                              0.0015, sf::Color::White, TextAlignment::Center, 2);
+                              0.0015, sf::Color::White, TextAlignment::Center, 2);*/
     }
 };
 
