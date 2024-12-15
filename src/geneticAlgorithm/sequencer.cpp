@@ -1,5 +1,6 @@
 #include "geneticAlgorithm/sequencer.hpp"
 #include <geneticAlgorithm/systems/morphology/sequencer.hpp>
+#include <modules/utils/GPU/GPUUtils.hpp>
 
 void sequence(LifeForm* lifeForm, const Genome& genome) {
     // Read hox genes
@@ -10,9 +11,13 @@ void sequence(LifeForm* lifeForm, const Genome& genome) {
     head->rotation = Random::random(0, M_PI_2);
 
     // Add initial products to cell
-    for (auto& product: lifeForm->grn.factors) {
-        head->products[&product] = 0.0f;
+    int numProducts = lifeForm->grn.numFactors;
+    std::vector<float> products(numProducts);
+    for (int i = 0; i < numProducts; ++i) {
+        products[i] = 0.0f;
     }
+    saveGPUArray(head->products, products);
+
     lifeForm->head = head;
     lifeForm->addCell(head);
 }

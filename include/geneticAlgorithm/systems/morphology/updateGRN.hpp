@@ -5,6 +5,6 @@
 
 void computeAffinities(GeneRegulatoryNetwork &grn);
 
-void updateGRN(GeneRegulatoryNetwork& grn);
+void updateGRN(GeneRegulatoryNetwork& grn, Cell* cells, Point* points, int numCells);
 
 #endif

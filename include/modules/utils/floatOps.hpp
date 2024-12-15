@@ -3,7 +3,7 @@
 
 #include "vector_types.h"
 #include "vector_functions.h"
-#include <modules/utils/fastMath.hpp>
+#include <modules/utils/GPU/fastMath.hpp>
 
 inline __host__ __device__ float2 vec(float direction) {
     return {cosf(direction), sinf(direction)};
