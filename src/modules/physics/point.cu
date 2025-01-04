@@ -14,7 +14,7 @@
 
 __host__ __device__ void Point::update(float dt) {
     float2 velocity = pos - prevPos;
-    float2 accel = force / mass;
+    float2 accel = force / radius;
 
     float2 newPosition = pos + velocity * pow(0.99, dt) + accel * dt * dt;
     prevPos = pos;
@@ -43,7 +43,7 @@ __host__ __device__ void Point::rotate(const float2& origin, float angle) {
 }
 
 void Point::render(VertexManager& viewer, sf::Color colour) const {
-    viewer.addCircle(pos, mass, colour);
+    viewer.addCircle(pos, radius, colour);
 }
 
 #endif

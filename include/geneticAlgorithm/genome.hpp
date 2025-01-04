@@ -26,11 +26,10 @@ public:
         AMPHIBIAN, // Multi-celled, complex organisms that undergo metamorphosis
     };
 
-    map<int, string> hoxGenes;
-    vector<int> hoxGeneOrder;
+    map<size_t, string> hoxGenes;
+    vector<size_t> hoxGeneOrder;
 
     sf::RenderTexture cachedTexture;
-    //map<int, string> neurologicalGenes;
 
     Genome();
     Genome(const Genome& other) {
@@ -43,12 +42,12 @@ public:
     void render(VertexManager& vertexManager);
     static constexpr int HOX_SIZE = 100;
 
-    void addHoxGene(int key, const string& value, int position=-1);
-    void removeGene(int key);
+    void addHoxGene(size_t key, const string& value, int position=-1);
+    void removeGene(size_t key);
 
-    [[nodiscard]] bool contains(int key) const;
-    [[nodiscard]] string at(int key) const;
-    [[nodiscard]] map<int, string> getGenes() const;
+    [[nodiscard]] bool contains(size_t key) const;
+    [[nodiscard]] string at(size_t key) const;
+    [[nodiscard]] map<size_t, string> getGenes() const;
     [[nodiscard]] string toString() const;
 };
 

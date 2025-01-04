@@ -4,8 +4,8 @@
 #include <modules/physics/point.hpp>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-#include "GPUVector.hpp"
-#include "CGPUValue.hpp"
+#include "modules/cuda/structures/GPUVector.hpp"
+#include "modules/cuda/structures/CGPUValue.hpp"
 
 std::pair<int, float> findNearest(GPUVector<Point>& points,
                   float x, float y, float minDistance);

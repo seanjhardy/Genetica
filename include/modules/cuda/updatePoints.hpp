@@ -4,12 +4,15 @@
 #include <modules/physics/point.hpp>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-#include "GPUVector.hpp"
-#include "CGPUValue.hpp"
+#include "modules/cuda/structures/GPUVector.hpp"
+#include "modules/cuda/structures/CGPUValue.hpp"
+#include <geneticAlgorithm/cellParts/cellLink.hpp>
 
 void updatePoints(GPUVector<Point>& points,
-                  GPUVector<Connection>& connections,
+                  GPUVector<CellLink>& cellLinks,
                   CGPUValue<sf::FloatRect>& bounds,
                   float dt = 1.0f);
+
+int movePoint(GPUVector<Point>& points, int pointIndex, const sf::Vector2f& newPos);
 
 #endif

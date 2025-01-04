@@ -1,8 +1,8 @@
 #include <geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp>
-#include <simulator/entities/lifeform.hpp>
+#include "geneticAlgorithm/lifeform.hpp"
 #include <simulator/simulator.hpp>
 #include <modules/utils/GUIUtils.hpp>
-
+/*
 void GeneRegulatoryNetwork::update(float dt) {
     // Compute distances between cells
     precomputeDistances();
@@ -359,3 +359,4 @@ void GeneRegulatoryNetwork::render(VertexManager& vertexManager) {
     }
 }
 
+*/

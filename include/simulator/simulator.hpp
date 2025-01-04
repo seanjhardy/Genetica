@@ -9,7 +9,6 @@
 #include "environment.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <modules/graphics/UIManager.hpp>
-#include "simulator/entities/entity.hpp"
 
 class Simulator {
 public:
@@ -26,7 +25,7 @@ private:
     double realTime = 0;
     float speed = 1.0;
     int step = 0;
-    int MAX_FRAMERATE = 20;
+    int MAX_FRAMERATE = 60;
     double FRAME_INTERVAL = CLOCKS_PER_SEC / MAX_FRAMERATE;
     std::clock_t lastRenderTime = std::clock();
 
@@ -38,8 +37,7 @@ private:
     // Simulation state
     State state;
     Environment env;
-    GeneticAlgorithm geneticAlgorithm;
-    Entity* selectedEntity = nullptr;
+    size_t selectedEntityId = -1;
 
     // Singleton class functions
     Simulator();
@@ -65,8 +63,7 @@ public:
     void setTab(Tab tab);
 
     Environment& getEnv();
-    GeneticAlgorithm& getGA();
-    Entity* getSelectedEntity();
+    size_t getSelectedEntityId() const;
 
     static Simulator& get();
 };

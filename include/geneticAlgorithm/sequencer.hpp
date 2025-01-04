@@ -1,4 +1,4 @@
 #include "unordered_map"
-#include "simulator/entities/lifeform.hpp"
+#include "lifeform.hpp"
 
-void sequence(LifeForm* lifeForm, const Genome& genome);
+void sequence(LifeForm& lifeForm, const Genome& genome, const float2& pos);

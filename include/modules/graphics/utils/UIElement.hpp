@@ -84,8 +84,8 @@ public:
               absolute = false;
           }
       }},
-      {"left",      [this](const string &v) { left = parseValue(v); }},
-      {"top",       [this](const string &v) { top = parseValue(v); }},
+      {"left",      [this](const string &v) { left = (int)parseValue(v); }},
+      {"top",       [this](const string &v) { top = (int)parseValue(v); }},
       {"transform", [this](const string &v) {
           transform = parseTransform(v);
           auto update = [this](float progress) {

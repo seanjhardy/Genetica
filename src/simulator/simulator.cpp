@@ -35,7 +35,7 @@ void Simulator::run() {
         float deltaTime = elapsed.asSeconds(); // Convert elapsed time to seconds
 
         sf::Event event{};
-        sf::Vector2f mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
+        auto mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
         sf::Vector2f worldCoords = simulation->mapPixelToCoords(mousePos);
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
@@ -48,12 +48,11 @@ void Simulator::run() {
             bool consumed = uiManager.handleEvent(event);
             if (consumed) continue;
 
-            Entity* newSelectedEntity = nullptr;
-            bool entitySelected = env.handleEvent(event, worldCoords, &newSelectedEntity);
+            std::pair<bool, int> selectedEntity = env.handleEvent(event, worldCoords);
 
-            if (entitySelected && newSelectedEntity != selectedEntity) {
-                selectedEntity = newSelectedEntity;
-                setTab(selectedEntity == nullptr ? Tab::Simulation : Tab::LifeForm);
+            if (selectedEntity.first && selectedEntity.second != selectedEntityId) {
+                selectedEntityId = selectedEntity.second;
+                setTab(selectedEntityId == -1 ? Tab::Simulation : Tab::LifeForm);
             }
         }
         // Handle continuous events (e.g. holding down a key/hovering over a UI element)
@@ -64,7 +63,6 @@ void Simulator::run() {
         if (state == State::Playing) {
             realTime += deltaTime * speed;
             env.simulate(speed);
-            geneticAlgorithm.simulate(speed);
             step += 1;
         }
 
@@ -78,7 +76,6 @@ void Simulator::run() {
 
             // Render simulation
             env.render(simulation->getVertexManager());
-            geneticAlgorithm.render(simulation->getVertexManager());
 
             // Render UI
             uiManager.draw(window);
@@ -121,10 +118,6 @@ Environment& Simulator::getEnv() {
     return env;
 }
 
-GeneticAlgorithm& Simulator::getGA() {
-    return geneticAlgorithm;
-}
-
 void Simulator::speedUp() {
     speed *= 1.5;
 }
@@ -135,11 +128,10 @@ void Simulator::slowDown() {
 
 void Simulator::reset() {
     env.reset();
-    geneticAlgorithm.reset();
 }
 
 std::string Simulator::getTimeString() const {
-    float time = (float)realTime;
+    int time = (int)realTime;
     int hours = time / 3600;
     time -= hours * 3600;
     int minutes = time / 60;
@@ -163,11 +155,11 @@ int Simulator::getStep() const {
 }
 
 float Simulator::getRealTime() const {
-    return realTime;
+    return (float)realTime;
 }
 
-Entity* Simulator::getSelectedEntity() {
-    return selectedEntity;
+size_t Simulator::getSelectedEntityId() const {
+    return selectedEntityId;
 }
 
 void Simulator::cleanup() {

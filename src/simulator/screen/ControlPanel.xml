@@ -1,7 +1,9 @@
 <!-- Control Panel -->
 <View class="UIPanel"  style="flex-direction: column; gap: 10px; align-row: center; align-col: end; padding: 5px;">
-    <Text key="time" style="font-size: 20px; outline: 2px; width: 100px; height: 20px; text-align: center"/>
-    <Text key="step" style="font-size: 20px; outline: 2px; width: 100px; height: 20px; text-align: center"/>
+    <View style="flex-direction: row; gap: 20px; align-row: center; align-col: center; width: 100%; height: 20px">
+        <Text key="time" style="font-size: 20px; outline: 2px; width: 100px; height: 20px; text-align: center"/>
+        <Text key="step" style="font-size: 20px; outline: 2px; width: 100px; height: 20px; text-align: center"/>
+    </View>
     <View key="controlPanel" class="container panel" style="width: 330px; height: 130px; ">
         <View style="width: 100%; flex: 1; flex-direction: row;">
             <View style="width: 60px; height: 100%;"/>

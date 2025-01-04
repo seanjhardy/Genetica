@@ -18,7 +18,7 @@ __host__ __device__ inline void constrainDistance(Point& point1, Point& point2, 
 
     float2 delta = (point2.pos - point1.pos) * deltaDistance / currentDistance;
 
-    float massRatio = point1.mass / (point1.mass + point2.mass);
+    float massRatio = point1.radius / (point1.radius + point2.radius);
     point1.pos -= delta * (1 - massRatio) * 0.01;
     point2.pos += delta * massRatio * 0.01;
 }
@@ -32,10 +32,10 @@ __host__ __device__ inline void constrainAngle(Point& point1, Point& point2, flo
 
 __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect bounds) {
     float updateDist = 0.0f;
-    float minMax[4] = {bounds.left + point.mass,
-                       bounds.width - point.mass,
-                       bounds.top + point.mass,
-                       bounds.height - point.mass};
+    float minMax[4] = {bounds.left + point.radius,
+                       bounds.width - point.radius,
+                       bounds.top + point.radius,
+                       bounds.height - point.radius};
 
     if (point.pos.x < minMax[0]) {
         point.prevPos.x = point.pos.x;
@@ -65,11 +65,11 @@ __host__ __device__ inline void checkCollisionCircleRec(Point& circle, Point& re
     float y = circle.pos.y;
     float pX = circle.pos.x;
     float pY = circle.pos.y;
-    float size = circle.mass;
-    float minX = rect.pos.x - rect.mass / 2;
-    float maxX = rect.pos.x + rect.mass / 2;
-    float minY = rect.pos.y - rect.mass / 2;
-    float maxY = rect.pos.y + rect.mass / 2;
+    float size = circle.radius;
+    float minX = rect.pos.x - rect.radius / 2;
+    float maxX = rect.pos.x + rect.radius / 2;
+    float minY = rect.pos.y - rect.radius / 2;
+    float maxY = rect.pos.y + rect.radius / 2;
 
     // Check if the circle is completely outside the rectangle
     if (pX < minX - size || pX > maxX + size || pY < minY - size || pY > maxY + size) {

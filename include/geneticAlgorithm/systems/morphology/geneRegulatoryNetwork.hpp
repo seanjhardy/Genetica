@@ -4,42 +4,29 @@
 #include <vector>
 #include <unordered_map>
 #include <map>
-#include <modules/cuda/CGPUValue.hpp>
+#include "modules/cuda/structures/CGPUValue.hpp"
 
 #include "./gene.hpp"
 #include "./promoter.hpp"
 #include "./effector.hpp"
 #include "./regulatoryUnit.hpp"
-#include "geneticAlgorithm/cellParts/cell.hpp"
+#include <geneticAlgorithm/cellParts/cell.hpp>
+#include "modules/cuda/structures/GPUVector.hpp"
 
 class LifeForm;
 
 class GeneRegulatoryNetwork {
 public:
-    Gene* factors;
-    int numFactors;
-    Promoter* promoters;
-    int numPromoters;
-    Effector* effectors;
-    int numEffectors;
+    StaticGPUVector<Gene> factors;
+    StaticGPUVector<Promoter> promoters;
+    StaticGPUVector<Effector> effectors;
+    StaticGPUVector<RegulatoryUnit> regulatoryUnits;
 
-    int numProducts;
+    StaticGPUVector<float> promoterFactorAffinities;
+    StaticGPUVector<float> factorEffectorAffinities;
+    StaticGPUVector<float> factorReceptorAffinities;
 
-    RegulatoryUnit* regulatoryUnits;
-    int numRegulatoryUnits;
-
-    float* promoterFactorAffinities;
-    float* factorEffectorAffinities;
-    float* factorReceptorAffinities;
-
-    float* cellDistances;
-
-    void render(VertexManager& vertexManager);
-
-    void precomputeAffinities();
-    void precomputeDistances();
-    void updateProductConcentrations(float deltaTime);
-    void updateGeneExpression(float deltaTime);
+    StaticGPUVector<float> cellDistances;
 };
 
 #endif

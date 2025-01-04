@@ -5,19 +5,19 @@
 
 Genome::Genome() {}
 
-bool Genome::contains(int key) const {
+bool Genome::contains(size_t key) const {
     return hoxGenes.contains(key);
 }
 
-string Genome::at(int key) const {
+string Genome::at(size_t key) const {
     return hoxGenes.at(key);
 }
 
-map<int, string> Genome::getGenes() const {
+map<size_t, string> Genome::getGenes() const {
     return hoxGenes;
 }
 
-void Genome::addHoxGene(int key, const string& value, int position) {
+void Genome::addHoxGene(size_t key, const string& value, int position) {
     hoxGenes.insert({key, value});
     if (position == -1) {
         position = hoxGeneOrder.size();
@@ -25,7 +25,7 @@ void Genome::addHoxGene(int key, const string& value, int position) {
     hoxGeneOrder.insert(hoxGeneOrder.begin() + position, key);
 }
 
-void Genome::removeGene(int key) {
+void Genome::removeGene(size_t key) {
     hoxGenes.erase(key);
     hoxGeneOrder.erase(std::remove(hoxGeneOrder.begin(), hoxGeneOrder.end(), key), hoxGeneOrder.end());
 }
@@ -104,7 +104,7 @@ void Genome::init(Template templateType) {
             for (int j = 0; j < geneLength; j++) {
                 randomGene += Random::randomBase();
             }
-            int index = Simulator::get().getGA().nextGeneID();
+            int index = Simulator::get().getEnv().getGA().nextGeneID();
             hoxGenes.insert({index, randomGene});
             hoxGeneOrder.push_back(index);
         }

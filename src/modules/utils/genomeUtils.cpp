@@ -69,7 +69,7 @@ float compareGeneBases(string gene1, string gene2) {
     string& gene1Cpy = gene1;
     string& gene2Cpy = gene2;
     int baseDiff = 0;
-    int maxLength = max(gene1.length(), gene2.length());
+    int maxLength = max((int)gene1.length(), (int)gene2.length());
     for (int i = 0; i < maxLength; i++) {
         int base1 = readBase(gene1Cpy);
         int base2 = readBase(gene2Cpy);

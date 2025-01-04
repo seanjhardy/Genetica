@@ -1,11 +1,10 @@
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
-#include <simulator/entities/lifeform.hpp>
+#include "geneticAlgorithm/lifeform.hpp"
 
-CellLink::CellLink(LifeForm* lifeForm, Cell* a, Cell* b, float startLength)
-: lifeForm(lifeForm), cell1(a), cell2(b) {
-    connectionIdx = lifeForm->getEnv()->addConnection(a->pointIdx, b->pointIdx, startLength);
-}
+CellLink::CellLink(size_t lifeFormId, size_t cellAId, size_t cellBId, size_t p1, size_t p2, float startLength)
+: lifeFormId(lifeFormId), cellAId(cellAId), cellBId(cellBId), p1(p1), p2(p2) {};
 
+/*
 void CellLink::adjustSize(float distance) {
     Connection* connection = lifeForm->getEnv()->getConnection(connectionIdx);
     connection->length += distance;
@@ -30,8 +29,6 @@ void CellLink::moveCell2(Cell* newCell) {
     cell2 = newCell;
 }
 
-[[nodiscard]]
-
 float CellLink::getBuildCost() const {
     Connection* connection = lifeForm->getEnv()->getConnection(connectionIdx);
     Point* p1 = lifeForm->getEnv()->getPoint(cell1->pointIdx);
@@ -41,17 +38,17 @@ float CellLink::getBuildCost() const {
     //+ 0.5f * (muscle ? 1.0f : 0.0f) * muscleStrength
     //+ 0.01f * (nerve ? 1.0f : 0.0f)
     //+ 0.01f * (fat ? 1.0f : 0.0f) * fatSize;
-    buildCost *= connection->length * (p1->mass + p2->mass) / 2;
+    buildCost *= connection->length * (p1->radius + p2->radius) / 2;
     return buildCost;
 };
-
+*/
 /*void simulate(float dt, float massChange) {
         Connection* connection = lifeForm->getEnv()->getConnection(connectionIdx);
         Point* p1 = lifeForm->getEnv()->getPoint(connection->p1);
         Point* p2 = lifeForm->getEnv()->getPoint(connection->p2);
 
-        float startWidth = p1->mass;
-        float endWidth = p2->mass;
+        float startWidth = p1->radius;
+        float endWidth = p2->radius;
         float avgWidth = (startWidth + endWidth) * 0.5f;
 
         // Don't ask me how I got this equation :skull:
@@ -71,8 +68,8 @@ float CellLink::getBuildCost() const {
         lifeForm->energy -= growthEnergyCost;
 
         // Calculate the growthFraction of each point based on gene, segment growthFraction %, and lifeform growthFraction
-        p1->mass = startWidth * growthProgress;
-        p2->mass = endWidth * growthProgress;
+        p1->radius = startWidth * growthProgress;
+        p2->radius = endWidth * growthProgress;
 
 
         if (lifeForm != nullptr || false) {

@@ -12,6 +12,9 @@ struct GeneticUnit {
     bool sign;
     float modifier;
     float3 embedding;
+
+    GeneticUnit(bool sign, float modifier, float3 embedding)
+        : sign(sign), modifier(modifier), embedding(embedding) {}
 };
 
 #endif

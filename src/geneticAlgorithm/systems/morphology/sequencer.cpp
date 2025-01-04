@@ -2,10 +2,9 @@
 #include "modules/utils/genomeUtils.hpp"
 #include <string>
 #include <utility>
-#include <modules/utils/GPU/GPUUtils.hpp>
-#include <geneticAlgorithm/systems/morphology/updateGRN.hpp>
+#include "modules/cuda/updateGRN.hpp"
 
-void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
+void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
     // Temporary vars
     std::vector<Gene> factors;
     std::vector<Promoter> promoters;
@@ -13,7 +12,7 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
     std::vector<RegulatoryUnit> regulatoryUnits;
 
     // Temporary variables for regulatory units
-    RegulatoryUnit regulatoryUnit;
+    RegulatoryUnit regulatoryUnit = RegulatoryUnit();
     std::vector<int> regulatoryPromoters;
     std::vector<int> regulatoryFactors;
 
@@ -82,16 +81,14 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
                 Promoter promoter = Promoter(promoterType, sign, modifier, embedding);
 
                 if (!readingPromoters) {
-                    saveGPUArray(regulatoryUnit.promoters, regulatoryPromoters);
-                    saveGPUArray(regulatoryUnit.factors, regulatoryFactors);
-                    regulatoryUnit.numFactors = regulatoryFactors.size();
-                    regulatoryUnit.numPromoters = regulatoryPromoters.size();
+                    regulatoryUnit.promoters = StaticGPUVector(regulatoryPromoters);
+                    regulatoryUnit.factors = StaticGPUVector(regulatoryFactors);
                     regulatoryUnits.push_back(regulatoryUnit);
                     regulatoryUnit = RegulatoryUnit();
                     readingPromoters = true;
                 }
 
-                regulatoryPromoters.push_back(promoters.size());
+                regulatoryPromoters.push_back((int)promoters.size());
                 promoters.push_back(promoter);
             }
 
@@ -106,7 +103,7 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
 
                 if (regulatoryPromoters.empty()) continue;
                 readingPromoters = false;
-                regulatoryFactors.push_back(factors.size());
+                regulatoryFactors.push_back((int)factors.size());
                 factors.push_back(gene);
             }
         } catch (RNAExhaustedException& e) {
@@ -114,17 +111,11 @@ void sequenceGRN(LifeForm* lifeForm, const Genome& genome) {
         }
     }
 
-    saveGPUArray(lifeForm->grn.factors, factors);
-    lifeForm->grn.numFactors = factors.size();
+    lifeForm.grn.factors = StaticGPUVector(factors);
+    lifeForm.grn.promoters = StaticGPUVector(promoters);
+    lifeForm.grn.effectors = StaticGPUVector(effectors);
 
-    saveGPUArray(lifeForm->grn.promoters, promoters);
-    lifeForm->grn.numPromoters = promoters.size();
+    lifeForm.grn.regulatoryUnits = StaticGPUVector(regulatoryUnits);
 
-    saveGPUArray(lifeForm->grn.effectors, effectors);
-    lifeForm->grn.numEffectors = effectors.size();
-
-    saveGPUArray(lifeForm->grn.regulatoryUnits, regulatoryUnits);
-    lifeForm->grn.numRegulatoryUnits = regulatoryUnits.size();
-
-    computeAffinities(lifeForm->grn);
+    computeAffinities(lifeForm.grn);
 }

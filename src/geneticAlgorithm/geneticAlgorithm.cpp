@@ -3,18 +3,12 @@
 #include "modules/utils/genomeUtils.hpp"
 #include "geneticAlgorithm/sequencer.hpp"
 #include <simulator/simulator.hpp>
-
-void GeneticAlgorithm::simulate(float dt) {
-    for (LifeForm* lifeform : population) {
-        lifeform->simulate(dt);
-    }
-};
-
+/*
 void GeneticAlgorithm::render(VertexManager& vertexManager) {
     for (LifeForm* lifeform : population) {
         lifeform->render(vertexManager);
     }
-};
+};*/
 
 void GeneticAlgorithm::mutate(Genome& genome) {
     // Clone genes
@@ -75,19 +69,21 @@ void GeneticAlgorithm::mutateGene(string& gene) const {
     gene = mutatedGene;
 }
 
-LifeForm& GeneticAlgorithm::createRandomLifeForm() {
+void GeneticAlgorithm::createRandomLifeForm() {
     Genome genome = Genome();
     genome.init();
+    size_t genomeID = nextGenomeID();
+    genomes.insert({genomeID, genome});
 
     float2 pos = Simulator::get().getEnv().randomPos();
-    auto* lifeForm = new LifeForm(&Simulator::get().getEnv(), pos, genome);
-    lifeForm->energy = 100;
-    Simulator::get().getGA().addLifeForm(lifeForm);
-    return *lifeForm;
+    size_t id = Simulator::get().getEnv().getGA().population.getNextIndex();
+    LifeForm lifeForm = LifeForm(id, &Simulator::get().getEnv(), genome, genomeID, pos);
+    lifeForm.energy = 100;
+    Simulator::get().getEnv().getGA().addLifeForm(lifeForm);
 }
 
-void GeneticAlgorithm::addLifeForm(LifeForm* lifeform) {
-    population.push_back(lifeform);
+size_t GeneticAlgorithm::addLifeForm(const LifeForm& lifeform) {
+    return population.push(lifeform);
 }
 
 void GeneticAlgorithm::reset() {
@@ -98,18 +94,22 @@ void GeneticAlgorithm::reset() {
     geneID = 0;
 }
 
-vector<LifeForm*> GeneticAlgorithm::getPopulation() {
+GPUVector<LifeForm>& GeneticAlgorithm::getPopulation() {
     return population;
 }
 
-vector<Species*> GeneticAlgorithm::getSpecies() {
+GPUVector<Species>& GeneticAlgorithm::getSpecies() {
     return species;
 }
 
-int GeneticAlgorithm::nextGeneID() {
+size_t GeneticAlgorithm::nextGeneID() {
     return geneID++;
 }
 
-int GeneticAlgorithm::nextSpeciesID() {
+size_t GeneticAlgorithm::nextSpeciesID() {
     return speciesID++;
+}
+
+size_t GeneticAlgorithm::nextGenomeID() {
+    return genomeID++;
 }

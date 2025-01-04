@@ -1,5 +1,5 @@
 #include <vector>
-#include "simulator/entities/lifeform.hpp"
+#include "geneticAlgorithm/lifeform.hpp"
 
 class Protein {
 public:

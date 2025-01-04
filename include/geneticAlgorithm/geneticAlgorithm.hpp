@@ -7,6 +7,7 @@
 #include <map>
 #include <modules/graphics/vertexManager.hpp>
 #include <geneticAlgorithm/genome.hpp>
+#include <modules/cuda/structures/GPUVector.hpp>
 
 using namespace std;
 
@@ -17,7 +18,7 @@ using namespace std;
 class GeneticAlgorithm {
 private:
     int MAX_POPULATION = -1;
-    int MAX_GENES = 200;
+    int MAX_GENES = 500;
 
     // Species parameters
     float geneDifferenceScalar = 0.5f;
@@ -35,28 +36,32 @@ private:
     float deleteBaseChance = 0.00005f;
     float crossoverCellDataChance = 0.2f;// probability of switching from one parent to another
 
-    vector<LifeForm*> population{};
-    vector<Species*> species{};
-    vector<Species*> ancestors{};
-    int speciesID = 0;
-    int geneID = 0;
+    std::map<size_t, Genome> genomes;
+
+    GPUVector<LifeForm> population{};
+    GPUVector<Species> species{};
+    GPUVector<Species> ancestors{};
+
+    size_t genomeID = 0;
+    size_t geneID = 0;
+    size_t speciesID = 0;
 
 public:
-    void simulate(float dt);
-    void render(VertexManager& vertexManager);
+    //void render(VertexManager& vertexManager);
     void reset();
 
-    void addLifeForm(LifeForm* lifeform);
+    size_t addLifeForm(const LifeForm& lifeform);
     void mutate(Genome& genome);
     void mutateGene(string& gene) const;
 
-    LifeForm& createRandomLifeForm();
+    void createRandomLifeForm();
 
-    vector<LifeForm*> getPopulation();
-    vector<Species*> getSpecies();
+    GPUVector<LifeForm>& getPopulation();
+    GPUVector<Species>& getSpecies();
 
-    int nextGeneID();
-    int nextSpeciesID();
+    size_t nextGeneID();
+    size_t nextSpeciesID();
+    size_t nextGenomeID();
 };
 
 #endif

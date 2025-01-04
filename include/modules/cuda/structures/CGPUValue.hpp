@@ -33,6 +33,6 @@ public:
     T* hostDataPtr() { return &h_data; }
 };
 
-#include "../../../src/modules/cuda/CGPUValue.tpp"
+#include "../../../../src/modules/cuda/structures/CGPUValue.tpp"
 
 #endif

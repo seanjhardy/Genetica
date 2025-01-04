@@ -3,7 +3,7 @@
 
 #include "iostream"
 #include "vector"
-#include "simulator/entities/lifeform.hpp"
+#include "geneticAlgorithm/lifeform.hpp"
 #include "unordered_map"
 
 using namespace std;

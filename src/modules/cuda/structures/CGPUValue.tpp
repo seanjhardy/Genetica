@@ -24,10 +24,10 @@ CGPUValue<T>& CGPUValue<T>::operator=(T value) {
 
 template<typename T>
 void CGPUValue<T>::syncToHost() {
-    cudaMemcpy(h_data.data(), d_data, sizeof(T), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_data.data_(), d_data, sizeof(T), cudaMemcpyDeviceToHost);
 }
 
 template<typename T>
 void CGPUValue<T>::syncToDevice() {
-    cudaMemcpy(d_data, h_data.data(), sizeof(T), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_data, h_data.data_(), sizeof(T), cudaMemcpyHostToDevice);
 }

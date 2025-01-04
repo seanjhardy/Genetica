@@ -8,12 +8,6 @@
 
 class VertexManager;
 
-struct Connection {
-    int p1;
-    int p2;
-    float length;
-};
-
 struct ParentChildLink {
     int startPoint;
     int endPoint;
@@ -26,20 +20,20 @@ struct ParentChildLink {
 
 class Point {
 public:
-    int entityID{};
+    size_t entityID{};
     float2 pos{};
     float2 prevPos{};
     float2 force{};
-    float mass = 1.0f;
+    float radius = 1.0f;
 
-    Point() : pos{0,0}, prevPos{0,0}, force{0,0}, mass(1.0f) {}
-    Point(int id, float x, float y, float m = 1.0f) {
+    Point() : pos{0,0}, prevPos{0,0}, force{0,0}, radius(1.0f) {}
+    Point(size_t id, float x, float y, float r = 1.0f) {
         entityID = id;
         pos.x = x;
         pos.y = y;
         prevPos.x = x;
         prevPos.y = y;
-        mass = m;
+        radius = r;
     }
     __host__ __device__ void setPos(float2 pos);
     __host__ __device__ void update(float dt);

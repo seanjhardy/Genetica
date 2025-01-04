@@ -21,7 +21,7 @@ add_executable(Genetica main.cpp ${SRCS} ${CUDA_SRCS})
 file(GLOB_RECURSE INCLUDE_LIBS "${CMAKE_SOURCE_DIR}/libs/*/include")
 
 include_directories(./include ${CMAKE_SOURCE_DIR}/libs/SFML/include
-        "D:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include")
+        "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6/include")
 
 file(GLOB_RECURSE LIBS "${CMAKE_SOURCE_DIR}/libs/*.lib")
 target_link_libraries(Genetica ${LIBS})

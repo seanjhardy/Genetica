@@ -10,18 +10,14 @@ class CellLink {
 public:
     static constexpr float INITIAL_DISTANCE = 2.0f;
 
-    int connectionIdx;
-    LifeForm* lifeForm;
-    Cell* cell1;
-    Cell* cell2;
+    size_t lifeFormId;
+    size_t cellAId;
+    size_t cellBId;
+    size_t p1;
+    size_t p2;
+    float length;
 
-    CellLink(LifeForm* lifeForm, Cell* a, Cell* b, float startLength);
-
-    void adjustSize(float distance);
-    void moveCell1(Cell* newCell);
-    void moveCell2(Cell* newCell);
-
-    [[nodiscard]] float getBuildCost() const;
+    CellLink(size_t lifeFormId, size_t cellAId, size_t cellBId, size_t p1, size_t p2, float startLength);
 };
 
 #endif

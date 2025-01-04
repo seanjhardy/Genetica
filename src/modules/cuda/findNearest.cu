@@ -21,7 +21,7 @@ __device__ float atomicMinFloat(float* addr, float value) {
     return old;
 }
 
-__global__ void findNearestKernel(Point *points, int numPoints,
+__global__ void findNearestKernel(GPUVector<Point>& points,
                                   float x, float y, float minDistance, int* closestIndex, float* distance) {
     // Allocate shared memory for thread's local minimum distance and index
     __shared__ float local_min_dist;
@@ -36,7 +36,7 @@ __global__ void findNearestKernel(Point *points, int numPoints,
 
     // Compute the squared distance for each point in parallel
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < numPoints) {
+    if (i < points.size()) {
         float dx = points[i].pos.x - x;
         float dy = points[i].pos.y - y;
         float dist_sq = dx * dx + dy * dy;
@@ -53,7 +53,7 @@ __global__ void findNearestKernel(Point *points, int numPoints,
     if (threadIdx.x == 0) {
         if (local_min_idx != -1) {
             *closestIndex = local_min_idx;
-            *distance = sqrt(local_min_dist);;
+            *distance = sqrt(local_min_dist);
         } else {
             *closestIndex = -1.0f;
             *distance = -1;
@@ -62,7 +62,7 @@ __global__ void findNearestKernel(Point *points, int numPoints,
 }
 
 std::pair<int, float> findNearest(GPUVector<Point> &points, float x, float y, float minDistance) {
-    int numPoints = points.size();
+    int numPoints = (int)points.size();
 
     int blockSize = 256;
     int numBlocks = (numPoints + blockSize - 1) / blockSize;
@@ -72,15 +72,14 @@ std::pair<int, float> findNearest(GPUVector<Point> &points, float x, float y, fl
     cudaMalloc(&d_closest_idx, sizeof(int));
     cudaMalloc(&d_closest_dist, sizeof(float));
 
-    findNearestKernel<<<numBlocks, blockSize>>>(points.deviceData(),
-                                                numPoints, x, y, minDistance, d_closest_idx, d_closest_dist);
+    findNearestKernel<<<numBlocks, blockSize>>>(points, x, y, minDistance,
+                                                d_closest_idx, d_closest_dist);
 
     // Copy results back to host
     int h_closest_idx;
     float h_closest_dist;
     cudaMemcpy(&h_closest_idx, d_closest_idx, sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(&h_closest_dist, d_closest_dist, sizeof(float), cudaMemcpyDeviceToHost);
-
     cudaFree(d_closest_idx);
     cudaFree(d_closest_dist);
 

@@ -1,34 +1,33 @@
 #include <utility>
 #include "vector_types.h"
-#include "simulator/entities/lifeform.hpp"
+#include "geneticAlgorithm/lifeform.hpp"
 #include "geneticAlgorithm/sequencer.hpp"
-#include "modules/utils/genomeUtils.hpp"
-#include "geneticAlgorithm/geneticAlgorithm.hpp"
-#include "modules/utils/print.hpp"
 #include "simulator/simulator.hpp"
+#include "modules/cuda/updateGRN.hpp"
 
 using namespace std;
 
-LifeForm::LifeForm(Environment* environment, float2 pos,
-                   Genome& genome)
-    : Entity(pos), env(environment), genome(genome){
+LifeForm::LifeForm(size_t idx,
+                   Environment* environment,
+                   Genome& genome,
+                   size_t genomeIdx,
+                   float2 pos)
+    : idx(idx), env(environment), genomeIdx(genomeIdx) {
     init();
-    sequence(this, genome);
+    sequence(*this, genome, pos);
 }
 
-void LifeForm::simulate(float dt) {
-    if (head == nullptr) return;
-    pos = env->getPoint(head->pointIdx)->pos;
-    for (auto& cell : cells) {
+//void LifeForm::simulate(float dt) {
+    //pos = env->getPoint(cells[0].pointIdx)->pos;
+    /*for (auto& cell : cells) {
         cell->simulate(dt);
-    }
+    }*/
+    //grow(dt);
+//}
 
-    grow(dt);
-}
-
-void LifeForm::render(VertexManager& vertexManager) {
+/*void LifeForm::render(VertexManager& vertexManager) {
     // Create mesh from cells;
-    for (auto& link : links) {
+    /*for (auto& link : links.data()) {
         auto& cell1 = link->cell1;
         auto& cell2 = link->cell2;
         Point* point1 = env->getPoint(cell1->pointIdx);
@@ -38,46 +37,47 @@ void LifeForm::render(VertexManager& vertexManager) {
     for (auto& cell : cells) {
         cell->render(vertexManager);
     }
-}
+}*/
 
 void LifeForm::grow(float dt) {
-    if (head == nullptr) return;
     if (Simulator::get().getStep() % GROWTH_INTERVAL == 0) {
-        grn.update(dt);
+        updateGRN(grn, cells, env->getCells(), env->getPoints());
     };
 }
-
-LifeForm& LifeForm::clone(bool mutate){
+/*
+int LifeForm::clone(bool mutate){
     // Copy genome
     Genome copiedGenome = genome;
     // Create new LifeForm
-    auto* clone = new LifeForm(getEnv(), pos, copiedGenome);
+
+    // TODO: Fix this mess
+    auto clone = LifeForm(getEnv(), copiedGenome, {0, 0});
     // Mutate lifeForm genome
     if (mutate) {
-        Simulator::get().getGA().mutate(clone->genome);
+        Simulator::get().getEnv().getGA().mutate(clone.genome);
     }
 
     // Setup lifeForm parameters
     // TODO: Fix energy splitting
     float energyChange = energy * 0.5f;
     energy -= energyChange;
-    clone->energy += energyChange;
+    clone.energy += energyChange;
     numChildren++;
 
     // Assign to species and add to population
-    //TODO: Simulator::get().getGA()..assignSpecies(clone);
-    Simulator::get().getGA().addLifeForm(clone);
-    return *clone;
-}
+    //TODO: Simulator::get().getEnv().getGA().assignSpecies(clone);
+    return Simulator::get().getEnv().getGA().addLifeForm(clone);
+}*/
 
-LifeForm& LifeForm::combine(LifeForm* partner) {
+/*
+int LifeForm::combine(LifeForm* partner) {
     // Combine genomes
     Genome combinedGenome = crossover(genome,partner->genome);
     // Create new LifeForm
-    auto *child = new LifeForm(getEnv(), pos, combinedGenome);
+    auto child = LifeForm(getEnv(), combinedGenome);
 
     // Mutate lifeForm genome
-    Simulator::get().getGA().mutate(child->genome);
+    Simulator::get().getEnv().getGA().mutate(child.genome);
 
     // Setup child lifeForm parameters - share energy from parents
     auto* partnerLF = dynamic_cast<LifeForm*>(partner);
@@ -85,38 +85,38 @@ LifeForm& LifeForm::combine(LifeForm* partner) {
     float partnerEnergyChange = partnerLF->energy * 0.25;
     energy -= energyChange;
     partnerLF->energy -= partnerEnergyChange;
-    child->energy += energyChange + partnerEnergyChange;
+    child.energy += energyChange + partnerEnergyChange;
     numChildren++; partner->numChildren++;
 
     // Assign to species and add to population
-    //TODO: Simulator::get().getGA()..assignSpecies(clone);
-    Simulator::get().getGA().addLifeForm(child);
-    return *child;
+    //TODO: Simulator::get().getEnv().getGA()..assignSpecies(clone);
+    return Simulator::get().getEnv().getGA().addLifeForm(child);
 }
-
+*/
 void LifeForm::kill() {
     //TODO: Implement this
     //env->removePoint(this->entityID);
 }
 
-void LifeForm::addCell(Cell* cell) {
-    cells.push_back(cell);
+void LifeForm::addCell(const Cell& cell) {
+    size_t cellIdx = env->addCell(cell);
+    cells.push(cellIdx);
 }
 
-void LifeForm::addCellLink(CellLink* cellLink) {
-    links.push_back(unique_ptr<CellLink>(cellLink));
+void LifeForm::addCellLink(const CellLink& cellLink) {
+    size_t cellLinkIdx = env->addCellLink(cellLink);
+    links.push(cellLinkIdx);
 }
 
-void LifeForm::addInput(Protein* protein) {
-    inputs.push_back(protein);
+void LifeForm::addInput(const Protein& protein) {
+    inputs.push(protein);
 }
 
-void LifeForm::addOutput(Protein* protein) {
-    outputs.push_back(protein);
+void LifeForm::addOutput(const Protein& protein) {
+    outputs.push(protein);
 }
 
 void LifeForm::init(){
-    head = nullptr;
     cells.clear();
     inputs.clear();
     outputs.clear();

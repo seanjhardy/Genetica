@@ -19,7 +19,7 @@ inline void printElement(const Size c) {
 }
 
 inline void printElement(const Point p) {
-    std::cout << "Point(" << p.pos.x << ", " << p.pos.y << ", " << p.mass << ")";
+    std::cout << "Point(" << p.pos.x << ", " << p.pos.y << ", " << p.radius << ")";
 }
 
 // Template specialization to print a vector

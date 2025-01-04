@@ -1,9 +1,10 @@
-#ifndef GPU_VECTOR_H
-#define GPU_VECTOR_H
+#ifndef CGPU_VECTOR_H
+#define CGPU_VECTOR_H
 
 #include "vector"
+
 template<typename T>
-class GPUVector {
+class CGPUVector {
     T* d_data;        // Device data
     std::vector<T> h_data;  // Host mirror
     size_t size_;     // Current size
@@ -12,18 +13,18 @@ class GPUVector {
     void reallocateDevice(size_t new_capacity);
 
 public:
-    GPUVector() : d_data(nullptr), size_(0), capacity_(0) {}
-    explicit GPUVector(size_t initial_capacity);
-    explicit GPUVector(const std::vector<T>& host_vector);
-    ~GPUVector();
+    CGPUVector() : d_data(nullptr), size_(0), capacity_(0) {}
+    explicit CGPUVector(size_t initial_capacity);
+    explicit CGPUVector(const std::vector<T>& host_vector);
+    ~CGPUVector();
 
     // Disable copy constructor and assignment operator
-    GPUVector(const GPUVector&) = delete;
-    GPUVector& operator=(const GPUVector&) = delete;
+    CGPUVector(const CGPUVector&) = delete;
+    CGPUVector& operator=(const CGPUVector&) = delete;
 
     // Move constructor and assignment operator
-    GPUVector(GPUVector&& other) noexcept;
-    GPUVector& operator=(GPUVector&& other) noexcept;
+    CGPUVector(CGPUVector&& other) noexcept;
+    CGPUVector& operator=(CGPUVector&& other) noexcept;
 
     void push_back(const T& value);
     void remove(int index);
@@ -45,6 +46,6 @@ public:
     const std::vector<T>& hostData() const { return h_data; }
 };
 
-#include "../../../src/modules/cuda/GPUVector.tpp"
+#include "../../../../src/modules/cuda/structures/CGPUVector.tpp"
 
 #endif // GPU_VECTOR_H

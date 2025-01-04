@@ -1,5 +1,5 @@
 #include <geneticAlgorithm/species.hpp>
-#include "simulator/entities/lifeform.hpp"
+#include "geneticAlgorithm/lifeform.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <simulator/simulator.hpp>
 

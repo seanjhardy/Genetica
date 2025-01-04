@@ -4,18 +4,19 @@
 #include "modules/graphics/componentManager.hpp"
 #include "modules/graphics/functionManager.hpp"
 #include "modules/graphics/utils/HTMLParser.hpp"
-#include "simulator/entities/lifeform.hpp"
+#include "geneticAlgorithm/lifeform.hpp"
 #include <modules/graphics/components/image.hpp>
 #include <modules/graphics/components/viewport.hpp>
 #include <simulator/planet.hpp>
 #include <format>
+#include <modules/cuda/lifeForm.hpp>
 
 inline Screen *getSimulationScreen(Simulator *simulator) {
     auto screen = new Screen();
 
     FunctionManager::add("slowDown", [simulator]() { simulator->slowDown(); });
     FunctionManager::add("speedUp", [simulator]() { simulator->speedUp(); });
-    FunctionManager::add("createRandom", [simulator]() { simulator->getGA().createRandomLifeForm(); });
+    FunctionManager::add("createRandom", [simulator]() { simulator->getEnv().getGA().createRandomLifeForm(); });
     FunctionManager::add("reset", [simulator]() { simulator->reset(); });
 
     // Define play button
@@ -91,16 +92,17 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
     });
 
     FunctionManager::add("clone", [simulator]() {
-        dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->clone(false);
+        cloneLifeForm(simulator->getEnv().getGA().getPopulation(), simulator->getSelectedEntityId());
     });
     FunctionManager::add("mutate", [simulator]() {
-        simulator->getGA().mutate(dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->genome);
+        //mutateLifeForm(simulator->getEnv().getGA().getPopulation(), simulator->getSelectedEntityId());
+        //simulator->getEnv().getGA().mutate(dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->genome);
     });
     FunctionManager::add("energy", [simulator]() {
-        dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->energy += 100;
+        energiseLifeForm(simulator->getEnv().getGA().getPopulation(), simulator->getSelectedEntityId());
     });
     FunctionManager::add("delete", [simulator]() {
-        dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->kill();
+        killLifeForm(simulator->getEnv().getGA().getPopulation(), simulator->getSelectedEntityId());
     });
 
 
@@ -122,15 +124,15 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         dynamic_cast<Text*>(screen->getElement("step"))->setText(std::to_string(simulator->getStep()));
         dynamic_cast<Text*>(screen->getElement("speed"))->setText("x" + roundToDecimalPlaces(simulator->getSpeed(), 2));
 
-        dynamic_cast<Text*>(screen->getElement("species"))->setText(std::to_string(simulator->getGA().getSpecies().size()));
-        dynamic_cast<Text*>(screen->getElement("lifeforms"))->setText(std::to_string(simulator->getGA().getPopulation().size()));
+        dynamic_cast<Text*>(screen->getElement("species"))->setText(std::to_string(simulator->getEnv().getGA().getSpecies().size()));
+        dynamic_cast<Text*>(screen->getElement("lifeforms"))->setText(std::to_string(simulator->getEnv().getGA().getPopulation().size()));
         dynamic_cast<Text*>(screen->getElement("cells"))->setText(std::to_string(simulator->getEnv().getPoints().size()));
 
         float temperature = simulator->getEnv().getPlanet().temperature;
-        float octave1 = sin(0.1 * simulator->getRealTime());
-        float octave2 = sin(0.05 * simulator->getRealTime());
-        float octave3 = sin(2.0 * simulator->getRealTime());
-        temperature += octave1 * 5 + octave2 * 1 + octave3 * 0.2;
+        float octave1 = sin(0.1f * simulator->getRealTime());
+        float octave2 = sin(0.05f * simulator->getRealTime());
+        float octave3 = sin(2.0f * simulator->getRealTime());
+        temperature += octave1 * 5.0f + octave2 * 1.0f + octave3 * 0.2f;
         float thermometerTemperature = clamp(-10, temperature, 50);
         sf::Color thermometerColor;
         if (temperature <= 10) {
@@ -149,7 +151,7 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         dynamic_cast<ImageElement*>(screen->getElement("thermometer"))
         ->overrideProperty("style", "tint: " + thermometerColorString);
 
-        if (dynamic_cast<LifeForm*>(simulator->getSelectedEntity())) {
+        /*if (dynamic_cast<LifeForm*>(simulator->getSelectedEntity())) {
             auto selectedLifeform = dynamic_cast<LifeForm*>(simulator->getSelectedEntity());
             string text = "Energy: " + std::to_string(selectedLifeform->energy);
 
@@ -160,7 +162,7 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
 
             if (screen->getElement("grnPanel")->visible) {
                 auto* grn = (Viewport *) screen->getElement("geneRegulatoryNetwork");
-                if (grn != nullptr) {
+                /*if (grn != nullptr) {
                     selectedLifeform->grn.render(
                       (grn)->getVertexManager());
                     sf::FloatRect layout = ((Viewport *) screen->getElement("geneRegulatoryNetwork"))->layout;
@@ -169,7 +171,7 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
                     ((Viewport *) screen->getElement("geneRegulatoryNetwork"))->getCamera()->setPosition({0.5, 0.5});
                 }
             }
-       }
+       }*/
     });
 
     vector<UIElement*> elements = ComponentManager::get("SimulationScreen");

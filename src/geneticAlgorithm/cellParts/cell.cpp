@@ -1,53 +1,52 @@
-#include <simulator/entities/lifeform.hpp>
+#include "geneticAlgorithm/lifeform.hpp"
 #include <simulator/simulator.hpp>
 #include <modules/utils/mathUtils.hpp>
 
-Cell::Cell(LifeForm* lifeForm, Cell* mother, float2 pos, float radius)
-: lifeForm(lifeForm), mother(mother) {
-    pointIdx = lifeForm->getEnv()->addPoint(lifeForm->entityID,
-                                            pos.x, pos.y, radius);
+Cell::Cell(LifeForm& lifeForm, Cell* mother, const float2& pos, float radius) {
+    pointIdx = lifeForm.getEnv()->addPoint(Point(lifeForm.idx, pos.x, pos.y, radius));
+    lifeFormIdx = lifeForm.idx;
+
     if (mother == nullptr) return;
+
     generation = mother->generation + 1;
-    color = mother->color;
+    //color = mother->color;
     products = mother->products;
     rotation = mother->rotation + mother->divisionRotation;
 }
 
-
+/*
 void Cell::simulate(float dt) {
     Point* pointObj = lifeForm->getEnv()->getPoint(pointIdx);
-    lifeForm->energy -= LifeForm::ENERGY_DECREASE_RATE * (1.0f + pointObj->mass) * dt;
-    if (dividing) {
-        divide();
-    }
-}
+    lifeForm->energy -= LifeForm::ENERGY_DECREASE_RATE * (1.0f + pointObj->radius) * dt;
+}*/
 
+/*
 void Cell::render(VertexManager& vertexManager) const {
     Point* pointObj = lifeForm->getEnv()->getPoint(pointIdx);
     float2 pos = pointObj->pos;
-    float radius = pointObj->mass;
+    float radius = pointObj->radius;
     vertexManager.addCircle(pos, radius, color);
     vertexManager.addLine(pos, pos + vec(rotation) * radius, sf::Color::White, 0.2f);
     vertexManager.addLine(pos, pos + vec(rotation + divisionRotation) * radius, sf::Color::Red, 0.1f);
-}
-
+}*/
+/*
 void Cell::adjustSize(float sizeChange) const {
     Point* pointObj = lifeForm->getEnv()->getPoint(pointIdx);
-    lifeForm->energy -= (2 * M_PI * pointObj->mass * sizeChange + M_PI * pow(sizeChange, 2));
-    pointObj->mass = max(pointObj->mass + sizeChange, 0.1f);
+    lifeForm->energy -= (2 * M_PI * pointObj->radius * sizeChange + M_PI * pow(sizeChange, 2));
+    pointObj->radius = max(pointObj->radius + sizeChange, 0.1f);
     lifeForm->getEnv()->updatePoint(pointIdx, *pointObj);
 }
 
 void Cell::divide() {
     if (Simulator::get().getStep() - lastDivideTime < divisionFrequency) return;
     Point* motherPoint = lifeForm->getEnv()->getPoint(pointIdx);
-    if (motherPoint->mass < 1.0f) return;
+    if (motherPoint->radius < 1.0f) return;
     dividing = false;
 
     lastDivideTime = Simulator::get().getStep();
-    motherPoint->mass /= SQRT_2;
+    motherPoint->radius /= SQRT_2;
     float2 pos = motherPoint->pos + vec(rotation + divisionRotation) * CellLink::INITIAL_DISTANCE;
-    auto* daughter = new Cell(lifeForm, this, pos, motherPoint->mass);
+    auto* daughter = new Cell(lifeForm, this, pos, motherPoint->radius);
     Point* daughterPoint = lifeForm->getEnv()->getPoint(daughter->pointIdx);
 
     lifeForm->getEnv()->updatePoint(pointIdx, *motherPoint);
@@ -62,11 +61,11 @@ void Cell::divide() {
         Point* otherPoint = lifeForm->getEnv()->getPoint(cell->pointIdx);
         float distance = daughterPoint->distanceTo(*otherPoint);
         // If overlapping another cell, create a link
-        if (distance < daughterPoint->mass + otherPoint->mass) {
+        if (distance < daughterPoint->radius + otherPoint->radius) {
             auto* newCellLink = new CellLink(lifeForm, daughter, cell, CellLink::INITIAL_DISTANCE);
             lifeForm->addCellLink(newCellLink);
         }
-    }*/
+    }
 }
 
 void Cell::fuse(Cell* other) {
@@ -113,4 +112,4 @@ void Cell::die() {
                                          }), lifeForm->links.end());
     // Finally delete the memory itself
     delete this;
-}
+}*/
