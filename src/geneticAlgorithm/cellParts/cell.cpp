@@ -1,9 +1,8 @@
 #include "geneticAlgorithm/lifeform.hpp"
 #include <simulator/simulator.hpp>
-#include <modules/utils/mathUtils.hpp>
 
 Cell::Cell(LifeForm& lifeForm, Cell* mother, const float2& pos, float radius) {
-    pointIdx = lifeForm.getEnv()->addPoint(Point(lifeForm.idx, pos.x, pos.y, radius));
+    pointIdx = Simulator::get().getEnv().addPoint(Point(lifeForm.idx, pos.x, pos.y, radius));
     lifeFormIdx = lifeForm.idx;
 
     if (mother == nullptr) return;
@@ -13,6 +12,17 @@ Cell::Cell(LifeForm& lifeForm, Cell* mother, const float2& pos, float radius) {
     products = mother->products;
     rotation = mother->rotation + mother->divisionRotation;
 }
+
+void Cell::render(VertexManager& vertexManager, vector<Point>& points) const {
+    const Point pointObj = points[pointIdx];
+    const float2 pos = pointObj.pos;
+    const float radius = pointObj.radius;
+    const auto color = sf::Color(HSVtoRGB(hue, saturation, 127 + luminosity));
+    vertexManager.addCircle(pos, radius, color);
+    vertexManager.addLine(pos, pos + vec(rotation) * radius, sf::Color::Blue, 0.4f);
+    vertexManager.addLine(pos, pos + vec(rotation + divisionRotation) * radius, sf::Color::Red, 0.2f);
+}
+
 
 /*
 void Cell::simulate(float dt) {

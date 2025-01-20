@@ -1,10 +1,8 @@
-#ifndef UPDATE_POINTS
-#define UPDATE_POINTS
+#ifndef UPDATE_GRN
+#define UPDATE_GRN
 
 #include "geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp"
 
-void computeAffinities(GeneRegulatoryNetwork &grn);
-
-void updateGRN(GeneRegulatoryNetwork& grn, const GPUVector<int>& cellIdxs, const GPUVector<Cell>& cells, const GPUVector<Point>& points);
+__device__ void updateGRN(GeneRegulatoryNetwork& grn, GPUVector<int>& cellIdxs, GPUVector<Cell>& cells, GPUVector<Point>& points);
 
 #endif

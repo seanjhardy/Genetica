@@ -5,7 +5,6 @@
 
 void Species::addCreature(LifeForm* creature) {
     members.push_back(creature);
-    creature->getSpecies()->removeCreature(creature);
 };
 
 

@@ -9,7 +9,7 @@ void CursorManager::init() {
                  sf::Vector2u(19, 28), sf::Vector2u(0, 0));
 
     // Load cursor from image path
-    loadFromFile("dragHorizontal", "./assets/icons/drag_horizontal.png",
+    /*loadFromFile("dragHorizontal", "./assets/icons/drag_horizontal.png",
                  sf::Vector2u(39, 33), sf::Vector2u(19, 16));
     loadFromFile("dragVertical", "./assets/icons/drag_vertical.png",
                  sf::Vector2u(33, 39), sf::Vector2u(16, 19));
@@ -20,7 +20,21 @@ void CursorManager::init() {
     loadFromFile("dragTopLeft", "./assets/icons/drag_tl.png",
                  sf::Vector2u(32, 32), sf::Vector2u(16, 16));
     loadFromFile("dragTopRight", "./assets/icons/drag_tr.png",
-                 sf::Vector2u(32, 32), sf::Vector2u(16, 16));
+                 sf::Vector2u(32, 32), sf::Vector2u(16, 16));*/
+    //Cursors at 80% size
+    loadFromFile("dragHorizontal", "./assets/icons/drag_horizontal.png",
+                 sf::Vector2u(31, 26), sf::Vector2u(15, 13));
+    loadFromFile("dragVertical", "./assets/icons/drag_vertical.png",
+                 sf::Vector2u(26, 31), sf::Vector2u(13, 15));
+    loadFromFile("dragBottomLeft", "./assets/icons/drag_bl.png",
+                 sf::Vector2u(25, 25), sf::Vector2u(13, 13));
+    loadFromFile("dragBottomRight", "./assets/icons/drag_br.png",
+                 sf::Vector2u(25, 25), sf::Vector2u(13, 13));
+    loadFromFile("dragTopLeft", "./assets/icons/drag_tl.png",
+                 sf::Vector2u(25, 25), sf::Vector2u(13, 13));
+    loadFromFile("dragTopRight", "./assets/icons/drag_tr.png",
+                 sf::Vector2u(25, 25), sf::Vector2u(13, 13));
+
 
     // Load cursors from system
     cursors["pointer"].loadFromSystem(sf::Cursor::Hand);

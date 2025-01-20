@@ -27,6 +27,17 @@ public:
     StaticGPUVector<float> factorReceptorAffinities;
 
     StaticGPUVector<float> cellDistances;
+
+    void destroy() {
+        factors.destroy();
+        promoters.destroy();
+        effectors.destroy();
+        regulatoryUnits.destroy();
+        promoterFactorAffinities.destroy();
+        factorEffectorAffinities.destroy();
+        factorReceptorAffinities.destroy();
+        cellDistances.destroy();
+    }
 };
 
 #endif

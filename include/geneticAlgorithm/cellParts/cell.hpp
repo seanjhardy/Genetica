@@ -25,8 +25,8 @@ public:
     bool dividing = false;
 
     float hue = 200.0f, saturation = 0.0f, luminosity = 0.0f;
-    //sf::Color color = sf::Color(HSVtoRGB(hue, saturation, 127 + luminosity));
 
+    Cell() = default;
     Cell(LifeForm& lifeForm, Cell* mother, const float2& pos, float radius = 0.1);
 
     void adjustSize(float sizeChange) const;
@@ -35,6 +35,8 @@ public:
     void divide();
     void fuse(Cell* other);
     void updateHue(PIGMENT pigment, float amount);
+
+    __host__ void render(VertexManager& vertexManager, vector<Point>& points) const;
 };
 
 #endif

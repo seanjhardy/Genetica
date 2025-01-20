@@ -1,22 +1,15 @@
 #ifndef LIFEFORM_HPP
 #define LIFEFORM_HPP
 
-// Fish.hpp
-#include <vector>
 #include <cmath>
-#include "modules/physics/point.hpp"
-#include "simulator/environment.hpp"
-#include "modules/utils/random.hpp"
-#include "geneticAlgorithm/species.hpp"
-#include <unordered_map>
-#include <map>
-#include "geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp"
+#include <geneticAlgorithm/species.hpp>
+#include <geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp>
 #include "genome.hpp"
-#include "geneticAlgorithm/cellParts/cell.hpp"
-#include "geneticAlgorithm/cellParts/cellLink.hpp"
-#include "geneticAlgorithm/cellParts/protein.hpp"
+#include <geneticAlgorithm/cellParts/protein.hpp>
 
 using namespace std;
+
+class Environment;
 
 class LifeForm {
 public:
@@ -27,11 +20,10 @@ public:
 
     size_t idx;
 
-    Species* species{};
-    Environment* env;
-    size_t genomeIdx;
+    Genome genome;
 
     GeneRegulatoryNetwork grn;
+    int lastGrnUpdate = 0;
     GPUVector<int> cells;
     GPUVector<int> links;
 
@@ -42,23 +34,19 @@ public:
     int numChildren = 0;
     int birthdate = 0;
 
-    __host__ __device__ LifeForm(size_t id, Environment* env, Genome& genome, size_t genomeIdx, float2 pos);
-    __host__ __device__ void init();
+    LifeForm(Genome& genome);
+    void init();
 
-    //void simulate(float dt);
-    //void render(VertexManager& viewer);
+    void update();
 
-    int combine(LifeForm *partner);
-    int clone(bool mutate);
+    void combine(LifeForm *partner);
+    void clone(bool mutate);
     void kill();
 
     void grow(float dt);
-    void addCell(const Cell& cell);
-    void addCellLink(const CellLink& cellLink);
     void addInput(const Protein& protein);
     void addOutput(const Protein& protein);
 
-    [[nodiscard]] Environment* getEnv() const;
     [[nodiscard]] Species* getSpecies() const;
 
 };

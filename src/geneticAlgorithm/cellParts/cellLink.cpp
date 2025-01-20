@@ -1,8 +1,8 @@
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
 #include "geneticAlgorithm/lifeform.hpp"
 
-CellLink::CellLink(size_t lifeFormId, size_t cellAId, size_t cellBId, size_t p1, size_t p2, float startLength)
-: lifeFormId(lifeFormId), cellAId(cellAId), cellBId(cellBId), p1(p1), p2(p2) {};
+CellLink::CellLink(const size_t lifeFormId, const size_t cellAId, const size_t cellBId, const size_t p1, const size_t p2, float startLength)
+: lifeFormId(lifeFormId), cellAId(cellAId), cellBId(cellBId), p1(p1), p2(p2), length(startLength) {};
 
 /*
 void CellLink::adjustSize(float distance) {

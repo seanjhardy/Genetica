@@ -9,8 +9,9 @@ CGPUValue<T>::CGPUValue(T& value) {
 
 template<typename T>
 CGPUValue<T>::~CGPUValue() {
-    if (d_data) {
+    if (d_data != nullptr) {
         cudaFree(d_data);
+        d_data = nullptr;
     }
 }
 

@@ -80,7 +80,7 @@ string roundToDecimalPlaces(float number, int decimalPlaces) {
 }
 
 string formatNumber(float number, int precision=3) {
-    if (round(number) == 0) return "0";
+    if (abs(round(number)) < 100) return to_string((int)round(number));
 
     int digits = log10(number) + 1; // Find the number of digits
     int factor = pow(10, digits - precision); // Calculate the rounding factor

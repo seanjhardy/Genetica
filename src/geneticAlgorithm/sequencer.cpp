@@ -1,12 +1,13 @@
 #include "geneticAlgorithm/sequencer.hpp"
 #include <geneticAlgorithm/systems/morphology/sequencer.hpp>
+#include <simulator/simulator.hpp>
 
 void sequence(LifeForm& lifeForm, const Genome& genome, const float2& pos) {
     // Read hox genes
     sequenceGRN(lifeForm, genome);
 
     // Create head cell
-    Cell head = Cell(lifeForm, nullptr, pos, 5.0f);
+    auto head = Cell(lifeForm, nullptr, pos, 5.0f);
     head.rotation = Random::random(0.0f, M_PI_2);
 
     // Add initial products to cell
@@ -16,6 +17,6 @@ void sequence(LifeForm& lifeForm, const Genome& genome, const float2& pos) {
         products[i] = 0.0f;
     }
     head.products = StaticGPUVector(products);
-
-    lifeForm.addCell(head);
+    int headIndex = Simulator::get().getEnv().addCell(head);
+    lifeForm.cells.push(headIndex);
 }

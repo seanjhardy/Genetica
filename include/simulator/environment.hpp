@@ -23,7 +23,9 @@ class Environment {
     Planet* planet = nullptr;
     sf::FloatRect initialBounds;
     CGPUValue<sf::FloatRect> bounds;
+    sf::FloatRect tempBounds;
     GeneticAlgorithm geneticAlgorithm;
+    int entityID = 0;
 
     // UI
     bool gridLinesVisible = true;
@@ -51,10 +53,11 @@ public:
     std::pair<bool, int> handleEvent(const sf::Event& event, sf::Vector2f mousePos);
     void update(const sf::Vector2f& worldCoords, float zoom, bool UIHovered);
     void cleanup();
+    void drawGrid(VertexManager& vertexManager);
     GeneticAlgorithm& getGA() { return geneticAlgorithm; }
 
     // Point management
-    size_t addPoint(Point p);
+    size_t addPoint(const Point& p);
     void removePoint(int index);
     GPUVector<Point>& getPoints() { return points; }
 
@@ -73,6 +76,8 @@ public:
     void toggleFluidEnabled();
     Planet& getPlanet();
     void setPlanet(Planet* newPlanet);
+
+    int nextEntityID();
 };
 
 #endif

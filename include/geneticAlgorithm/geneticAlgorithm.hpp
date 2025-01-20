@@ -1,13 +1,15 @@
 #ifndef GENETIC_ALGORITHM
 #define GENETIC_ALGORITHM
 
-#include <vector>
 #include <geneticAlgorithm/species.hpp>
 #include <string>
 #include <map>
-#include <modules/graphics/vertexManager.hpp>
 #include <geneticAlgorithm/genome.hpp>
 #include <modules/cuda/structures/GPUVector.hpp>
+#include <geneticAlgorithm/cellParts/cell.hpp>
+#include <geneticAlgorithm/cellParts/cellLink.hpp>
+#include <geneticAlgorithm/lifeform.hpp>
+#include <modules/utils/structures/PtrVector.hpp>
 
 using namespace std;
 
@@ -16,7 +18,6 @@ using namespace std;
  * Maintains population of lifeforms and species
  */
 class GeneticAlgorithm {
-private:
     int MAX_POPULATION = -1;
     int MAX_GENES = 500;
 
@@ -36,28 +37,26 @@ private:
     float deleteBaseChance = 0.00005f;
     float crossoverCellDataChance = 0.2f;// probability of switching from one parent to another
 
-    std::map<size_t, Genome> genomes;
+    PtrVector<LifeForm> population{};
+    vector<Species> species{};
+    vector<Species> ancestors{};
 
-    GPUVector<LifeForm> population{};
-    GPUVector<Species> species{};
-    GPUVector<Species> ancestors{};
-
-    size_t genomeID = 0;
     size_t geneID = 0;
     size_t speciesID = 0;
 
 public:
-    //void render(VertexManager& vertexManager);
+    void simulate();
     void reset();
+    void render(VertexManager& vertexManager, GPUVector<Cell>& cells, GPUVector<CellLink>& cellLinks, GPUVector<Point>& points);
 
-    size_t addLifeForm(const LifeForm& lifeform);
     void mutate(Genome& genome);
     void mutateGene(string& gene) const;
 
     void createRandomLifeForm();
+    void addLifeForm(LifeForm& lf);
 
-    GPUVector<LifeForm>& getPopulation();
-    GPUVector<Species>& getSpecies();
+    PtrVector<LifeForm>& getPopulation();
+    vector<Species>& getSpecies();
 
     size_t nextGeneID();
     size_t nextSpeciesID();

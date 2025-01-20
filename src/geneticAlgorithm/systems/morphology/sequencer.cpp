@@ -2,7 +2,7 @@
 #include "modules/utils/genomeUtils.hpp"
 #include <string>
 #include <utility>
-#include "modules/cuda/updateGRN.hpp"
+#include "modules/cuda/calculateAffinities.hpp"
 
 void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
     // Temporary vars
@@ -12,9 +12,9 @@ void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
     std::vector<RegulatoryUnit> regulatoryUnits;
 
     // Temporary variables for regulatory units
-    RegulatoryUnit regulatoryUnit = RegulatoryUnit();
-    std::vector<int> regulatoryPromoters;
-    std::vector<int> regulatoryFactors;
+    auto regulatoryUnit = RegulatoryUnit();
+    std::vector<size_t> regulatoryPromoters;
+    std::vector<size_t> regulatoryFactors;
 
     bool readingPromoters = true;
     for (auto [id, sequence] : genome.hoxGenes) {
@@ -78,7 +78,7 @@ void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
                 Promoter::PromoterType promoterType = additive
                                                       ? Promoter::PromoterType::Additive
                                                       : Promoter::PromoterType::Multiplicative;
-                Promoter promoter = Promoter(promoterType, sign, modifier, embedding);
+                auto promoter = Promoter(promoterType, sign, modifier, embedding);
 
                 if (!readingPromoters) {
                     regulatoryUnit.promoters = StaticGPUVector(regulatoryPromoters);
@@ -116,6 +116,5 @@ void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
     lifeForm.grn.effectors = StaticGPUVector(effectors);
 
     lifeForm.grn.regulatoryUnits = StaticGPUVector(regulatoryUnits);
-
-    computeAffinities(lifeForm.grn);
+    calculateAffinities(lifeForm.grn);
 }

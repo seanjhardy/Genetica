@@ -1,6 +1,3 @@
-#ifndef POINT_CU
-#define POINT_CU
-
 #include <modules/physics/point.hpp>
 #include <modules/utils/floatOps.hpp>
 #include <modules/graphics/vertexManager.hpp>
@@ -16,7 +13,7 @@ __host__ __device__ void Point::update(float dt) {
     float2 velocity = pos - prevPos;
     float2 accel = force / radius;
 
-    float2 newPosition = pos + velocity * pow(0.99, dt) + accel * dt * dt;
+    float2 newPosition = pos + velocity * 0.99 + accel * dt * dt;
     prevPos = pos;
     pos = newPosition;
 
@@ -45,6 +42,4 @@ __host__ __device__ void Point::rotate(const float2& origin, float angle) {
 void Point::render(VertexManager& viewer, sf::Color colour) const {
     viewer.addCircle(pos, radius, colour);
 }
-
-#endif
 

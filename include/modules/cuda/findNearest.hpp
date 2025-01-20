@@ -7,7 +7,7 @@
 #include "modules/cuda/structures/GPUVector.hpp"
 #include "modules/cuda/structures/CGPUValue.hpp"
 
-std::pair<int, float> findNearest(GPUVector<Point>& points,
-                  float x, float y, float minDistance);
+std::pair<int, float> findNearest(const GPUVector<Point>& points,
+                                  float x, float y, float minDistance);
 
 #endif

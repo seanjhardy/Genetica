@@ -1,5 +1,7 @@
 #include <modules/cuda/findNearest.hpp>
 #include <cuda_runtime.h>
+#include <modules/cuda/logging.hpp>
+
 #include "modules/utils/print.hpp"
 
 // Atomic function for updating a float value using atomicCAS
@@ -21,7 +23,7 @@ __device__ float atomicMinFloat(float* addr, float value) {
     return old;
 }
 
-__global__ void findNearestKernel(GPUVector<Point>& points,
+__global__ void findNearestKernel(const GPUVector<Point> points,
                                   float x, float y, float minDistance, int* closestIndex, float* distance) {
     // Allocate shared memory for thread's local minimum distance and index
     __shared__ float local_min_dist;
@@ -61,16 +63,18 @@ __global__ void findNearestKernel(GPUVector<Point>& points,
     }
 }
 
-std::pair<int, float> findNearest(GPUVector<Point> &points, float x, float y, float minDistance) {
-    int numPoints = (int)points.size();
+std::pair<int, float> findNearest(const GPUVector<Point> &points, const float x, const float y, const float minDistance) {
+    if (points.size() == 0) {
+        return std::make_pair(-1, -1);
+    }
 
     int blockSize = 256;
-    int numBlocks = (numPoints + blockSize - 1) / blockSize;
+    int numBlocks = (points.size() + blockSize - 1) / blockSize;
 
-    int* d_closest_idx;
-    float* d_closest_dist;
-    cudaMalloc(&d_closest_idx, sizeof(int));
-    cudaMalloc(&d_closest_dist, sizeof(float));
+    int* d_closest_idx = nullptr;
+    float* d_closest_dist = nullptr;
+    cudaLog(cudaMalloc(&d_closest_idx, sizeof(int)));
+    cudaLog(cudaMalloc(&d_closest_dist, sizeof(float)));
 
     findNearestKernel<<<numBlocks, blockSize>>>(points, x, y, minDistance,
                                                 d_closest_idx, d_closest_dist);

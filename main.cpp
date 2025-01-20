@@ -1,7 +1,6 @@
 #undef main
 
 // main.cpp
-#include <modules/physics/fluid.hpp>
 #include "simulator/simulator.hpp"
 #include "stdexcept"
 #include <modules/graphics/fontManager.hpp>

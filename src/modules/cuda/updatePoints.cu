@@ -3,9 +3,11 @@
 #include "cuda_runtime.h"
 #include <modules/cuda/updatePoints.hpp>
 #include <SFML/Graphics.hpp>
+#include <modules/cuda/logging.hpp>
 
-__global__ void updatePointsKernel(GPUVector<Point>& points, float dt, sf::FloatRect *bounds) {
+__global__ void updatePointsKernel(GPUVector<Point> points, float dt, sf::FloatRect *bounds) {
     size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+
     if (index >= points.size()) return;
 
     Point &point = points[index];
@@ -14,12 +16,12 @@ __global__ void updatePointsKernel(GPUVector<Point>& points, float dt, sf::Float
 }
 
 
-__global__ void constrainDistancesKernel(GPUVector<Point>& points, GPUVector<CellLink>& cellLinks) {
+__global__ void constrainDistancesKernel(GPUVector<Point> points, GPUVector<CellLink> cellLinks) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index >= cellLinks.size()) return;
 
-    CellLink cellLink = cellLinks[index];
+    const CellLink& cellLink = cellLinks[index];
     constrainDistance(points[cellLink.p1], points[cellLink.p2], cellLink.length, 0.2f);
 }
 
@@ -54,18 +56,17 @@ void updatePoints(GPUVector<Point>& points,
                   GPUVector<CellLink>& cellLinks,
                   CGPUValue<sf::FloatRect> &bounds,
                   float dt) {
-    int numPoints = points.size();
-    int numConnections = cellLinks.size();
 
     int blockSize = 256; // Number of threads per block
-    int numBlocks = (numPoints + blockSize - 1) / blockSize;
+    int numBlocks = (points.size() + blockSize - 1) / blockSize;
+
+    if (points.size() == 0) return;
+
+    // Update the points
     updatePointsKernel<<<numBlocks, blockSize>>>(points, dt, bounds.deviceData());
 
-    /*numBlocks = (numParentChildLinks + blockSize - 1) / blockSize;
-    updateParentChildLinkKernel<<<numBlocks, blockSize>>>(points.deviceData(), parentChildLinks.deviceData(),
-                                                          numParentChildLinks, dt);*/
-
-    numBlocks = (numConnections + blockSize - 1) / blockSize;
+    // Update connections
+    numBlocks = (cellLinks.size() + blockSize - 1) / blockSize;
     constrainDistancesKernel<<<numBlocks, blockSize>>>(points, cellLinks);
 
     /*int threadsPerBlock = 16;
@@ -74,10 +75,9 @@ void updatePoints(GPUVector<Point>& points,
                        (numRocks + threadsPerBlock - 1) / threadsPerBlock, 1);
     computeCollisions<<<blocksPerGrid, threadsPerBlockDim>>>(points.deviceData(),
                                                 numPoints, rocks.deviceData(), numRocks);*/
-    //cudaDeviceSynchronize();
 }
 
-__global__ void movePointKernel(GPUVector<Point>& points, int pointIndex, const sf::Vector2f& newPos, int* entityID) {
+__global__ void movePointKernel(GPUVector<Point> points, int pointIndex, const float2 newPos, int* entityID) {
     Point &point = points[pointIndex];
     point.pos.x = newPos.x;
     point.pos.y = newPos.y;
@@ -85,9 +85,9 @@ __global__ void movePointKernel(GPUVector<Point>& points, int pointIndex, const 
 }
 
 int movePoint(GPUVector<Point>& points, int pointIndex, const sf::Vector2f& newPos) {
-    int* entityID;
-    cudaMalloc(&entityID, sizeof(int));
-    movePointKernel<<<1, 1>>>(points, pointIndex, newPos, entityID);
+    int* entityID = nullptr;
+    cudaLog(cudaMalloc(&entityID, sizeof(int)));
+    movePointKernel<<<1, 1>>>(points, pointIndex, {newPos.x, newPos.y}, entityID);
     int entityIDHost;
     cudaMemcpy(&entityIDHost, entityID, sizeof(int), cudaMemcpyDeviceToHost);
     cudaFree(entityID);

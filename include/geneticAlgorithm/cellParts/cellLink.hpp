@@ -10,13 +10,14 @@ class CellLink {
 public:
     static constexpr float INITIAL_DISTANCE = 2.0f;
 
-    size_t lifeFormId;
-    size_t cellAId;
-    size_t cellBId;
-    size_t p1;
-    size_t p2;
+    int lifeFormId;
+    int cellAId;
+    int cellBId;
+    int p1;
+    int p2;
     float length;
 
+    CellLink() = default;
     CellLink(size_t lifeFormId, size_t cellAId, size_t cellBId, size_t p1, size_t p2, float startLength);
 };
 

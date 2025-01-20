@@ -3,12 +3,26 @@
 #include "modules/utils/genomeUtils.hpp"
 #include "geneticAlgorithm/sequencer.hpp"
 #include <simulator/simulator.hpp>
-/*
-void GeneticAlgorithm::render(VertexManager& vertexManager) {
-    for (LifeForm* lifeform : population) {
-        lifeform->render(vertexManager);
+
+void GeneticAlgorithm::simulate() {
+    for (LifeForm& lifeForm : population) {
+        lifeForm.update();
     }
-};*/
+};
+
+void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Cell>& cells, GPUVector<CellLink>& cellLinks, GPUVector<Point>& points) {
+    auto hostCells = vector<Cell>(cells.size());
+    auto hostCellLinks = vector<CellLink>(cellLinks.size());
+    auto hostPoints = vector<Point>(points.size());
+
+    cudaMemcpy(hostCells.data(), cells.data(), cells.size() * sizeof(Cell), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hostCellLinks.data(), cellLinks.data(), cellLinks.size() * sizeof(CellLink), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hostPoints.data(), points.data(), points.size() * sizeof(Point), cudaMemcpyDeviceToHost);
+
+    for (Cell& cell : hostCells) {
+        cell.render(vertexManager, hostPoints);
+    }
+}
 
 void GeneticAlgorithm::mutate(Genome& genome) {
     // Clone genes
@@ -70,21 +84,23 @@ void GeneticAlgorithm::mutateGene(string& gene) const {
 }
 
 void GeneticAlgorithm::createRandomLifeForm() {
-    Genome genome = Genome();
+    auto genome = Genome();
     genome.init();
-    size_t genomeID = nextGenomeID();
-    genomes.insert({genomeID, genome});
 
     float2 pos = Simulator::get().getEnv().randomPos();
-    size_t id = Simulator::get().getEnv().getGA().population.getNextIndex();
-    LifeForm lifeForm = LifeForm(id, &Simulator::get().getEnv(), genome, genomeID, pos);
+    auto lifeForm = LifeForm(genome);
     lifeForm.energy = 100;
-    Simulator::get().getEnv().getGA().addLifeForm(lifeForm);
+    addLifeForm(lifeForm);
+
+    sequence(lifeForm, genome, pos);
 }
 
-size_t GeneticAlgorithm::addLifeForm(const LifeForm& lifeform) {
-    return population.push(lifeform);
+void GeneticAlgorithm::addLifeForm(LifeForm& lifeForm) {
+    int idx = population.getNextIndex();
+    lifeForm.idx = idx;
+    population.push(lifeForm);
 }
+
 
 void GeneticAlgorithm::reset() {
     population.clear();
@@ -94,11 +110,11 @@ void GeneticAlgorithm::reset() {
     geneID = 0;
 }
 
-GPUVector<LifeForm>& GeneticAlgorithm::getPopulation() {
+PtrVector<LifeForm>& GeneticAlgorithm::getPopulation() {
     return population;
 }
 
-GPUVector<Species>& GeneticAlgorithm::getSpecies() {
+vector<Species>& GeneticAlgorithm::getSpecies() {
     return species;
 }
 
@@ -108,8 +124,4 @@ size_t GeneticAlgorithm::nextGeneID() {
 
 size_t GeneticAlgorithm::nextSpeciesID() {
     return speciesID++;
-}
-
-size_t GeneticAlgorithm::nextGenomeID() {
-    return genomeID++;
 }

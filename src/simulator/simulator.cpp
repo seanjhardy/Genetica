@@ -3,6 +3,7 @@
 #include "./screen/simulationScreen.hpp"
 #include <sstream>
 #include <iomanip>
+#include <modules/cuda/GPUDirectRenderer.hpp>
 
 Simulator& Simulator::get(){
     static Simulator simulator;
@@ -21,7 +22,7 @@ Simulator::Simulator()
 void Simulator::setup() {
     uiManager.addScreen("simulation", getSimulationScreen(this));
     uiManager.setCurrentScreen("simulation");
-    Simulator::reset();
+    reset();
 }
 
 // Run simulation step
@@ -31,6 +32,32 @@ void Simulator::run() {
     Viewport* simulation = dynamic_cast<Viewport*>(uiManager.getScreen("simulation")->getElement("simulation"));
 
     while (window.isOpen()) {
+        /*
+        *Point p(123, 88.8115f, 53.1058f, 5.0f); // Initialize the host Point object
+
+    // Allocate memory on the device
+    Point* d_data_test = nullptr;
+    cudaMalloc(&d_data_test, sizeof(Point));
+
+    // Copy the host object to the device
+    cudaMemcpy(d_data_test, &p, sizeof(Point), cudaMemcpyHostToDevice);
+
+    // Allocate memory on the host for receiving data from the device
+    Point* h_data_Test = new Point; // Dynamically allocate memory for the host Point
+
+    // Copy the data back from the device to the host
+    cudaMemcpy(h_data_Test, d_data_test, sizeof(Point), cudaMemcpyDeviceToHost);
+
+    // Print the copied values to verify
+    std::cout << "Point1(" << p.pos.x << ", " << p.pos.y << ", " << p.radius << ")"  << std::endl;
+    std::cout << "Point2(" << h_data_Test->pos.x << ", " << h_data_Test->pos.y << ", " << h_data_Test->radius << ")" << std::endl;
+
+    // Free device memory
+    cudaFree(d_data_test);
+
+    // Free host memory
+    delete h_data_Test;
+         */
         sf::Time elapsed = clock.restart(); // Restart the clock and get elapsed time
         float deltaTime = elapsed.asSeconds(); // Convert elapsed time to seconds
 
@@ -52,7 +79,7 @@ void Simulator::run() {
 
             if (selectedEntity.first && selectedEntity.second != selectedEntityId) {
                 selectedEntityId = selectedEntity.second;
-                setTab(selectedEntityId == -1 ? Tab::Simulation : Tab::LifeForm);
+                //setTab(selectedEntityId == -1 ? Tab::Simulation : Tab::LifeForm);
             }
         }
         // Handle continuous events (e.g. holding down a key/hovering over a UI element)
@@ -62,7 +89,7 @@ void Simulator::run() {
         // Update simulation state if playing
         if (state == State::Playing) {
             realTime += deltaTime * speed;
-            env.simulate(speed);
+            env.simulate(1);
             step += 1;
         }
 

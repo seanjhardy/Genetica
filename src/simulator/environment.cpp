@@ -4,7 +4,6 @@
 #include <modules/cuda/updatePoints.hpp>
 #include <simulator/simulator.hpp>
 #include <modules/cuda/findNearest.hpp>
-#include <modules/utils/print.hpp>
 #include <modules/cuda/updateCells.hpp>
 
 Environment::Environment(sf::FloatRect bounds) :
@@ -20,8 +19,10 @@ void Environment::simulate(float deltaTime) {
         fluidSimulator.update(0.02);
     }
     planet->update();
+
+    // Physics simulation of life forms
     updatePoints(points, cellLinks, bounds, deltaTime);
-    updateCells(getGA().getPopulation(), cells, points);
+    updateCells(cells, points);
 };
 
 void Environment::render(VertexManager& vertexManager) {
@@ -31,23 +32,13 @@ void Environment::render(VertexManager& vertexManager) {
         fluidSimulator.render(vertexManager, bounds.hostData());
     }
 
-    // Draw a grid of columns and rows inside of bounds:
-    if (vertexManager.getSizeInView(1) > 0.2 && gridLinesVisible) {
-        int opacity = (int)clamp(10.0f, vertexManager.camera->getZoom() * 10.0f, 30.0f);
-        float thickness = clamp(1.0f, 1.0f / vertexManager.camera->getZoom(), 5.0f);
-        sf::Color gridColor = sf::Color(255, 255, 255, opacity);
-        for (int i = 0; i < bounds.hostData().width + 1; i += 20) {
-            vertexManager.addLine({bounds.hostData().left + i, bounds.hostData().top},
-                                  {bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height}, gridColor,
-                                  thickness);
-        }
-        for (int i = 0; i < bounds.hostData().height + 1; i += 20) {
-            vertexManager.addLine({bounds.hostData().left, bounds.hostData().top + i},
-                                  {bounds.hostData().left + bounds.hostData().width, bounds.hostData().top + i}, gridColor,
-                                  thickness);
-        }
-    }
+    // Draw a grid of columns and rows inside of bounds
+    drawGrid(vertexManager);
 
+    //draw life forms
+    geneticAlgorithm.render(vertexManager, cells, cellLinks, points);
+
+    // Render draggable environment bounds
     dragHandler.render(vertexManager, bounds.hostData());
 };
 
@@ -91,18 +82,16 @@ void Environment::update(const sf::Vector2f& worldCoords, float zoom, bool UIHov
     }
 
     if (!UIHovered) {
-        sf::FloatRect deltaBounds = dragHandler.update(worldCoords, bounds.hostData(), 15.0f / zoom);
-
+        sf::FloatRect deltaBounds = dragHandler.update(worldCoords, tempBounds, 15.0f / zoom);
         if (deltaBounds.left != 0 || deltaBounds.top != 0 || deltaBounds.width != 0 || deltaBounds.height != 0) {
-            bounds = {bounds.hostData().left + deltaBounds.left,
-                      bounds.hostData().top + deltaBounds.top,
-                    bounds.hostData().width + deltaBounds.width,
-                  bounds.hostData().height + deltaBounds.height};
+            tempBounds += deltaBounds;
+            bounds = {round(tempBounds.left / 20) * 20, round(tempBounds.top / 20) * 20,
+                      round(tempBounds.width / 20) * 20, round(tempBounds.height / 20) * 20};
 
             planet->setBounds(bounds.hostData());
 
             if (fluidEnabled) {
-                fluidSimulator = FluidSimulator(0.05, (size_t)bounds.hostData().width, (size_t)bounds.hostData().height, {});
+                fluidSimulator = FluidSimulator(0.05, bounds.hostData().width, bounds.hostData().height, {});
             }
         }
     } else {
@@ -119,24 +108,45 @@ void Environment::update(const sf::Vector2f& worldCoords, float zoom, bool UIHov
     }
 }
 
+void Environment::drawGrid(VertexManager& vertexManager) {
+    if (vertexManager.getSizeInView(1) < 0.2 || !gridLinesVisible) return;
+
+    const int opacity = (int)clamp(10.0f, vertexManager.camera->getZoom() * 10.0f, 30.0f);
+    const float thickness = clamp(1.0f, 1.0f / vertexManager.camera->getZoom(), 5.0f);
+    const auto gridColor = sf::Color(255, 255, 255, opacity);
+    for (int i = 0; i < bounds.hostData().width + 1; i += 20) {
+        vertexManager.addLine({bounds.hostData().left + i, bounds.hostData().top},
+                              {bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height}, gridColor,
+                              thickness);
+    }
+    for (int i = 0; i < bounds.hostData().height + 1; i += 20) {
+        vertexManager.addLine({bounds.hostData().left, bounds.hostData().top + i},
+                              {bounds.hostData().left + bounds.hostData().width, bounds.hostData().top + i}, gridColor,
+                              thickness);
+    }
+}
+
 void Environment::reset() {
-    points.clear();
-    cellLinks.clear();
+    points.destroy();
+    cells.destroy();
+    cellLinks.destroy();
     geneticAlgorithm.reset();
     fluidSimulator.init();
     bounds = initialBounds;
+    tempBounds = initialBounds;
     planet->reset();
     planet->setBounds(bounds.hostData());
 };
 
 void Environment::cleanup() {
-    points.clear();
-    cellLinks.clear();
+    points.destroy();
+    cells.destroy();
+    cellLinks.destroy();
     geneticAlgorithm.reset();
     fluidSimulator.reset();
 }
 
-size_t Environment::addPoint(Point p) {
+size_t Environment::addPoint(const Point& p) {
     return points.push(p);
 }
 
@@ -186,4 +196,8 @@ Planet& Environment::getPlanet() {
 void Environment::setPlanet(Planet* newPlanet) {
     planet = newPlanet;
     planet->setBounds(bounds.hostData());
+}
+
+int Environment::nextEntityID() {
+    return entityID++;
 }

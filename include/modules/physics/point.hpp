@@ -4,7 +4,6 @@
 #include "vector_types.h"
 #include "cuda_runtime.h"
 #include "SFML/Graphics.hpp"
-#include "iostream"
 
 class VertexManager;
 
@@ -26,8 +25,8 @@ public:
     float2 force{};
     float radius = 1.0f;
 
-    Point() : pos{0,0}, prevPos{0,0}, force{0,0}, radius(1.0f) {}
-    Point(size_t id, float x, float y, float r = 1.0f) {
+    Point() : pos{0,0}, prevPos{0,0}, force{0,0} {}
+    Point(const size_t id, const float x, const float y, const float r = 1.0f) {
         entityID = id;
         pos.x = x;
         pos.y = y;

@@ -135,4 +135,12 @@ inline __host__ __device__ float dir(float2 p1, float2 p2) {
     return std::atan2f(d.y, d.x);
 }
 
+inline __host__ sf::FloatRect operator+=(sf::FloatRect &a, sf::FloatRect &b) {
+    a.left += b.left;
+    a.top += b.top;
+    a.width += b.width;
+    a.height += b.height;
+    return a;
+}
+
 #endif

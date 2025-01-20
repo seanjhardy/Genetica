@@ -8,8 +8,6 @@
 #include <modules/graphics/components/image.hpp>
 #include <modules/graphics/components/viewport.hpp>
 #include <simulator/planet.hpp>
-#include <format>
-#include <modules/cuda/lifeForm.hpp>
 
 inline Screen *getSimulationScreen(Simulator *simulator) {
     auto screen = new Screen();
@@ -92,17 +90,16 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
     });
 
     FunctionManager::add("clone", [simulator]() {
-        cloneLifeForm(simulator->getEnv().getGA().getPopulation(), simulator->getSelectedEntityId());
+        simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].clone(false);
     });
     FunctionManager::add("mutate", [simulator]() {
-        //mutateLifeForm(simulator->getEnv().getGA().getPopulation(), simulator->getSelectedEntityId());
-        //simulator->getEnv().getGA().mutate(dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->genome);
+        //simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].mutate();
     });
     FunctionManager::add("energy", [simulator]() {
-        energiseLifeForm(simulator->getEnv().getGA().getPopulation(), simulator->getSelectedEntityId());
+        simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].energy = 100;
     });
     FunctionManager::add("delete", [simulator]() {
-        killLifeForm(simulator->getEnv().getGA().getPopulation(), simulator->getSelectedEntityId());
+        simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].kill();
     });
 
 

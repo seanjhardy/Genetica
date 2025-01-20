@@ -2,7 +2,6 @@
 #define STATIC_GPU_VECTOR_H
 
 #include <vector>
-#include <cuda_runtime.h>
 
 template<typename T>
 class StaticGPUVector {
@@ -17,14 +16,6 @@ public:
     __host__ __device__ StaticGPUVector() = default;
     __host__ __device__ explicit StaticGPUVector(size_t initial_capacity);
     __host__ __device__ explicit StaticGPUVector(const std::vector<T>& host_vector);
-    // Destructor
-    __host__ __device__ ~StaticGPUVector();
-
-    __host__ __device__ StaticGPUVector(const StaticGPUVector& other);             // Copy constructor
-    __host__ __device__ StaticGPUVector& operator=(const StaticGPUVector& other);  // Copy assignment operator
-
-    __host__ __device__ StaticGPUVector(StaticGPUVector&& other) noexcept;         // Move constructor
-    __host__ __device__ StaticGPUVector& operator=(StaticGPUVector&& other) noexcept; // Move assignment operator
 
     __host__ __device__ T& operator[](size_t index);
     __host__ __device__ T& operator[](size_t index) const;
@@ -36,7 +27,7 @@ public:
     __host__ __device__ void resize(size_t new_size);
 
     __host__ __device__ T* data() { return data_; }
-    __host__ __device__ void clear();
+    __host__ __device__ void destroy();
 };
 
 #include "../../../../src/modules/cuda/structures/StaticGPUVector.tpp"

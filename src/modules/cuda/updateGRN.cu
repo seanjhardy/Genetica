@@ -1,36 +1,12 @@
 #include "geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp"
 
-// Compute affinities for all promoters, factors, and effectors
-__global__ void calculateAffinity(const StaticGPUVector<GeneticUnit>& a_elements, const StaticGPUVector<GeneticUnit>& b_elements,
-                                  StaticGPUVector<float>& output) {
-    size_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
-    size_t idx2 = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (idx1 >= a_elements.size() || idx2 >= b_elements.size()) return;
-
-    size_t resultIdx = idx1 * b_elements.size() + idx2; // Flatten 2D indices into a 1D result index
-    GeneticUnit a = a_elements[idx1];
-    GeneticUnit b = b_elements[idx2];
-    float distance = distanceBetween(a.embedding, b.embedding);
-
-    if (distance > GeneticUnit::DISTANCE_THRESHOLD) {
-        output[resultIdx] = 0.0f;
-    } else {
-        float affinitySign = (a.sign == b.sign) ? 1.0f : -1.0f;
-
-        output[resultIdx] = affinitySign *
-             (2.0f * std::abs(a.modifier * b.modifier)
-                * (GeneticUnit::DISTANCE_THRESHOLD - distance)) /
-             (10.0f * distance + std::abs(a.modifier * b.modifier));
-    }
-}
 
 // This uses a triangular matrix to store distances between each pair of cells
 // This is because the distance between cell i and cell j is the same as the distance between cell j and cell i
 // This reduces the amount of memory needed to store the distances
 // The formula for the linear index of the distance between cell i and cell j is:
 // i * numCells - (i * (i + 1)) / 2 + (j - i - 1)
-__global__ void calculateDistances(const GPUVector<Cell>& cells, const GPUVector<Point>& points, StaticGPUVector<float>& output) {
+__global__ void calculateDistances(const GPUVector<Cell> cells, const GPUVector<Point> points, StaticGPUVector<float> output) {
     size_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
     size_t idx2 = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -44,33 +20,7 @@ __global__ void calculateDistances(const GPUVector<Cell>& cells, const GPUVector
     output[linearIdx] = a->distanceTo(*b);
 }
 
-void computeAffinities(GeneRegulatoryNetwork &grn) {
-    dim3 threadsPerBlock(16, 16);
 
-    dim3 numPromoterFactorBlocks((grn.promoters.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                   (grn.factors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    grn.promoterFactorAffinities = StaticGPUVector<float>(grn.promoters.size() * grn.factors.size());
-    calculateAffinity<<<numPromoterFactorBlocks, threadsPerBlock>>>(
-      *reinterpret_cast<GPUVector<GeneticUnit>*>(&grn.promoters),
-      *reinterpret_cast<GPUVector<GeneticUnit>*>(&grn.factors),
-      grn.promoterFactorAffinities);
-
-    dim3 numFactorEffectorBlocks((grn.factors.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                                    (grn.effectors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    grn.factorEffectorAffinities = StaticGPUVector<float>(grn.factors.size() * grn.effectors.size());
-    calculateAffinity<<<numFactorEffectorBlocks, threadsPerBlock>>>(
-      *reinterpret_cast<GPUVector<GeneticUnit>*>(&grn.factors),
-    *reinterpret_cast<GPUVector<GeneticUnit>*>(&grn.effectors),
-    grn.factorEffectorAffinities);
-
-    dim3 numFactorReceptorBlocks((grn.factors.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                                    (grn.factors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    grn.factorReceptorAffinities = StaticGPUVector<float>(grn.factors.size() * grn.factors.size());
-    calculateAffinity<<<numFactorReceptorBlocks, threadsPerBlock>>>(
-      *reinterpret_cast<GPUVector<GeneticUnit>*>(&grn.factors),
-      *reinterpret_cast<GPUVector<GeneticUnit>*>(&grn.factors),
-      grn.factorReceptorAffinities);
-}
 
 __global__ void updateProductConcentration(GeneRegulatoryNetwork& grn,
                                            const GPUVector<Cell>& cells, const GPUVector<Point>& points,
@@ -97,12 +47,12 @@ __global__ void updateProductConcentration(GeneRegulatoryNetwork& grn,
         *amount = product->extra.y * (factor->sign ? 1.0f : -1.0f)
           + product->extra.x * (float)(simulationStep - lifeForm->birthdate)/100000.0;
     }*/
-    if (factor->factorType == Gene::FactorType::Constant) {
+    /*if (factor->factorType == Gene::FactorType::Constant) {
         *amount = (float)factor->extra.x;
     }
     if (factor->factorType == Gene::FactorType::Generation) {
         *amount = (float)cell->generation;
-    }
+    }*/
     /*if (factor->factorType == Gene::FactorType::Energy) {
         *amount = lifeForm->energy * max(factor->extra.x, 0.1f);
     }*/
@@ -198,8 +148,9 @@ __global__ void updateRegulatoryUnitExpression(GeneRegulatoryNetwork& grn,
 }
 
 void updateGRN(GeneRegulatoryNetwork& grn,
-               const GPUVector<int>& cellIdxs,
-               const GPUVector<Cell>& cells, const GPUVector<Point>& points) {
+                GPUVector<int>& cellIdxs,
+               GPUVector<Cell>& cells,
+               GPUVector<Point>& points) {
     // Calculate distances between each pair of cells
     grn.cellDistances = StaticGPUVector<float>((cells.size() * (cells.size() - 1)) / 2);
     dim3 threadsPerBlock(16, 16);
@@ -211,7 +162,7 @@ void updateGRN(GeneRegulatoryNetwork& grn,
     dim3 numProductBlocks((grn.factors.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                           (cellIdxs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
     updateProductConcentration<<<numProductBlocks, threadsPerBlock>>>(grn, cells, points, grn.cellDistances);
-    return;
+
     dim3 threadsPerCellProductBlock(16, 16, 16);
     dim3 numNSquaredProductBlocks((grn.factors.size() + threadsPerCellProductBlock.x - 1) / threadsPerCellProductBlock.x,
                                   (cellIdxs.size() + threadsPerCellProductBlock.y - 1) / threadsPerCellProductBlock.y,
