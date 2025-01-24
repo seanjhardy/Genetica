@@ -157,7 +157,7 @@ void updateGRN(GeneRegulatoryNetwork& grn,
     dim3 numDistanceBlocks((cellIdxs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                        (cellIdxs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
     calculateDistances<<<numDistanceBlocks, threadsPerBlock>>>(cells, points, grn.cellDistances);
-
+    /*
     // Update product concentration
     dim3 numProductBlocks((grn.factors.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                           (cellIdxs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
@@ -173,5 +173,5 @@ void updateGRN(GeneRegulatoryNetwork& grn,
     // Update each cell's products based on regulatory expression
     dim3 numCellBlocks((cellIdxs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                        (cellIdxs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    updateRegulatoryUnitExpression<<<numCellBlocks, threadsPerBlock>>>(grn, cells, points);
+    updateRegulatoryUnitExpression<<<numCellBlocks, threadsPerBlock>>>(grn, cells, points);*/
 }

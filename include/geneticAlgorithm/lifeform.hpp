@@ -34,6 +34,7 @@ public:
     int numChildren = 0;
     int birthdate = 0;
 
+    LifeForm() = default;
     LifeForm(Genome& genome);
     void init();
 
@@ -48,7 +49,6 @@ public:
     void addOutput(const Protein& protein);
 
     [[nodiscard]] Species* getSpecies() const;
-
 };
 
 #endif

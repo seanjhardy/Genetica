@@ -19,6 +19,7 @@ void Environment::simulate(float deltaTime) {
         fluidSimulator.update(0.02);
     }
     planet->update();
+    geneticAlgorithm.simulate();
 
     // Physics simulation of life forms
     updatePoints(points, cellLinks, bounds, deltaTime);

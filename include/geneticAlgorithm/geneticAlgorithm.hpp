@@ -9,7 +9,7 @@
 #include <geneticAlgorithm/cellParts/cell.hpp>
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
 #include <geneticAlgorithm/lifeform.hpp>
-#include <modules/utils/structures/PtrVector.hpp>
+#include <modules/utils/structures/DynamicStableVector.hpp>
 
 using namespace std;
 
@@ -37,7 +37,7 @@ class GeneticAlgorithm {
     float deleteBaseChance = 0.00005f;
     float crossoverCellDataChance = 0.2f;// probability of switching from one parent to another
 
-    PtrVector<LifeForm> population{};
+    DynamicStableVector<LifeForm> population{};
     vector<Species> species{};
     vector<Species> ancestors{};
 
@@ -55,7 +55,7 @@ public:
     void createRandomLifeForm();
     void addLifeForm(LifeForm& lf);
 
-    PtrVector<LifeForm>& getPopulation();
+    DynamicStableVector<LifeForm>& getPopulation();
     vector<Species>& getSpecies();
 
     size_t nextGeneID();

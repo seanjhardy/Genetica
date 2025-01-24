@@ -5,7 +5,7 @@
 #include <simulator/simulator.hpp>
 
 void GeneticAlgorithm::simulate() {
-    for (LifeForm& lifeForm : population) {
+    for (auto lifeForm : population) {
         lifeForm.update();
     }
 };
@@ -98,7 +98,7 @@ void GeneticAlgorithm::createRandomLifeForm() {
 void GeneticAlgorithm::addLifeForm(LifeForm& lifeForm) {
     int idx = population.getNextIndex();
     lifeForm.idx = idx;
-    population.push(lifeForm);
+    population.insert(lifeForm);
 }
 
 
@@ -110,7 +110,7 @@ void GeneticAlgorithm::reset() {
     geneID = 0;
 }
 
-PtrVector<LifeForm>& GeneticAlgorithm::getPopulation() {
+DynamicStableVector<LifeForm>& GeneticAlgorithm::getPopulation() {
     return population;
 }
 

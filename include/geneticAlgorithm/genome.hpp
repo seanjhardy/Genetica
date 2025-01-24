@@ -10,6 +10,7 @@ using namespace std;
 
 class Genome {
 public:
+    static constexpr int HOX_SIZE = 100;
     enum class Template {
         RANDOM, // Completely random genome
 
@@ -29,7 +30,7 @@ public:
     map<size_t, string> hoxGenes;
     vector<size_t> hoxGeneOrder;
 
-    sf::RenderTexture cachedTexture;
+    //sf::RenderTexture cachedTexture;
 
     Genome();
     Genome(const Genome& other) {
@@ -40,7 +41,6 @@ public:
     void init(Template templateType = Template::RANDOM);
 
     void render(VertexManager& vertexManager);
-    static constexpr int HOX_SIZE = 100;
 
     void addHoxGene(size_t key, const string& value, int position=-1);
     void removeGene(size_t key);
@@ -50,5 +50,6 @@ public:
     [[nodiscard]] map<size_t, string> getGenes() const;
     [[nodiscard]] string toString() const;
 };
+
 
 #endif //GENOME
