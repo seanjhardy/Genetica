@@ -53,7 +53,7 @@ public:
     void mutateGene(string& gene) const;
 
     void createRandomLifeForm();
-    void addLifeForm(LifeForm& lf);
+    size_t addLifeForm(LifeForm& lf);
 
     DynamicStableVector<LifeForm>& getPopulation();
     vector<Species>& getSpecies();

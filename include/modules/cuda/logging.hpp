@@ -2,11 +2,10 @@
 #define CUDA_LOGGING
 
 #include <cuda_runtime.h>
-#include <iostream>
 
 #define cudaLog(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
-inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+__host__ __device__ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
     if (code != cudaSuccess)
     {

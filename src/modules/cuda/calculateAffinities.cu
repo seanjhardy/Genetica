@@ -27,7 +27,7 @@ __global__ void calculateAffinity(const StaticGPUVector<T> a_elements, const Sta
 }
 
 void calculateAffinities(GeneRegulatoryNetwork &grn) {
-    dim3 threadsPerBlock(16, 16);
+    dim3 threadsPerBlock(32, 32);
 
     dim3 numPromoterFactorBlocks((grn.promoters.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                    (grn.factors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);

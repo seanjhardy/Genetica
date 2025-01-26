@@ -20,9 +20,9 @@ struct ParentChildLink {
 class Point {
 public:
     size_t entityID{};
-    float2 pos{};
-    float2 prevPos{};
-    float2 force{};
+    double2 pos{};
+    double2 prevPos{};
+    double2 force{};
     float radius = 1.0f;
 
     Point() : pos{0,0}, prevPos{0,0}, force{0,0} {}
@@ -36,11 +36,14 @@ public:
     }
     __host__ __device__ void setPos(float2 pos);
     __host__ __device__ void update(float dt);
-    __host__ __device__ float2 getVelocity() const;
+    __host__ __device__ double2 getVelocity() const;
     __host__ __device__ float distanceTo(const Point& other) const;
     __host__ __device__ float angleTo(const Point& other) const;
 
     __host__ __device__ void rotate(const float2& origin, float angle);
+    __host__ __device__ float2 getPos() const {
+        return make_float2(pos.x, pos.y);
+    }
 
     void render(VertexManager& viewer, sf::Color colour) const;
 };

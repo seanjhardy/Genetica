@@ -16,16 +16,16 @@ __host__ __device__ inline void constrainDistance(Point& point1, Point& point2, 
         return; // No significant change needed
     }
 
-    float2 delta = (point2.pos - point1.pos) * deltaDistance / currentDistance;
+    double2 delta = (point2.pos - point1.pos) * deltaDistance / currentDistance;
 
-    float massRatio = point1.radius / (point1.radius + point2.radius);
+    double massRatio = point1.radius / (point1.radius + point2.radius);
     point1.pos -= delta * (1 - massRatio) * 0.01;
     point2.pos += delta * massRatio * 0.01;
 }
 
 __host__ __device__ inline void constrainAngle(Point& point1, Point& point2, float targetAngle, float stiffness, float dt) {
     float length = point1.distanceTo(point2);
-    float2 newPos = point1.pos + vec(targetAngle) * length;
+    double2 newPos = point1.pos + vec(targetAngle) * length;
     point2.prevPos += (newPos - point2.pos) * stiffness * dt * 0.99;
     point2.pos += (newPos - point2.pos) * stiffness * dt;
 }

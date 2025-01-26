@@ -24,10 +24,15 @@ public:
 
     __host__ __device__ [[nodiscard]] size_t size() const { return size_; }
     __host__ __device__ [[nodiscard]] size_t capacity() const { return capacity_; }
+    __host__ __device__ StaticGPUVector copy() const;
+    __host__ std::vector<T> toHost() const;
     __host__ __device__ void resize(size_t new_size);
 
     __host__ __device__ T* data() { return data_; }
     __host__ __device__ void destroy();
+
+    __host__ __device__ T* begin() { return data_; }
+    __host__ __device__ T* end() { return data_ + size_; }
 };
 
 #include "../../../../src/modules/cuda/structures/StaticGPUVector.tpp"

@@ -4,9 +4,10 @@
 #include <modules/physics/point.hpp>
 #include "modules/cuda/structures/GPUVector.hpp"
 #include <geneticAlgorithm/lifeform.hpp>
+#include <modules/utils/structures/DynamicStableVector.hpp>
 
-void updateCells(GPUVector<Cell>& cells,
-                 GPUVector<Point>& points,
-                 float dt = 1.0f);
+void updateCells(DynamicStableVector<LifeForm>& lifeForms,
+                 const GPUVector<Cell>& cells,
+                 const GPUVector<Point>& points);
 
 #endif

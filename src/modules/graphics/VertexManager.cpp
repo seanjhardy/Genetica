@@ -7,6 +7,7 @@
 #include <modules/graphics/fontManager.hpp>
 #include <modules/graphics/spriteManager.hpp>
 #include <modules/graphics/shaderManager.hpp>
+#include <modules/utils/floatOps.hpp>
 
 
 VertexManager::VertexManager()
@@ -94,6 +95,15 @@ void VertexManager::addPolygon(const std::vector<float2>& points, const sf::Colo
     if (points.size() < 3) return;
     for (int i = 1; i < points.size() - 1; ++i) {
         addTriangle(points[0], points[i], points[i + 1], color);
+    }
+}
+
+void VertexManager::addPolygon(const std::vector<Vertex>& points) {
+    if (points.size() % 3 != 0) return;
+    for (int i = 0; i < points.size() - 2; i += 3) {
+        vertices.append(sf::Vertex({points[i].pos.x, points[i].pos.y}, points[i].color));
+        vertices.append(sf::Vertex({points[i + 1].pos.x, points[i + 1].pos.y}, points[i + 1].color));
+        vertices.append(sf::Vertex({points[i + 2].pos.x, points[i + 2].pos.y}, points[i + 2].color));
     }
 }
 

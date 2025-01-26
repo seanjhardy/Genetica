@@ -2,50 +2,74 @@
 #define DYNAMIC_STABLE_VECTOR_HPP
 
 #include <vector>
-#include <memory>
-#include <stdexcept>
+#include <unordered_set>
 
 // DynamicStableVector: A container that provides stable indices even when items are added or removed.
 template <typename T>
 class DynamicStableVector {
-    std::vector<std::unique_ptr<T>> data_;  // Stores pointers to objects
-    std::vector<size_t> freeList_;          // Tracks free indices for reuse
+public:
+    std::vector<T> data_;  // Stores pointers to objects
+    std::unordered_set<size_t> freeList_; // Tracks free indices for reuse
 
-    class iterator {
-    	typename std::vector<std::unique_ptr<T>>::iterator current_;
-    	typename std::vector<std::unique_ptr<T>>::iterator end_;
+	class Iterator {
+	public:
+		using iterator_category = std::forward_iterator_tag;
+		using value_type = T;
+		using difference_type = std::ptrdiff_t;
+		using pointer = T*;
+		using reference = T&;
 
-   		void skipNullptr() {
-        	while (current_ != end_ && !(*current_)) {
-            	++current_;
-        	}
-    	}
+	private:
+		typename std::vector<T>::iterator current_;
+		typename std::vector<T>::iterator end_;
+		const std::unordered_set<size_t>* freeList_;
+		size_t index_;
+
+		void skipFreeSlots() {
+			while (current_ != end_ && freeList_->contains(index_)) {
+				++current_;
+				++index_;
+			}
+		}
 
 	public:
-    	iterator(typename std::vector<std::unique_ptr<T>>::iterator current,
-             typename std::vector<std::unique_ptr<T>>::iterator end)
-        	: current_(current), end_(end) {
-        	skipNullptr();
-    	}
+		Iterator(typename std::vector<T>::iterator current,
+				 typename std::vector<T>::iterator end,
+				 const std::unordered_set<size_t>* freeList,
+				 size_t startIndex)
+			: current_(current), end_(end), freeList_(freeList), index_(startIndex) {
+			skipFreeSlots();
+		}
 
-    	T& operator*() const { return **current_; }
-    	T* operator->() const { return current_->get(); }
+		reference operator*() { return *current_; }
+		pointer operator->() { return &(*current_); }
 
-    	iterator& operator++() {
-    	    ++current_;
-    	    skipNullptr();
-    	    return *this;
-    	}
+		Iterator& operator++() {
+			++current_;
+			++index_;
+			skipFreeSlots();
+			return *this;
+		}
 
-    	bool operator!=(const iterator& other) const { return current_ != other.current_; }
-    	bool operator==(const iterator& other) const { return current_ == other.current_; }
+		Iterator operator++(int) {
+			Iterator tmp = *this;
+			++(*this);
+			return tmp;
+		}
+
+		bool operator!=(const Iterator& other) const {
+			return current_ != other.current_;
+		}
+
+		bool operator==(const Iterator& other) const {
+			return current_ == other.current_;
+		}
 	};
 
-public:
     DynamicStableVector() = default;
 
     // Insert a new object and return its index
-    size_t insert(const T& value);
+    size_t push(const T& value);
 
     // Remove an object at a given index
     void remove(size_t index);
@@ -64,8 +88,10 @@ public:
 
     void clear();
 
-    iterator begin() { return iterator(data_.begin(), data_.end()); }
-	iterator end() { return iterator(data_.end(), data_.end()); }
+
+
+	Iterator begin() { return Iterator(data_.begin(), data_.end(), &freeList_, 0); }
+	Iterator end() { return Iterator(data_.end(), data_.end(), &freeList_, data_.size()); }
 
     T& operator[](size_t index) { return at(index); }
     const T& operator[](size_t index) const { return at(index); }

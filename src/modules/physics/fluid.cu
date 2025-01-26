@@ -411,7 +411,7 @@ void FluidSimulator::addForce(float2 position, float2 vector) {
     int boxHeight = maxY - minY + 1;
 
     // Set up the kernel launch parameters
-    dim3 blockSize(16, 16);  // You can adjust this based on your GPU's capabilities
+    dim3 blockSize(512, 512);  // You can adjust this based on your GPU's capabilities
     dim3 gridSize((boxWidth + blockSize.x - 1) / blockSize.x,
                   (boxHeight + blockSize.y - 1) / blockSize.y);
 

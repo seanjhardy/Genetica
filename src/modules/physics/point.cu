@@ -2,31 +2,31 @@
 #include <modules/utils/floatOps.hpp>
 #include <modules/graphics/vertexManager.hpp>
 
- __host__ __device__ float2 Point::getVelocity() const {
-    float2 d = pos - prevPos;
+ __host__ __device__ double2 Point::getVelocity() const {
+    float2 d = make_float2(pos.x - prevPos.x, pos.y - prevPos.y);
     float speed = sqrtf(sum(d*d));
     float dir = FastMath::atan2f(d.y, d.x);
-    return make_float2(speed, dir);
+    return make_double2(speed, dir);
 }
 
 __host__ __device__ void Point::update(float dt) {
-    float2 velocity = pos - prevPos;
-    float2 accel = force / radius;
+    double2 velocity = pos - prevPos;
+    double2 accel = force / radius;
 
-    float2 newPosition = pos + velocity * 0.99 + accel * dt * dt;
+    double2 newPosition = pos + velocity * 0.99 + accel * dt * dt;
     prevPos = pos;
     pos = newPosition;
 
-    force = float2(0.0f, 0.0f);
+    force = double2(0.0f, 0.0f);
 }
 
 __host__ __device__ void Point::setPos(float2 newPos) {
-    pos = newPos;
-    prevPos = newPos;
+    pos = make_double2(newPos.x, newPos.y);
+    prevPos = pos;
 }
 
 __host__ __device__ float Point::distanceTo(const Point& other) const {
-    return distanceBetween(pos, other.pos);
+    return distanceBetween(getPos(), other.getPos());
 }
 
 __host__ __device__ float Point::angleTo(const Point& other) const{
@@ -34,12 +34,12 @@ __host__ __device__ float Point::angleTo(const Point& other) const{
 }
 
 __host__ __device__ void Point::rotate(const float2& origin, float angle) {
-    float2 d = pos - origin;
+    float2 d = getPos() - origin;
     pos.x = origin.x + cosf(angle) * d.x - sinf(angle) * d.y;
     pos.y = origin.y + sinf(angle) * d.x + cosf(angle) * d.y;
 }
 
 void Point::render(VertexManager& viewer, sf::Color colour) const {
-    viewer.addCircle(pos, radius, colour);
+    viewer.addCircle(getPos(), radius, colour);
 }
 

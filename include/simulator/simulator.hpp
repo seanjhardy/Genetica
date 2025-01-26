@@ -3,9 +3,6 @@
 #define SIMULATION
 
 #include "SFML/Graphics.hpp"
-#include "vector"
-#include "modules/graphics/utils/camera.hpp"
-#include <modules/graphics/vertexManager.hpp>
 #include "environment.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <modules/graphics/UIManager.hpp>

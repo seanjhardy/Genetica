@@ -458,9 +458,9 @@ void Planet::init() {
     delune.temperature = 10.0f;
     delune.noise = {
       new Add(Noise(
-            {sf::Color(3, 2, 47),
-             sf::Color(16, 10, 97),
-             sf::Color(35, 22, 144)},
+            {sf::Color(1, 1, 18),
+             sf::Color(7, 4, 51),
+             sf::Color(20, 11, 92)},
             6.0f, 0.1f, 0.0f, true)),
     };
     planetNames.push_back(delune.name);

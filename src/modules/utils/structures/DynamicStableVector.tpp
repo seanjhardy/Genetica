@@ -4,18 +4,17 @@
 #include "DynamicStableVector.hpp"
 
 template <typename T>
-size_t DynamicStableVector<T>::insert(const T& value) {
+size_t DynamicStableVector<T>::push(const T& value) {
     if (!freeList_.empty()) {
         // Reuse a free slot
-        size_t index = freeList_.back();
-        freeList_.pop_back();
-        data_[index] = std::make_unique<T>(value);
+        size_t index = *freeList_.begin(); // Get first free index
+        freeList_.erase(index); // Remove that index from the set
+        data_[index] = value;
         return index;
-    } else {
-        // Add a new slot at the end
-        data_.emplace_back(std::make_unique<T>(value));
-        return data_.size() - 1;
     }
+    // Add a new slot at the end
+    data_.emplace_back(value);
+    return data_.size() - 1;
 }
 
 template <typename T>
@@ -23,16 +22,15 @@ void DynamicStableVector<T>::remove(size_t index) {
     if (index >= data_.size() || !data_[index]) {
         throw std::out_of_range("Invalid index for removal");
     }
-    data_[index].reset();  // Free the object
-    freeList_.push_back(index);  // Mark the slot as free
+    freeList_.insert(index);  // Mark the slot as free
 }
 
 template <typename T>
 T& DynamicStableVector<T>::at(size_t index) {
-    if (index >= data_.size() || !data_[index]) {
+    if (index >= data_.size()) {
         throw std::out_of_range("Invalid index for access");
     }
-    return *data_[index];
+    return data_[index];
 }
 
 template <typename T>
@@ -57,8 +55,8 @@ template <typename T>
 size_t DynamicStableVector<T>::getNextIndex() {
     if (!freeList_.empty()) {
         // Reuse a free slot
-        size_t index = freeList_.back();
-        freeList_.pop_back();
+        size_t index = *freeList_.begin(); // Get first free index
+        freeList_.erase(index); // Remove that index from the set
         return index;
     } else {
         // Add a new slot at the end

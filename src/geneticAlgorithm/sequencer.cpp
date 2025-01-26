@@ -4,10 +4,11 @@
 
 void sequence(LifeForm& lifeForm, const Genome& genome, const float2& pos) {
     // Read hox genes
-    sequenceGRN(lifeForm, genome);
+    //sequenceGRN(lifeForm, genome);
 
     // Create head cell
-    auto head = Cell(lifeForm, nullptr, pos, 5.0f);
+    float size = Random::random(20) + 0.05;
+    auto head = Cell(lifeForm.idx, pos, size);
     head.rotation = Random::random(0.0f, M_PI_2);
 
     // Add initial products to cell
@@ -17,6 +18,14 @@ void sequence(LifeForm& lifeForm, const Genome& genome, const float2& pos) {
         products[i] = 0.0f;
     }
     head.products = StaticGPUVector(products);
-    int headIndex = Simulator::get().getEnv().addCell(head);
-    lifeForm.cells.push(headIndex);
+    head.idx = Simulator::get().getEnv().addCell(head);
+    lifeForm.cells.push(head.idx);
+
+    /*int size2 = Random::random(20) + 0.05;
+    auto cell2 = Cell(lifeForm.idx, nullptr, pos + make_float2(0.5, 0.5), size2);
+    int cell2Index = Simulator::get().getEnv().addCell(cell2);
+    lifeForm.cells.push(cell2Index);
+
+    auto cellLink = CellLink(lifeForm.idx, headIndex, cell2Index, head.pointIdx, cell2.pointIdx, 30.0f);
+    Simulator::get().getEnv().addCellLink(cellLink);*/
 }

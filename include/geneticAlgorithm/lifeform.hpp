@@ -6,6 +6,7 @@
 #include <geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp>
 #include "genome.hpp"
 #include <geneticAlgorithm/cellParts/protein.hpp>
+#include <modules/utils/structures/DynamicStableVector.hpp>
 
 using namespace std;
 
@@ -18,17 +19,37 @@ public:
     static constexpr float BUILD_RATE = 50.0f;
     static constexpr float ENERGY_DECREASE_RATE = 0.0000001f;
 
+    struct LfUpdateData {
+        struct NEW_CELL {
+            int motherIdx{};
+            int motherPointIdx{};
+            float2 pos{};
+            float radius{};
+            float rotation{};
+            float divisionRotation{};
+
+            int generation{};
+            float hue{};
+            float saturation{};
+            float luminosity{};
+
+            //StaticGPUVector<float> products{};
+        } newCell;
+        bool cellAdded;
+        float energyChange;
+    };
+
     size_t idx;
 
     Genome genome;
 
     GeneRegulatoryNetwork grn;
     int lastGrnUpdate = 0;
-    GPUVector<int> cells;
-    GPUVector<int> links;
+    DynamicStableVector<int> cells;
+    DynamicStableVector<int> links;
 
-    GPUVector<Protein> inputs;
-    GPUVector<Protein> outputs;
+    //DynamicStableVector<Protein> inputs;
+    //DynamicStableVector<Protein> outputs;
 
     double energy = 0;
     int numChildren = 0;
@@ -44,9 +65,7 @@ public:
     void clone(bool mutate);
     void kill();
 
-    void grow(float dt);
-    void addInput(const Protein& protein);
-    void addOutput(const Protein& protein);
+    void addCell(const LfUpdateData::NEW_CELL& newCell);
 
     [[nodiscard]] Species* getSpecies() const;
 };

@@ -2,8 +2,10 @@
 #define MATHUTILS_HPP
 
 #include <modules/physics/point.hpp>
-#include <modules/utils/floatOps.hpp>
 
+#ifndef M_PI_HALF
+    #define M_PI_HALF 1.57079632679
+#endif
 #ifndef M_PI
     #define M_PI 3.14159265358979323846
 #endif

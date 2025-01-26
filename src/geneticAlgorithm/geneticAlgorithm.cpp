@@ -5,7 +5,7 @@
 #include <simulator/simulator.hpp>
 
 void GeneticAlgorithm::simulate() {
-    for (auto lifeForm : population) {
+    for (auto& lifeForm : population) {
         lifeForm.update();
     }
 };
@@ -19,6 +19,9 @@ void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Cell>& cel
     cudaMemcpy(hostCellLinks.data(), cellLinks.data(), cellLinks.size() * sizeof(CellLink), cudaMemcpyDeviceToHost);
     cudaMemcpy(hostPoints.data(), points.data(), points.size() * sizeof(Point), cudaMemcpyDeviceToHost);
 
+    for (CellLink& cellLink : hostCellLinks) {
+        cellLink.render(vertexManager, hostCells, hostPoints);
+    }
     for (Cell& cell : hostCells) {
         cell.render(vertexManager, hostPoints);
     }
@@ -90,15 +93,16 @@ void GeneticAlgorithm::createRandomLifeForm() {
     float2 pos = Simulator::get().getEnv().randomPos();
     auto lifeForm = LifeForm(genome);
     lifeForm.energy = 100;
+
     addLifeForm(lifeForm);
 
-    sequence(lifeForm, genome, pos);
+    sequence(population[lifeForm.idx], genome, pos);
 }
 
-void GeneticAlgorithm::addLifeForm(LifeForm& lifeForm) {
-    int idx = population.getNextIndex();
-    lifeForm.idx = idx;
-    population.insert(lifeForm);
+size_t GeneticAlgorithm::addLifeForm(LifeForm& lifeForm) {
+    lifeForm.idx = population.getNextIndex();
+    population.push(lifeForm);
+    return lifeForm.idx;
 }
 
 

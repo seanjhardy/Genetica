@@ -1,7 +1,6 @@
 #include <modules/cuda/findNearest.hpp>
 #include <cuda_runtime.h>
 #include <modules/cuda/logging.hpp>
-
 #include "modules/utils/print.hpp"
 
 // Atomic function for updating a float value using atomicCAS
@@ -68,7 +67,7 @@ std::pair<int, float> findNearest(const GPUVector<Point> &points, const float x,
         return std::make_pair(-1, -1);
     }
 
-    int blockSize = 256;
+    int blockSize = 512;
     int numBlocks = (points.size() + blockSize - 1) / blockSize;
 
     int* d_closest_idx = nullptr;

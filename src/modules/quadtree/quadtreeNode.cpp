@@ -12,7 +12,7 @@ QuadtreeNode::QuadtreeNode(float2 center, float2 halfDimension, int depth)
 }
 
 bool QuadtreeNode::insert(Point* point) {
-    if (!inBoundary(point->pos)) {
+    if (!inBoundary(point->getPos())) {
         return false;
     }
 
@@ -42,7 +42,7 @@ std::vector<Point*> QuadtreeNode::queryRange(float2 rangeMin, float2 rangeMax) {
     }
 
     for (const auto& point : points) {
-        if (inRange(point->pos, rangeMin, rangeMax)) {
+        if (inRange(point->getPos(), rangeMin, rangeMax)) {
             result.push_back(point);
         }
     }
@@ -65,7 +65,7 @@ std::vector<Point*> QuadtreeNode::queryCircle(float2 queryCenter, float radius) 
     }
 
     for (const auto& point : points) {
-        if (distanceBetween(point->pos, queryCenter) <= radius) {
+        if (distanceBetween(point->getPos(), queryCenter) <= radius) {
             result.push_back(point);
         }
     }
@@ -134,7 +134,7 @@ void QuadtreeNode::update(Quadtree* quadtree) {
     for (auto it = points.begin(); it != points.end();) {
         Point* point = *it;
         if (point->pos != point->prevPos) {
-            if (!inBoundary(point->pos)) {
+            if (!inBoundary(point->getPos())) {
                 it = points.erase(it);
                 quadtree->insert(point);
             } else {
@@ -174,7 +174,7 @@ void QuadtreeNode::findNearestPoint(float2 position, Point*& nearestPoint, float
 
     // Check points in this node
     for (const auto& point : points) {
-        float2 d = position - point->pos;
+        float2 d = position - point->getPos();
         float distSquared = sum(d*d);
         if (distSquared < nearestDistanceSquared) {
             nearestDistanceSquared = distSquared;

@@ -23,7 +23,7 @@ void Environment::simulate(float deltaTime) {
 
     // Physics simulation of life forms
     updatePoints(points, cellLinks, bounds, deltaTime);
-    updateCells(cells, points);
+    updateCells(getGA().getPopulation(), cells, points);
 };
 
 void Environment::render(VertexManager& vertexManager) {
@@ -112,9 +112,9 @@ void Environment::update(const sf::Vector2f& worldCoords, float zoom, bool UIHov
 void Environment::drawGrid(VertexManager& vertexManager) {
     if (vertexManager.getSizeInView(1) < 0.2 || !gridLinesVisible) return;
 
-    const int opacity = (int)clamp(10.0f, vertexManager.camera->getZoom() * 10.0f, 30.0f);
+    const int opacity = (int)clamp(10.0f, vertexManager.camera->getZoom() * 10.0f, 60.0f);
     const float thickness = clamp(1.0f, 1.0f / vertexManager.camera->getZoom(), 5.0f);
-    const auto gridColor = sf::Color(255, 255, 255, opacity);
+    const auto gridColor = sf::Color(0, 0, 0, opacity);
     for (int i = 0; i < bounds.hostData().width + 1; i += 20) {
         vertexManager.addLine({bounds.hostData().left + i, bounds.hostData().top},
                               {bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height}, gridColor,

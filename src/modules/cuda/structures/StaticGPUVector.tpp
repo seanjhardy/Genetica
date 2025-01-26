@@ -4,6 +4,8 @@
 
 template<typename T>
 StaticGPUVector<T>::StaticGPUVector(size_t capacity) {
+    size_ = capacity;
+    printf("created");
     reallocateDevice(capacity);
 }
 
@@ -27,7 +29,7 @@ void StaticGPUVector<T>::reallocateDevice(size_t new_capacity) {
         capacity_ = 0;
         return;
     }
-
+    printf("capacity: %d, %d \n", capacity_, new_capacity);
     T* d_data_old = data_;
     cudaLog(cudaMalloc(&data_, new_capacity * sizeof(T)));
     if (d_data_old != nullptr) {
@@ -39,6 +41,7 @@ void StaticGPUVector<T>::reallocateDevice(size_t new_capacity) {
 
 template<typename T>
 void StaticGPUVector<T>::destroy() {
+    printf("destroy");
     if (data_ != nullptr) {
         cudaLog(cudaFree(data_));
         data_ = nullptr;
@@ -47,6 +50,23 @@ void StaticGPUVector<T>::destroy() {
     }
 }
 
+template<typename T>
+StaticGPUVector<T> StaticGPUVector<T>::copy() const {
+    StaticGPUVector copy(size_);
+    if (size_ > 0) {
+        cudaLog(cudaMemcpy(copy.data_, data_, size_ * sizeof(T), cudaMemcpyDeviceToDevice));
+    }
+    return copy;
+}
+
+template<typename T>
+std::vector<T> StaticGPUVector<T>::toHost() const {
+    std::vector<T> host_data(size_);
+    if (size_ > 0) {
+        cudaLog(cudaMemcpy(host_data.data(), data_, size_ * sizeof(T), cudaMemcpyDeviceToHost));
+    }
+    return host_data;
+}
 
 template<typename T>
 T& StaticGPUVector<T>::operator[](size_t index) {

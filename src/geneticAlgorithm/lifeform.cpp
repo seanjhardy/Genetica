@@ -13,7 +13,10 @@ void LifeForm::update() {
     // Update the GRN
     if (Simulator::get().getStep() - lastGrnUpdate > GROWTH_INTERVAL) {
         lastGrnUpdate = Simulator::get().getStep();
-        updateGRN(grn, cells, Simulator::get().getEnv().getCells(), Simulator::get().getEnv().getPoints());
+        updateGRN(*this,
+            Simulator::get().getEnv().getCells(),
+            Simulator::get().getEnv().getCellLinks(),
+            Simulator::get().getEnv().getPoints());
     }
 
     // Update NN
@@ -73,26 +76,30 @@ void LifeForm::kill() {
     //env->removePoint(this->entityID);
 }
 
-/*
-void LifeForm::addCell(const Cell& cell) {
-    size_t cellIdx = env->addCell(cell);
-    cells.push(cellIdx);
-}*/
 
-void LifeForm::addInput(const Protein& protein) {
-    inputs.push(protein);
-}
+void LifeForm::addCell(const LfUpdateData::NEW_CELL& newCell) {
+    auto cell = Cell(idx, newCell.pos, newCell.radius);
+    cell.generation = newCell.generation;
+    cell.hue = newCell.hue;
+    cell.saturation = newCell.saturation;
+    cell.luminosity = newCell.luminosity;
+    //cell.products = newCell.products.copy();
+    cell.rotation = newCell.rotation + newCell.divisionRotation;
 
-void LifeForm::addOutput(const Protein& protein) {
-    outputs.push(protein);
+    cell.idx = Simulator::get().getEnv().addCell(cell);
+    cells.push(cell.idx);
+
+    auto cellLink = CellLink(idx,
+        cell.idx,
+        newCell.motherIdx,
+        cell.pointIdx,
+        newCell.motherPointIdx,
+        newCell.radius * 3);
+    Simulator::get().getEnv().addCellLink(cellLink);
 }
 
 void LifeForm::init(){
-    cells.destroy();
-    inputs.destroy();
-    outputs.destroy();
     energy = 0;
     numChildren = 0;
     birthdate = Simulator::get().getStep();
-
 }

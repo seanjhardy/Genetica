@@ -12,6 +12,7 @@ class GPUVector : public StaticGPUVector<T> {
 
 public:
     __host__ __device__ GPUVector() = default;
+    __host__ __device__ explicit GPUVector(const int capacity) : StaticGPUVector<T>(capacity) {}
     __host__ __device__ explicit GPUVector(const std::vector<T>& hostData);
     __host__ __device__ void destroy();
 

@@ -1,23 +1,20 @@
 #include "geneticAlgorithm/lifeform.hpp"
 #include <simulator/simulator.hpp>
+#include <geneticAlgorithm/cellParts/cell.hpp>
 
-Cell::Cell(LifeForm& lifeForm, Cell* mother, const float2& pos, float radius) {
-    pointIdx = Simulator::get().getEnv().addPoint(Point(lifeForm.idx, pos.x, pos.y, radius));
-    lifeFormIdx = lifeForm.idx;
+Cell::Cell(int lifeFormIdx, const float2& pos, float radius) {
+    pointIdx = Simulator::get().getEnv().addPoint(Point(lifeFormIdx, pos.x, pos.y, radius));
+    this->lifeFormIdx = lifeFormIdx;
 
-    if (mother == nullptr) return;
-
-    generation = mother->generation + 1;
-    //color = mother->color;
-    products = mother->products;
-    rotation = mother->rotation + mother->divisionRotation;
+    hue = Random::random(255.0f);
+    saturation = Random::random(0.0f, 0.4f);
 }
 
 void Cell::render(VertexManager& vertexManager, vector<Point>& points) const {
     const Point pointObj = points[pointIdx];
-    const float2 pos = pointObj.pos;
+    const float2 pos = pointObj.getPos();
     const float radius = pointObj.radius;
-    const auto color = sf::Color(HSVtoRGB(hue, saturation, 127 + luminosity));
+    const auto color = getColor();
     vertexManager.addCircle(pos, radius, color);
     vertexManager.addLine(pos, pos + vec(rotation) * radius, sf::Color::Blue, 0.4f);
     vertexManager.addLine(pos, pos + vec(rotation + divisionRotation) * radius, sf::Color::Red, 0.2f);
@@ -25,28 +22,6 @@ void Cell::render(VertexManager& vertexManager, vector<Point>& points) const {
 
 
 /*
-void Cell::simulate(float dt) {
-    Point* pointObj = lifeForm->getEnv()->getPoint(pointIdx);
-    lifeForm->energy -= LifeForm::ENERGY_DECREASE_RATE * (1.0f + pointObj->radius) * dt;
-}*/
-
-/*
-void Cell::render(VertexManager& vertexManager) const {
-    Point* pointObj = lifeForm->getEnv()->getPoint(pointIdx);
-    float2 pos = pointObj->pos;
-    float radius = pointObj->radius;
-    vertexManager.addCircle(pos, radius, color);
-    vertexManager.addLine(pos, pos + vec(rotation) * radius, sf::Color::White, 0.2f);
-    vertexManager.addLine(pos, pos + vec(rotation + divisionRotation) * radius, sf::Color::Red, 0.1f);
-}*/
-/*
-void Cell::adjustSize(float sizeChange) const {
-    Point* pointObj = lifeForm->getEnv()->getPoint(pointIdx);
-    lifeForm->energy -= (2 * M_PI * pointObj->radius * sizeChange + M_PI * pow(sizeChange, 2));
-    pointObj->radius = max(pointObj->radius + sizeChange, 0.1f);
-    lifeForm->getEnv()->updatePoint(pointIdx, *pointObj);
-}
-
 void Cell::divide() {
     if (Simulator::get().getStep() - lastDivideTime < divisionFrequency) return;
     Point* motherPoint = lifeForm->getEnv()->getPoint(pointIdx);
@@ -90,21 +65,6 @@ void Cell::fuse(Cell* other) {
         }
     }
     other->die();
-}
-
-void Cell::updateHue(PIGMENT pigment, float amount) {
-    float target_hue = pigment == PIGMENT::Red ? 0.0f :
-                       pigment == PIGMENT::Green ? 120.0f :
-                       pigment == PIGMENT::Blue ? 240.0f : 360.0f;
-    float delta_hue = int(target_hue - hue) % 360;
-
-    if (delta_hue > 180) {
-        delta_hue -= 360;
-    }
-
-    saturation = clamp(0.0, saturation + amount * 0.1f, 1.0f);
-    float new_hue = hue + amount * (delta_hue != 0 ? delta_hue / abs(delta_hue) : 0);
-    color = sf::Color(HSVtoRGB(new_hue, saturation, 127 + luminosity));
 }
 
 void Cell::die() {

@@ -17,16 +17,12 @@ std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& po
     float anglePlus90 = angle + M_PI / 2;
     float angleMinus90 = angle - M_PI / 2;
 
-    return {point1.pos + vec(anglePlus90) * r1,
-            point1.pos + vec(angleMinus90) * r1,
-            point2.pos + vec(angleMinus90) * r2,
-            point2.pos + vec(anglePlus90) * r2};
+    return {point1.getPos() + vec(anglePlus90) * r1,
+            point1.getPos() + vec(angleMinus90) * r1,
+            point2.getPos() + vec(angleMinus90) * r2,
+            point2.getPos() + vec(anglePlus90) * r2};
 }
 
-float getVelocity(const Point& point) {
-    float2 d = point.pos - point.prevPos;
-    return std::sqrt(sum(d * d));
-}
 
 sf::Color interpolate(const sf::Color c1, const sf::Color c2, float x) {
     int r = static_cast<int>(c1.r + (c2.r - c1.r) * x);
@@ -39,7 +35,7 @@ sf::Color interpolate(const sf::Color c1, const sf::Color c2, float x) {
                      clamp(0, a, 255));
 }
 
-float clamp(float min_val, float x, float max_val) {
+__host__ __device__ float clamp(float min_val, float x, float max_val) {
     return std::max(min_val, std::min(x, max_val));
 }
 

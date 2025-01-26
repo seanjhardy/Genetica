@@ -9,13 +9,18 @@
 #include "modules/graphics/utils/styleParser.hpp"
 
 class VertexManager {
-private:
     sf::VertexArray vertices{};
     sf::VertexArray texturedVertices;
     sf::RenderStates states;
     std::vector<sf::Text> labels;
     std::vector<sf::Sprite> sprites;
+
 public:
+    struct Vertex {
+        float2 pos;
+        sf::Color color;
+    };
+
     VertexManager();
 
     void addTriangle(const float2& p1, const float2& p2, const float2& p3, const sf::Color& color);
@@ -26,6 +31,7 @@ public:
     void addFloatRect(const sf::FloatRect& rect, const sf::Color& color);
     void addFloatRectOutline(const sf::FloatRect& rect, const sf::Color& color, float thickness = 1.0f);
     void addPolygon(const std::vector<float2>& points, const sf::Color& color);
+    void addPolygon(const std::vector<Vertex>& points);
     void addLine(const float2 start, float2 end, const sf::Color& color, const float thickness = 1.0f);
     void addSegment(float2 p1, float2 p2, float r1, float r2, float angle, const sf::Color& color);
     void addText(const std::string& text, const float2& pos, float size,
