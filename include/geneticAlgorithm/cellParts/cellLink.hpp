@@ -20,7 +20,8 @@ public:
     CellLink() = default;
     CellLink(size_t lifeFormId, size_t cellAId, size_t cellBId, size_t p1, size_t p2, float startLength);
 
-    __host__ void render(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
+    __host__ void renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
+    __host__ void renderBody(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
 
     __host__ __device__ void adjustSize(float distance) {
         length += distance;

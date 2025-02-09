@@ -10,7 +10,7 @@ Cell::Cell(int lifeFormIdx, const float2& pos, float radius) {
     saturation = Random::random(0.0f, 0.4f);
 }
 
-void Cell::render(VertexManager& vertexManager, vector<Point>& points) const {
+void Cell::renderBody(VertexManager& vertexManager, vector<Point>& points) const {
     const Point pointObj = points[pointIdx];
     const float2 pos = pointObj.getPos();
     const float radius = pointObj.radius;
@@ -18,6 +18,14 @@ void Cell::render(VertexManager& vertexManager, vector<Point>& points) const {
     vertexManager.addCircle(pos, radius, color);
     vertexManager.addLine(pos, pos + vec(rotation) * radius, sf::Color::Blue, 0.4f);
     vertexManager.addLine(pos, pos + vec(rotation + divisionRotation) * radius, sf::Color::Red, 0.2f);
+}
+
+void Cell::renderCellWalls(VertexManager& vertexManager, vector<Point>& points) const {
+    const Point pointObj = points[pointIdx];
+    const float2 pos = pointObj.getPos();
+    const float radius = pointObj.radius;
+    const auto color = brightness(getColor(), 0.6);
+    vertexManager.addCircle(pos, radius + thickness, color);
 }
 
 

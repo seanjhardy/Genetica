@@ -159,6 +159,15 @@ size_t Environment::addCellLink(const CellLink &cellLink) {
     return cellLinks.push(cellLink);
 }
 
+
+size_t Environment::nextCellIdx() {
+    return cells.getNextIndex();
+}
+
+size_t Environment::nextCellLinkIdx() {
+    return cellLinks.getNextIndex();
+}
+
 size_t Environment::addCell(const Cell& cell) {
     return cells.push(cell);
 }

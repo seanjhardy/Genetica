@@ -19,11 +19,8 @@ void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Cell>& cel
     cudaMemcpy(hostCellLinks.data(), cellLinks.data(), cellLinks.size() * sizeof(CellLink), cudaMemcpyDeviceToHost);
     cudaMemcpy(hostPoints.data(), points.data(), points.size() * sizeof(Point), cudaMemcpyDeviceToHost);
 
-    for (CellLink& cellLink : hostCellLinks) {
-        cellLink.render(vertexManager, hostCells, hostPoints);
-    }
-    for (Cell& cell : hostCells) {
-        cell.render(vertexManager, hostPoints);
+    for (LifeForm& lifeForm : population) {
+        lifeForm.render(vertexManager, hostCells, hostCellLinks, hostPoints);
     }
 }
 

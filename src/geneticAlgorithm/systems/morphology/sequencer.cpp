@@ -13,8 +13,8 @@ void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
 
     // Temporary variables for regulatory units
     auto regulatoryUnit = RegulatoryUnit();
-    std::vector<size_t> regulatoryPromoters;
-    std::vector<size_t> regulatoryFactors;
+    std::vector<int> regulatoryPromoters;
+    std::vector<int> regulatoryFactors;
 
     bool readingPromoters = true;
     for (auto [id, sequence] : genome.hoxGenes) {
@@ -88,7 +88,7 @@ void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
                     readingPromoters = true;
                 }
 
-                regulatoryPromoters.push_back((int)promoters.size());
+                regulatoryPromoters.push_back(promoters.size());
                 promoters.push_back(promoter);
             }
 

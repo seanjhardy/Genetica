@@ -23,17 +23,21 @@ public:
     float energyUse = 0.0f;
     float rotation = 0.0f;
     float divisionRotation = 0.0f;
+    int numDivisions = 0;
     bool frozen = false;
     bool dividing = false;
     bool dead = false;
 
     float hue = 200.0f, saturation = 0.0f, luminosity = 0.0f;
+    float thickness = 1.0f;
 
     Cell() = default;
     Cell(int lifeFormIdx, const float2& pos, float radius = 0.1);
 
     __host__ __device__ void fuse(Cell* other);
-    void render(VertexManager& vertexManager, vector<Point>& points) const;
+
+    void renderBody(VertexManager& vertexManager, vector<Point>& points) const;
+    void renderCellWalls(VertexManager& vertexManager, vector<Point>& points) const;
 
     __host__ __device__ void updateHue(PIGMENT pigment, float amount) {
         float target_hue = pigment == Red ? 0.0f :

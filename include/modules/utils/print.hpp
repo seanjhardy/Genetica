@@ -87,6 +87,10 @@ inline void printElement(const int item) {
     std::cout << item;
 }
 
+inline void printElement(const size_t item) {
+    std::cout << item;
+}
+
 template <typename K, typename V>
 inline void printElement(const std::unordered_map<K, V>& map) {
     std::cout << "{ ";
@@ -105,6 +109,7 @@ template <typename T>
 inline void printElement(const T& item) {
     std::cout << item;
 }
+
 
 // Variadic template to handle multiple arguments
 template <typename T, typename... Args>

@@ -222,4 +222,16 @@ inline __host__ sf::FloatRect operator+=(sf::FloatRect &a, sf::FloatRect &b) {
     return a;
 }
 
+inline __host__ __device__ float magnitude(float2 p1) {
+    return sqrtf(p1.x * p1.x + p1.y * p1.y);
+}
+
+inline __host__ __device__ double magnitude(double2 p1) {
+    return sqrt(p1.x * p1.x + p1.y * p1.y);
+}
+
+inline __host__ __device__ float magnitude(float3 p1) {
+    return sqrt(p1.x * p1.x + p1.y * p1.y + p1.z * p1.z);
+}
+
 #endif

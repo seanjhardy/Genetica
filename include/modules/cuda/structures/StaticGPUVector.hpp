@@ -2,6 +2,7 @@
 #define STATIC_GPU_VECTOR_H
 
 #include <vector>
+#include <cuda_runtime.h>
 
 template<typename T>
 class StaticGPUVector {
@@ -26,6 +27,7 @@ public:
     __host__ __device__ [[nodiscard]] size_t capacity() const { return capacity_; }
     __host__ __device__ StaticGPUVector copy() const;
     __host__ std::vector<T> toHost() const;
+    __host__ T itemToHost(size_t index) const;
     __host__ __device__ void resize(size_t new_size);
 
     __host__ __device__ T* data() { return data_; }

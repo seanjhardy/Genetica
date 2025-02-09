@@ -5,7 +5,36 @@ CellLink::CellLink(const size_t lifeFormId, const size_t cellAId, const size_t c
 : lifeFormId(lifeFormId), cellAId(cellAId), cellBId(cellBId), p1(p1), p2(p2), length(startLength) {};
 
 
-void CellLink::render(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points) {
+void CellLink::renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points) {
+    const Point point1 = points[p1];
+    const Point point2 = points[p2];
+    const Cell cell1 = cells[cellAId];
+    const Cell cell2 = cells[cellBId];
+    const sf::Color cell1Color = brightness(cell1.getColor(), 0.6);
+    const sf::Color cell2Color = brightness(cell2.getColor(), 0.6);
+
+    // Find the angle between the points and draw a polygon connecting them:
+    // From the center of the first, add a vertex on the circumference of the point tangential to the angle between p1 and p2
+    // Then connect it to the vertex on the circumference of the second tangential to the angle between p2 and p1
+    // Repeat for the other side
+    const float angle = atan2(point2.pos.y - point1.pos.y, point2.pos.x - point1.pos.x);
+    const float angle1 = angle + M_PI_HALF;
+    const float angle2 = angle - M_PI_HALF;
+    float2 v1 = point1.getPos() + make_float2(cos(angle1), sin(angle1)) * (point1.radius + cell1.thickness);
+    float2 v2 = point2.getPos() + make_float2(cos(angle1), sin(angle1)) * (point1.radius + cell2.thickness);
+    float2 v3 = point2.getPos() + make_float2(cos(angle2), sin(angle2)) * (point1.radius + cell1.thickness);
+    float2 v4 = point1.getPos() + make_float2(cos(angle2), sin(angle2)) * (point1.radius + cell1.thickness);
+    vertexManager.addPolygon(std::vector<VertexManager::Vertex>({
+        {v1, cell1Color},
+        {v2, cell2Color},
+        {v3, cell2Color},
+
+        {v3, cell2Color},
+        {v4, cell1Color},
+        {v1, cell1Color}}));
+}
+
+void CellLink::renderBody(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points) {
     const Point point1 = points[p1];
     const Point point2 = points[p2];
     const Cell cell1 = cells[cellAId];
@@ -20,18 +49,18 @@ void CellLink::render(VertexManager& vertexManager, vector<Cell>& cells, vector<
     const float angle = atan2(point2.pos.y - point1.pos.y, point2.pos.x - point1.pos.x);
     const float angle1 = angle + M_PI_HALF;
     const float angle2 = angle - M_PI_HALF;
-    const float2 offset1 = point1.getPos() + make_float2(cos(angle1), sin(angle1)) * point1.radius;
-    const float2 offset2 = point2.getPos() + make_float2(cos(angle1), sin(angle1)) * point2.radius;
-    const float2 offset3 = point2.getPos() + make_float2(cos(angle2), sin(angle2)) * point2.radius;
-    const float2 offset4 = point1.getPos() + make_float2(cos(angle2), sin(angle2)) * point1.radius;
+    float2 v1 = point1.getPos() + make_float2(cos(angle1), sin(angle1)) * point1.radius;
+    float2 v2 = point2.getPos() + make_float2(cos(angle1), sin(angle1)) * point1.radius;
+    float2 v3 = point2.getPos() + make_float2(cos(angle2), sin(angle2)) * point1.radius;
+    float2 v4 = point1.getPos() + make_float2(cos(angle2), sin(angle2)) * point1.radius;
     vertexManager.addPolygon(std::vector<VertexManager::Vertex>({
-        {offset1, cell1Color},
-        {offset2, cell2Color},
-        {offset3, cell2Color},
+        {v1, cell1Color},
+        {v2, cell2Color},
+        {v3, cell2Color},
 
-        {offset3, cell2Color},
-        {offset4, cell1Color},
-        {offset1, cell1Color}}));
+        {v3, cell2Color},
+        {v4, cell1Color},
+        {v1, cell1Color}}));
 }
 
 

@@ -81,10 +81,10 @@ std::pair<int, float> findNearest(const GPUVector<Point> &points, const float x,
     // Copy results back to host
     int h_closest_idx;
     float h_closest_dist;
-    cudaMemcpy(&h_closest_idx, d_closest_idx, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&h_closest_dist, d_closest_dist, sizeof(float), cudaMemcpyDeviceToHost);
-    cudaFree(d_closest_idx);
-    cudaFree(d_closest_dist);
+    cudaLog(cudaMemcpy(&h_closest_idx, d_closest_idx, sizeof(int), cudaMemcpyDeviceToHost));
+    cudaLog(cudaMemcpy(&h_closest_dist, d_closest_dist, sizeof(float), cudaMemcpyDeviceToHost));
+    cudaLog(cudaFree(d_closest_idx));
+    cudaLog(cudaFree(d_closest_dist));
 
     return std::make_pair(h_closest_idx, h_closest_dist);
 }

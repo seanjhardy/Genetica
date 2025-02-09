@@ -4,12 +4,17 @@
 
  __host__ __device__ double2 Point::getVelocity() const {
     float2 d = make_float2(pos.x - prevPos.x, pos.y - prevPos.y);
-    float speed = sqrtf(sum(d*d));
+    float speed = magnitude(d*d);
     float dir = FastMath::atan2f(d.y, d.x);
     return make_double2(speed, dir);
 }
 
 __host__ __device__ void Point::update(float dt) {
+    // Add accumulated position changes
+     if (connections > 0) {
+         pos += deltaPos / connections;
+     }
+    deltaPos = make_double2(0.0f, 0.0f);
     double2 velocity = pos - prevPos;
     double2 accel = force / radius;
 
@@ -18,6 +23,7 @@ __host__ __device__ void Point::update(float dt) {
     pos = newPosition;
 
     force = double2(0.0f, 0.0f);
+    connections = 0;
 }
 
 __host__ __device__ void Point::setPos(float2 newPos) {

@@ -22,6 +22,29 @@ void LifeForm::update() {
     // Update NN
 }
 
+void LifeForm::render(VertexManager& vertexManager, vector<Cell>& hostCells, vector<CellLink>& cellLinks, vector<Point>& points) {
+    // Render outline first
+    for (int cell : cells) {
+        Cell hostCell = hostCells[cell];
+        hostCell.renderCellWalls(vertexManager, points );
+    }
+    for (int link : links) {
+        CellLink hostLink = cellLinks[link];
+        hostLink.renderCellWalls(vertexManager, hostCells, points);
+    }
+
+    // Render body next
+    for (int cell : cells) {
+        Cell hostCell = hostCells[cell];
+        hostCell.renderBody(vertexManager, points);
+    }
+    for (int link : links) {
+        CellLink hostLink = cellLinks[link];
+        hostLink.renderBody(vertexManager, hostCells, points);
+    }
+}
+
+
 
 void LifeForm::clone(bool mutate){
     // Copy genome
@@ -76,26 +99,29 @@ void LifeForm::kill() {
     //env->removePoint(this->entityID);
 }
 
+void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& point) {
+    print("Add cell (?)", motherIdx);
+    auto cell = Cell(idx, point.getPos(), point.radius);
+    cell.generation = mother.generation;
+    cell.hue = mother.hue;
+    cell.saturation = mother.saturation;
+    cell.luminosity = mother.luminosity;
+    cell.products = mother.products.copy();
+    cell.rotation = mother.rotation + mother.divisionRotation;
 
-void LifeForm::addCell(const LfUpdateData::NEW_CELL& newCell) {
-    auto cell = Cell(idx, newCell.pos, newCell.radius);
-    cell.generation = newCell.generation;
-    cell.hue = newCell.hue;
-    cell.saturation = newCell.saturation;
-    cell.luminosity = newCell.luminosity;
-    //cell.products = newCell.products.copy();
-    cell.rotation = newCell.rotation + newCell.divisionRotation;
-
-    cell.idx = Simulator::get().getEnv().addCell(cell);
+    cell.idx = Simulator::get().getEnv().nextCellIdx();
+    Simulator::get().getEnv().addCell(cell);
     cells.push(cell.idx);
 
     auto cellLink = CellLink(idx,
         cell.idx,
-        newCell.motherIdx,
+        motherIdx,
         cell.pointIdx,
-        newCell.motherPointIdx,
-        newCell.radius * 3);
+        mother.pointIdx,
+        point.radius*2);
+    const size_t linkIdx = Simulator::get().getEnv().nextCellLinkIdx();
     Simulator::get().getEnv().addCellLink(cellLink);
+    links.push(linkIdx);
 }
 
 void LifeForm::init(){

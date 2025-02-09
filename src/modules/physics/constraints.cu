@@ -2,11 +2,11 @@
 #include <modules/utils/floatOps.hpp>
 #include <modules/utils/print.hpp>
 #include "cmath"
-#include <modules/utils/mathUtils.hpp>
+#include <modules/utils/GPU/atomicOps.hpp>
 
-__host__ __device__ inline void constrainDistance(Point& point1, Point& point2, float distance, float factor = 1.0f) {
+ __device__ inline void constrainDistance(Point& point1, Point& point2, float distance) {
     float currentDistance = point1.distanceTo(point2);
-    float deltaDistance = factor * (distance - currentDistance);
+    float deltaDistance = 0.5 * (distance - currentDistance);
 
     if (currentDistance == 0) {
         currentDistance += 1e-5f; // Avoid division by zero
@@ -19,8 +19,12 @@ __host__ __device__ inline void constrainDistance(Point& point1, Point& point2, 
     double2 delta = (point2.pos - point1.pos) * deltaDistance / currentDistance;
 
     double massRatio = point1.radius / (point1.radius + point2.radius);
-    point1.pos -= delta * (1 - massRatio) * 0.01;
-    point2.pos += delta * massRatio * 0.01;
+    atomicAddDouble(&point1.deltaPos.x, - delta.x * (1 - massRatio));
+    atomicAddDouble(&point1.deltaPos.y, - delta.y * (1 - massRatio));
+    atomicAddDouble(&point2.deltaPos.x, delta.x * massRatio);
+    atomicAddDouble(&point2.deltaPos.y, delta.y * massRatio);
+    atomicAdd(&point1.connections, 1);
+    atomicAdd(&point2.connections, 1);
 }
 
 __host__ __device__ inline void constrainAngle(Point& point1, Point& point2, float targetAngle, float stiffness, float dt) {

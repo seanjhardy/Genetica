@@ -62,6 +62,8 @@ public:
     GPUVector<Point>& getPoints() { return points; }
 
     // Cell management
+    size_t nextCellIdx();
+    size_t nextCellLinkIdx();
     size_t addCell(const Cell& cell);
     void removeCell(int index);
     GPUVector<Cell>& getCells() { return cells; }

@@ -1,12 +1,12 @@
 #ifndef LIFEFORM_HPP
 #define LIFEFORM_HPP
 
-#include <cmath>
 #include <geneticAlgorithm/species.hpp>
 #include <geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp>
 #include "genome.hpp"
-#include <geneticAlgorithm/cellParts/protein.hpp>
 #include <modules/utils/structures/DynamicStableVector.hpp>
+
+#include "cellParts/cellLink.hpp"
 
 using namespace std;
 
@@ -17,27 +17,6 @@ public:
     static constexpr int GROWTH_INTERVAL = 200;
     static constexpr float BUILD_COST_SCALE = 0.00001f;
     static constexpr float BUILD_RATE = 50.0f;
-    static constexpr float ENERGY_DECREASE_RATE = 0.0000001f;
-
-    struct LfUpdateData {
-        struct NEW_CELL {
-            int motherIdx{};
-            int motherPointIdx{};
-            float2 pos{};
-            float radius{};
-            float rotation{};
-            float divisionRotation{};
-
-            int generation{};
-            float hue{};
-            float saturation{};
-            float luminosity{};
-
-            //StaticGPUVector<float> products{};
-        } newCell;
-        bool cellAdded;
-        float energyChange;
-    };
 
     size_t idx;
 
@@ -60,12 +39,13 @@ public:
     void init();
 
     void update();
+    void render(VertexManager& vertexManager, vector<Cell>& cells, vector<CellLink>& cellLinks, vector<Point>& points);
 
     void combine(LifeForm *partner);
     void clone(bool mutate);
     void kill();
 
-    void addCell(const LfUpdateData::NEW_CELL& newCell);
+    void addCell(size_t motherIdx, const Cell& mother, const Point& point);
 
     [[nodiscard]] Species* getSpecies() const;
 };

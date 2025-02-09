@@ -19,14 +19,15 @@ struct Promoter : GeneticUnit {
         : GeneticUnit(sign, modifier, embedding), promoterType(promoterType) {}
 
     __device__ static float calculateActivity(int index,
-                            int numProducts,
                             StaticGPUVector<float>& levels,
                             StaticGPUVector<float>& promoterFactorAffinities) {
         float activity = 0.0f;
-        for (int i = 0; i < numProducts; i++) {
-            int promoterFactorIndex = index * numProducts + i;
-            float affinity = promoterFactorAffinities[promoterFactorIndex];
-            activity += levels[i] * affinity;
+        for (int i = 0; i < levels.size(); i++) {
+            int promoterFactorIndex = index * levels.size() + i;
+            if (promoterFactorIndex < promoterFactorAffinities.size()) {
+                float affinity = promoterFactorAffinities[promoterFactorIndex];
+                activity += levels[i] * affinity;
+            }
         }
         return activity;
     }

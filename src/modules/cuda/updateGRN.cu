@@ -36,7 +36,7 @@ __global__ void updateProductConcentration(GeneRegulatoryNetwork grn,
                                            const int simulationStep,
                                            const int birthdate,
                                            const float energy) {
-    size_t productIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    int productIdx = blockIdx.x * blockDim.x + threadIdx.x;
     size_t cellIdx = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (productIdx >= grn.factors.size() || cellIdx >= cells.size()) return;
@@ -184,13 +184,12 @@ __global__ void updateGeneExpression(GeneRegulatoryNetwork grn,
 
     if (expression == 0) return;
 
-    if (effector->effectorType == Effector::EffectorType::Die) {
+    /*if (effector->effectorType == Effector::EffectorType::Die) {
         if (expression > 0.5 && cellIdx != 0) {
             cell->dead = true;
         }
     }
     if (effector->effectorType == Effector::EffectorType::Divide) {
-        printf("expression: %f\n", expression);
         if (expression > 0.0001 && !cell->dividing) {
             cell->dividing = true;
         }
@@ -200,19 +199,21 @@ __global__ void updateGeneExpression(GeneRegulatoryNetwork grn,
             cell->frozen = true;
         }
     }
-    if (effector->effectorType == Effector::EffectorType::Distance) {
-        for (auto cellLink : cellLinkPtrs) {
+    if (effector->effectorType == Effector::EffectorType::Distance) {*/
+        /*for (auto cellLink : cellLinkPtrs) {
             if (cellLink->cellAId == cellIdx || cellLink->cellBId == cellIdx) {
-                cellLink->adjustSize(max(expression, 0.0f));
+                cellLink->adjustSize(min(expression, 0.0f));
             }
-        }
-    }
+        }*/
+    /*}
     if (effector->effectorType == Effector::EffectorType::Radius) {
         float sizeChange = expression;
         int pointIdx = cell->pointIdx;
         Point* pointObj = points + pointIdx;
         atomicAdd(&cell->energyUse, 2.0f * M_PI * pointObj->radius * sizeChange + M_PI * pow(sizeChange, 2));
-        pointObj->radius = max(pointObj->radius + sizeChange, 0.5f);
+        if (pointObj->radius + sizeChange < 20) {
+            pointObj->radius = max(pointObj->radius + sizeChange, 0.5f);
+        }
     }
     if (effector->effectorType == Effector::EffectorType::Red) {
         cell->updateHue(Red, expression * 0.1f);
@@ -222,7 +223,7 @@ __global__ void updateGeneExpression(GeneRegulatoryNetwork grn,
     }
     if (effector->effectorType == Effector::EffectorType::Blue) {
         cell->updateHue(Blue, expression * 0.1f);
-    }
+    }*/
 }
 
 void updateGRN(LifeForm& lifeForm,
@@ -250,6 +251,7 @@ void updateGRN(LifeForm& lifeForm,
     dim3 numDistanceBlocks((cellsPtrs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                        (cellsPtrs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
     calculateDistances<<<numDistanceBlocks, threadsPerBlock>>>(cellsPtrs, points, lifeForm.grn.cellDistances);
+    cudaDeviceSynchronize();
 
     // Update product concentration
     dim3 numProductBlocks((lifeForm.grn.factors.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -270,13 +272,11 @@ void updateGRN(LifeForm& lifeForm,
     updateNSquaredProductConcentration<<<numNSquaredProductBlocks, threadsPerCellProductBlock>>>(lifeForm.grn, cellsPtrs, points);
 
     // Update each cell's products based on regulatory expression
-    dim3 numCellBlocks((hostCellPtrs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                       (hostCellPtrs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    size_t numCellBlocks((hostCellPtrs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x);
     updateRegulatoryUnitExpression<<<numCellBlocks, threadsPerBlock>>>(lifeForm.grn, cellsPtrs, points);
 
     // Update gene expression based on the products
-    //print(lifeForm.grn.regulatoryUnits.size(), lifeForm.grn.promoters.size(), lifeForm.grn.effectors.size(), lifeForm.grn.factors.size(), hostCellPtrs.size());
-    dim3 numEffectorBlocks((hostCellPtrs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
+    /*dim3 numEffectorBlocks((hostCellPtrs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                         (lifeForm.grn.effectors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    updateGeneExpression<<<numEffectorBlocks, threadsPerBlock>>>(lifeForm.grn, cellsPtrs, cellLinkPtrs, points);
+    updateGeneExpression<<<numEffectorBlocks, threadsPerBlock>>>(lifeForm.grn, cellsPtrs, cellLinkPtrs, points);*/
 }

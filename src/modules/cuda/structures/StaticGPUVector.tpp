@@ -1,11 +1,11 @@
 #pragma once
+
 #include <modules/utils/print.hpp>
 #include <modules/cuda/logging.hpp>
 
 template<typename T>
 StaticGPUVector<T>::StaticGPUVector(size_t capacity) {
     size_ = capacity;
-    printf("created");
     reallocateDevice(capacity);
 }
 
@@ -18,6 +18,7 @@ StaticGPUVector<T>::StaticGPUVector(const std::vector<T>& h_data){
         data_ = nullptr;
     }
     cudaLog(cudaMalloc(&data_, h_data.size() * sizeof(T)));
+    cudaLog(cudaMemset(data_, 0, h_data.size() * sizeof(T)));
     cudaLog(cudaMemcpy(data_, h_data.data(), h_data.size() * sizeof(T), cudaMemcpyHostToDevice));
 }
 
@@ -29,9 +30,9 @@ void StaticGPUVector<T>::reallocateDevice(size_t new_capacity) {
         capacity_ = 0;
         return;
     }
-    printf("capacity: %d, %d \n", capacity_, new_capacity);
     T* d_data_old = data_;
     cudaLog(cudaMalloc(&data_, new_capacity * sizeof(T)));
+    cudaLog(cudaMemset(data_, 0, new_capacity * sizeof(T)));
     if (d_data_old != nullptr) {
         cudaLog(cudaMemcpy(data_, d_data_old, size_ * sizeof(T), cudaMemcpyDeviceToDevice));
         cudaLog(cudaFree(d_data_old));
@@ -41,7 +42,6 @@ void StaticGPUVector<T>::reallocateDevice(size_t new_capacity) {
 
 template<typename T>
 void StaticGPUVector<T>::destroy() {
-    printf("destroy");
     if (data_ != nullptr) {
         cudaLog(cudaFree(data_));
         data_ = nullptr;
@@ -64,6 +64,15 @@ std::vector<T> StaticGPUVector<T>::toHost() const {
     std::vector<T> host_data(size_);
     if (size_ > 0) {
         cudaLog(cudaMemcpy(host_data.data(), data_, size_ * sizeof(T), cudaMemcpyDeviceToHost));
+    }
+    return host_data;
+}
+
+template<typename T>
+T StaticGPUVector<T>::itemToHost(size_t index) const {
+    T host_data;
+    if (index < size_) {
+        cudaLog(cudaMemcpy(&host_data, data_ + index, sizeof(T), cudaMemcpyDeviceToHost));
     }
     return host_data;
 }

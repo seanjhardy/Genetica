@@ -9,8 +9,8 @@
 struct RegulatoryUnit {
     static constexpr float W = 10.0f;
 
-    StaticGPUVector<size_t> promoters;
-    StaticGPUVector<size_t> factors;
+    StaticGPUVector<int> promoters;
+    StaticGPUVector<int> factors;
 
     __host__ __device__ RegulatoryUnit() = default;
 
@@ -27,8 +27,7 @@ struct RegulatoryUnit {
         for (size_t i = 0; i < promoters.size(); i++) {
             size_t promoterIndex = promoters[i];
             Promoter* promoter = &grnPromoters[promoterIndex];
-            float promoterActivity = promoter->calculateActivity(promoterIndex, factors.size(),
-                                                                 factorLevels, promoterFactorAffinities);
+            float promoterActivity = promoter->calculateActivity(promoterIndex, factorLevels, promoterFactorAffinities);
 
             if (promoter->promoterType == Promoter::PromoterType::Additive) {
                 additivePromoterValue += promoterActivity;
