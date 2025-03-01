@@ -39,8 +39,9 @@ string Genome::toString() const {
 }
 
 void Genome::render(VertexManager& vertexManager) {
-    /*cachedTexture.create(400, 400);
-    cachedTexture.clear(sf::Color::Transparent);
+    /*auto cachedTexture = sf::RenderTexture();
+    cachedTexture.create(400, 400);
+    //cachedTexture.clear(sf::Color::Transparent);
     sf::RenderStates states;
     states.texture = &cachedTexture.getTexture();
     states.shader = ShaderManager::get("genome");
@@ -64,7 +65,7 @@ void Genome::render(VertexManager& vertexManager) {
     for (auto& geneID : hoxGeneOrder) {
         numBases += hoxGenes.at(geneID).size();
     }
-    float baseSize = sqrt((400.0 * 400.0) / numBases);
+    float baseSize = sqrt((width * width) / numBases);
     float basesPerRow = width / baseSize;
     float yPos = 2;
     int baseIndex = 0;

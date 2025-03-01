@@ -44,16 +44,16 @@ struct RegulatoryUnit {
         if (value < 0.01f) transformedValue = 0.0f;
 
         // Calculate the amount of each factor produced based on the unit's activity
-        auto* deltaFactorLevels = new float[factors.size()];
+        auto* deltaFactorLevels = new float[grnFactors.size()];
         for (int i = 0; i < factors.size(); i++) {
             int geneIndex = factors[i];
-            auto* gene = &grnFactors[geneIndex];
+            auto* gene = grnFactors + geneIndex;
             // Only update internal and external products
             if (gene->factorType != Gene::FactorType::InternalProduct &&
                 gene->factorType != Gene::FactorType::ExternalProduct) {
                 continue;
             }
-            deltaFactorLevels[i] += transformedValue;
+            deltaFactorLevels[geneIndex] += transformedValue;
         }
         return deltaFactorLevels;
     }

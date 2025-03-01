@@ -12,8 +12,8 @@ __global__ void updateCell(GPUVector<Cell> cells, GPUVector<Point> points, Stati
     size_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index >= cells.size()) return;
-
     Cell &cell = cells[index];
+    if (cell.pointIdx > points.size()) return;
     const Point &point = points[cell.pointIdx];
     auto* lfData = lfUpdateData + cell.lifeFormIdx;
 
@@ -41,7 +41,7 @@ void updateCells(DynamicStableVector<LifeForm>& lifeForms,
         return;
     }
 
-    auto lfUpdateData = StaticGPUVector<LfUpdateData>(lifeForms.size());
+    /*auto lfUpdateData = StaticGPUVector<LfUpdateData>(lifeForms.size());
     updateCell<<<numCellBlocks, threadsPerBlock>>>(cells, points, lfUpdateData);
     std::vector<LfUpdateData> lfUpdateDataHost = lfUpdateData.toHost();
 
@@ -55,5 +55,5 @@ void updateCells(DynamicStableVector<LifeForm>& lifeForms,
             lifeForms[i].addCell(lfUpdateDataHost[i].motherIdx, mother, p);
         }
     };
-    lfUpdateData.destroy();
+    lfUpdateData.destroy();*/
 }

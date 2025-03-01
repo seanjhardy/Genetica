@@ -2,9 +2,9 @@
 #define CELL
 
 #include <geneticAlgorithm/systems/morphology/geneticUnit.hpp>
-#include <geneticAlgorithm/systems/morphology/promoter.hpp>
 #include <modules/utils/GUIUtils.hpp>
 #include <modules/utils/random.hpp>
+#include <modules/cuda/structures/StaticGPUVector.hpp>
 
 class LifeForm;
 
@@ -23,6 +23,7 @@ public:
     float energyUse = 0.0f;
     float rotation = 0.0f;
     float divisionRotation = 0.0f;
+    float targetRadius = 0.0f;
     int numDivisions = 0;
     bool frozen = false;
     bool dividing = false;

@@ -84,16 +84,18 @@ void GeneticAlgorithm::mutateGene(string& gene) const {
 }
 
 void GeneticAlgorithm::createRandomLifeForm() {
-    auto genome = Genome();
-    genome.init();
+    for (int i = 0; i < 1; i++) {
+        auto genome = Genome();
+        genome.init();
 
-    float2 pos = Simulator::get().getEnv().randomPos();
-    auto lifeForm = LifeForm(genome);
-    lifeForm.energy = 100;
+        float2 pos = Simulator::get().getEnv().randomPos();
+        auto lifeForm = LifeForm(genome);
+        lifeForm.energy = 100;
 
-    addLifeForm(lifeForm);
+        addLifeForm(lifeForm);
 
-    sequence(population[lifeForm.idx], genome, pos);
+        sequence(population[lifeForm.idx], genome, pos);
+    }
 }
 
 size_t GeneticAlgorithm::addLifeForm(LifeForm& lifeForm) {

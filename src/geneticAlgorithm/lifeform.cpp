@@ -7,16 +7,14 @@ using namespace std;
 LifeForm::LifeForm(Genome& genome)
     : genome(genome) {
     init();
+    birthdate = Simulator::get().getStep();
 }
 
 void LifeForm::update() {
     // Update the GRN
     if (Simulator::get().getStep() - lastGrnUpdate > GROWTH_INTERVAL) {
         lastGrnUpdate = Simulator::get().getStep();
-        updateGRN(*this,
-            Simulator::get().getEnv().getCells(),
-            Simulator::get().getEnv().getCellLinks(),
-            Simulator::get().getEnv().getPoints());
+        updateGRN(*this, Simulator::get().getEnv().getPoints());
     }
 
     // Update NN
@@ -25,22 +23,18 @@ void LifeForm::update() {
 void LifeForm::render(VertexManager& vertexManager, vector<Cell>& hostCells, vector<CellLink>& cellLinks, vector<Point>& points) {
     // Render outline first
     for (int cell : cells) {
-        Cell hostCell = hostCells[cell];
-        hostCell.renderCellWalls(vertexManager, points );
+        hostCells[cell].renderCellWalls(vertexManager, points );
     }
     for (int link : links) {
-        CellLink hostLink = cellLinks[link];
-        hostLink.renderCellWalls(vertexManager, hostCells, points);
+        cellLinks[link].renderCellWalls(vertexManager, hostCells, points);
     }
 
     // Render body next
     for (int cell : cells) {
-        Cell hostCell = hostCells[cell];
-        hostCell.renderBody(vertexManager, points);
+        hostCells[cell].renderBody(vertexManager, points);
     }
     for (int link : links) {
-        CellLink hostLink = cellLinks[link];
-        hostLink.renderBody(vertexManager, hostCells, points);
+        cellLinks[link].renderBody(vertexManager, hostCells, points);
     }
 }
 
@@ -112,6 +106,7 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& point)
     cell.idx = Simulator::get().getEnv().nextCellIdx();
     Simulator::get().getEnv().addCell(cell);
     cells.push(cell.idx);
+    cellPointers.push(Simulator::get().getEnv().getCells().data() + cell.idx);
 
     auto cellLink = CellLink(idx,
         cell.idx,
@@ -122,6 +117,7 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& point)
     const size_t linkIdx = Simulator::get().getEnv().nextCellLinkIdx();
     Simulator::get().getEnv().addCellLink(cellLink);
     links.push(linkIdx);
+    cellLinkPointers.push(Simulator::get().getEnv().getCellLinks().data() + linkIdx);
 }
 
 void LifeForm::init(){

@@ -116,5 +116,6 @@ void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
     lifeForm.grn.effectors = StaticGPUVector(effectors);
 
     lifeForm.grn.regulatoryUnits = StaticGPUVector(regulatoryUnits);
+    print(lifeForm.grn.factors.size());
     calculateAffinities(lifeForm.grn);
 }

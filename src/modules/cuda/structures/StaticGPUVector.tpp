@@ -1,5 +1,4 @@
 #pragma once
-
 #include <modules/utils/print.hpp>
 #include <modules/cuda/logging.hpp>
 
@@ -9,15 +8,19 @@ StaticGPUVector<T>::StaticGPUVector(size_t capacity) {
     reallocateDevice(capacity);
 }
 
+
 template<typename T>
 StaticGPUVector<T>::StaticGPUVector(const std::vector<T>& h_data){
+    printf("Creating new StaticGPUVector, requesting size %p, %llu\n", data_, h_data.size());
     size_ = h_data.size();
     capacity_ = h_data.size();
     if (data_ != nullptr) {
         cudaLog(cudaFree(data_));
         data_ = nullptr;
     }
+    printf("DATA: %p, %d\n", data_, h_data.size() * sizeof(T));
     cudaLog(cudaMalloc(&data_, h_data.size() * sizeof(T)));
+    printf("Allocated GPU memory at %p\n", data_);
     cudaLog(cudaMemset(data_, 0, h_data.size() * sizeof(T)));
     cudaLog(cudaMemcpy(data_, h_data.data(), h_data.size() * sizeof(T), cudaMemcpyHostToDevice));
 }
@@ -25,18 +28,32 @@ StaticGPUVector<T>::StaticGPUVector(const std::vector<T>& h_data){
 template<typename T>
 void StaticGPUVector<T>::reallocateDevice(size_t new_capacity) {
     if (new_capacity == 0) {
-        data_ = nullptr;
+        if (data_ != nullptr) {
+            cudaLog(cudaFree(data_));
+            data_ = nullptr;
+        }
         size_ = 0;
-        capacity_ = 0;
+        capacity_ = 0;  // Changed from 1 to 0
         return;
     }
-    T* d_data_old = data_;
-    cudaLog(cudaMalloc(&data_, new_capacity * sizeof(T)));
-    cudaLog(cudaMemset(data_, 0, new_capacity * sizeof(T)));
-    if (d_data_old != nullptr) {
-        cudaLog(cudaMemcpy(data_, d_data_old, size_ * sizeof(T), cudaMemcpyDeviceToDevice));
-        cudaLog(cudaFree(d_data_old));
+
+    // Allocate new buffer
+    T* new_data = nullptr;
+    cudaLog(cudaMalloc(&new_data, new_capacity * sizeof(T)));
+
+    // Only zero the NEW portion of memory
+    if (size_ < new_capacity) {
+        size_t new_bytes = (new_capacity - size_) * sizeof(T);
+        cudaLog(cudaMemset(new_data + size_, 0, new_bytes));
     }
+
+    // Copy old data if it exists
+    if (data_ != nullptr && size_ > 0) {
+        cudaLog(cudaMemcpy(new_data, data_, size_ * sizeof(T), cudaMemcpyDeviceToDevice));
+        cudaLog(cudaFree(data_));
+    }
+
+    data_ = new_data;
     capacity_ = new_capacity;
 }
 
@@ -79,11 +96,25 @@ T StaticGPUVector<T>::itemToHost(size_t index) const {
 
 template<typename T>
 T& StaticGPUVector<T>::operator[](size_t index) {
+    // Add size validation
+    if (size_ > 1000000) { // Unreasonably large size check
+        printf("Warning: Possibly corrupted vector, size = %llu\n", size_);
+    }
+    if (data_ == nullptr) {
+        printf("Warning: Accessing null data pointer\n");
+    }
     return data_[index];
 }
 
 template<typename T>
 T& StaticGPUVector<T>::operator[](size_t index) const {
+    // Add size validation
+    if (size_ > 1000000) { // Unreasonably large size check
+        printf("Warning: Possibly corrupted vector, size = %llu\n", size_);
+    }
+    if (data_ == nullptr) {
+        printf("Warning: Accessing null data pointer\n");
+    }
     return data_[index];
 }
 

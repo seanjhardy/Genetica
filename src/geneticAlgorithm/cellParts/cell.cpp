@@ -2,7 +2,7 @@
 #include <simulator/simulator.hpp>
 #include <geneticAlgorithm/cellParts/cell.hpp>
 
-Cell::Cell(int lifeFormIdx, const float2& pos, float radius) {
+Cell::Cell(int lifeFormIdx, const float2& pos, float radius) : products(0) {
     pointIdx = Simulator::get().getEnv().addPoint(Point(lifeFormIdx, pos.x, pos.y, radius));
     this->lifeFormIdx = lifeFormIdx;
 
@@ -24,6 +24,7 @@ void Cell::renderCellWalls(VertexManager& vertexManager, vector<Point>& points) 
     const Point pointObj = points[pointIdx];
     const float2 pos = pointObj.getPos();
     const float radius = pointObj.radius;
+    if (vertexManager.getSizeInView(radius) < 5) return;
     const auto color = brightness(getColor(), 0.6);
     vertexManager.addCircle(pos, radius + thickness, color);
 }

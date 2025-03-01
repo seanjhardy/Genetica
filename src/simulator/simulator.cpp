@@ -79,7 +79,7 @@ void Simulator::run() {
 
             if (selectedEntity.first && selectedEntity.second != selectedEntityId) {
                 selectedEntityId = selectedEntity.second;
-                //setTab(selectedEntityId == -1 ? Tab::Simulation : Tab::LifeForm);
+                setTab(selectedEntityId == -1 ? Tab::Simulation : Tab::LifeForm);
             }
         }
         // Handle continuous events (e.g. holding down a key/hovering over a UI element)

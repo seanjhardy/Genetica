@@ -104,6 +104,11 @@ inline void printElement(const std::unordered_map<K, V>& map) {
     std::cout << "}";
 }
 
+template <typename T>
+inline void printElement(const T* item) {
+    std::cout << item << "*";
+}
+
 // Template for generic types
 template <typename T>
 inline void printElement(const T& item) {

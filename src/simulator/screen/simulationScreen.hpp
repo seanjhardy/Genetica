@@ -148,12 +148,12 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         dynamic_cast<ImageElement*>(screen->getElement("thermometer"))
         ->overrideProperty("style", "tint: " + thermometerColorString);
 
-        /*if (dynamic_cast<LifeForm*>(simulator->getSelectedEntity())) {
-            auto selectedLifeform = dynamic_cast<LifeForm*>(simulator->getSelectedEntity());
-            string text = "Energy: " + std::to_string(selectedLifeform->energy);
+        if (simulator->getSelectedEntityId() != -1) {
+            auto selectedLifeform = Simulator::get().getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()];
+            string text = "Energy: " + std::to_string(selectedLifeform.energy);
 
             if (screen->getElement("genomePanel")->visible) {
-                selectedLifeform->genome.render(
+                selectedLifeform.genome.render(
                   ((Viewport *) screen->getElement("genome"))->getVertexManager());
             }
 
@@ -166,9 +166,9 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
                     float zoom = std::min(layout.width, layout.height);
                     ((Viewport *) screen->getElement("geneRegulatoryNetwork"))->getCamera()->setZoom(zoom);
                     ((Viewport *) screen->getElement("geneRegulatoryNetwork"))->getCamera()->setPosition({0.5, 0.5});
-                }
+                }*/
             }
-       }*/
+       }
     });
 
     vector<UIElement*> elements = ComponentManager::get("SimulationScreen");

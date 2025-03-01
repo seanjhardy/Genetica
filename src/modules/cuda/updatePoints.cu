@@ -102,7 +102,6 @@ void updatePoints(GPUVector<Point>& points,
     // Update the points
     numBlocks = (points.size() + blockSize - 1) / blockSize;
     updatePointsKernel<<<numBlocks, blockSize>>>(points, dt, bounds.deviceData());
-    cudaDeviceSynchronize();
 
     dim3 threadsPerBlock(32, 32);
     dim3 numCollisionBlocks((points.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,

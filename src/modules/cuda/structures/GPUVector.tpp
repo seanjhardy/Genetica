@@ -1,4 +1,6 @@
 #pragma once
+
+#include <geneticAlgorithm/cellParts/cell.hpp>
 #include <modules/cuda/logging.hpp>
 
 template<typename T>
@@ -18,6 +20,7 @@ void GPUVector<T>::destroy() {
     overflow_capacity_ = 0;
 }
 
+
 template<typename T>
 size_t GPUVector<T>::push(const T& value) {
     // If we have empty spaces in the middle of the vector, add the value there
@@ -33,6 +36,7 @@ size_t GPUVector<T>::push(const T& value) {
         this->reallocateDevice(new_capacity);
     }
     cudaLog(cudaMemcpy(this->data_ + this->size_, &value, sizeof(T), cudaMemcpyHostToDevice));
+
     ++this->size_;
     return this->size_ - 1;
 }

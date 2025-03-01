@@ -26,9 +26,10 @@ public:
     int lastGrnUpdate = 0;
     DynamicStableVector<int> cells;
     DynamicStableVector<int> links;
+    // This is a device-side store of device side pointers for fast GPU cache access
+    GPUVector<Cell*> cellPointers;
+    GPUVector<CellLink*> cellLinkPointers;
 
-    //DynamicStableVector<Protein> inputs;
-    //DynamicStableVector<Protein> outputs;
 
     double energy = 0;
     int numChildren = 0;
