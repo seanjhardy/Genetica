@@ -14,7 +14,7 @@ struct RegulatoryUnit {
 
     __host__ __device__ RegulatoryUnit() = default;
 
-    __device__ float* calculateActivation(
+    __device__ void calculateActivation(
       StaticGPUVector<Promoter>& grnPromoters,
       StaticGPUVector<Gene>& grnFactors,
       StaticGPUVector<float>& factorLevels,
@@ -47,15 +47,14 @@ struct RegulatoryUnit {
         auto* deltaFactorLevels = new float[grnFactors.size()];
         for (int i = 0; i < factors.size(); i++) {
             int geneIndex = factors[i];
-            auto* gene = grnFactors + geneIndex;
+            auto* gene = &grnFactors[geneIndex];
             // Only update internal and external products
             if (gene->factorType != Gene::FactorType::InternalProduct &&
                 gene->factorType != Gene::FactorType::ExternalProduct) {
                 continue;
             }
-            deltaFactorLevels[geneIndex] += transformedValue;
+            factorLevels[geneIndex] += transformedValue;
         }
-        return deltaFactorLevels;
     }
 
     /*void render(VertexManager& vertexManager, float2 pos, float scale,

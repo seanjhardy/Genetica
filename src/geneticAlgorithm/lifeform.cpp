@@ -14,7 +14,10 @@ void LifeForm::update() {
     // Update the GRN
     if (Simulator::get().getStep() - lastGrnUpdate > GROWTH_INTERVAL) {
         lastGrnUpdate = Simulator::get().getStep();
-        updateGRN(*this, Simulator::get().getEnv().getPoints());
+        updateGRN(*this,
+            Simulator::get().getEnv().getPoints(),
+            Simulator::get().getEnv().getCells(),
+            Simulator::get().getEnv().getCellLinks());
     }
 
     // Update NN
@@ -22,18 +25,18 @@ void LifeForm::update() {
 
 void LifeForm::render(VertexManager& vertexManager, vector<Cell>& hostCells, vector<CellLink>& cellLinks, vector<Point>& points) {
     // Render outline first
-    for (int cell : cells) {
+    for (int cell : cells.hostData()) {
         hostCells[cell].renderCellWalls(vertexManager, points );
     }
-    for (int link : links) {
+    for (int link : links.hostData()) {
         cellLinks[link].renderCellWalls(vertexManager, hostCells, points);
     }
 
     // Render body next
-    for (int cell : cells) {
+    for (int cell : cells.hostData()) {
         hostCells[cell].renderBody(vertexManager, points);
     }
-    for (int link : links) {
+    for (int link : links.hostData()) {
         cellLinks[link].renderBody(vertexManager, hostCells, points);
     }
 }
@@ -94,7 +97,6 @@ void LifeForm::kill() {
 }
 
 void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& point) {
-    print("Add cell (?)", motherIdx);
     auto cell = Cell(idx, point.getPos(), point.radius);
     cell.generation = mother.generation;
     cell.hue = mother.hue;
@@ -106,7 +108,6 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& point)
     cell.idx = Simulator::get().getEnv().nextCellIdx();
     Simulator::get().getEnv().addCell(cell);
     cells.push(cell.idx);
-    cellPointers.push(Simulator::get().getEnv().getCells().data() + cell.idx);
 
     auto cellLink = CellLink(idx,
         cell.idx,
@@ -117,7 +118,8 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& point)
     const size_t linkIdx = Simulator::get().getEnv().nextCellLinkIdx();
     Simulator::get().getEnv().addCellLink(cellLink);
     links.push(linkIdx);
-    cellLinkPointers.push(Simulator::get().getEnv().getCellLinks().data() + linkIdx);
+    grn.cellDistances.destroy();
+    grn.cellDistances = StaticGPUVector<float>((cells.size() * (cells.size() - 1)) / 2);
 }
 
 void LifeForm::init(){

@@ -11,16 +11,13 @@ StaticGPUVector<T>::StaticGPUVector(size_t capacity) {
 
 template<typename T>
 StaticGPUVector<T>::StaticGPUVector(const std::vector<T>& h_data){
-    printf("Creating new StaticGPUVector, requesting size %p, %llu\n", data_, h_data.size());
     size_ = h_data.size();
     capacity_ = h_data.size();
     if (data_ != nullptr) {
         cudaLog(cudaFree(data_));
         data_ = nullptr;
     }
-    printf("DATA: %p, %d\n", data_, h_data.size() * sizeof(T));
     cudaLog(cudaMalloc(&data_, h_data.size() * sizeof(T)));
-    printf("Allocated GPU memory at %p\n", data_);
     cudaLog(cudaMemset(data_, 0, h_data.size() * sizeof(T)));
     cudaLog(cudaMemcpy(data_, h_data.data(), h_data.size() * sizeof(T), cudaMemcpyHostToDevice));
 }
@@ -96,10 +93,6 @@ T StaticGPUVector<T>::itemToHost(size_t index) const {
 
 template<typename T>
 T& StaticGPUVector<T>::operator[](size_t index) {
-    // Add size validation
-    if (size_ > 1000000) { // Unreasonably large size check
-        printf("Warning: Possibly corrupted vector, size = %llu\n", size_);
-    }
     if (data_ == nullptr) {
         printf("Warning: Accessing null data pointer\n");
     }
@@ -108,10 +101,6 @@ T& StaticGPUVector<T>::operator[](size_t index) {
 
 template<typename T>
 T& StaticGPUVector<T>::operator[](size_t index) const {
-    // Add size validation
-    if (size_ > 1000000) { // Unreasonably large size check
-        printf("Warning: Possibly corrupted vector, size = %llu\n", size_);
-    }
     if (data_ == nullptr) {
         printf("Warning: Accessing null data pointer\n");
     }

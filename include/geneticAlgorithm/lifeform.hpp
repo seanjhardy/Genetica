@@ -4,7 +4,7 @@
 #include <geneticAlgorithm/species.hpp>
 #include <geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp>
 #include "genome.hpp"
-#include <modules/utils/structures/DynamicStableVector.hpp>
+#include "modules/cuda/structures/CGPUVector.hpp"
 
 #include "cellParts/cellLink.hpp"
 
@@ -24,11 +24,8 @@ public:
 
     GeneRegulatoryNetwork grn;
     int lastGrnUpdate = 0;
-    DynamicStableVector<int> cells;
-    DynamicStableVector<int> links;
-    // This is a device-side store of device side pointers for fast GPU cache access
-    GPUVector<Cell*> cellPointers;
-    GPUVector<CellLink*> cellLinkPointers;
+    CGPUVector<int> cells = CGPUVector<int>(0);
+    CGPUVector<int> links = CGPUVector<int>(0);
 
 
     double energy = 0;

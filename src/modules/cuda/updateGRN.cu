@@ -9,15 +9,22 @@
 // This reduces the amount of memory needed to store the distances
 // The formula for the linear index of the distance between cell i and cell j is:
 // i * numCells - (i * (i + 1)) / 2 + (j - i - 1)
-__global__ void calculateDistances(const StaticGPUVector<Cell*> cells, const GPUVector<Point> points, StaticGPUVector<float> output) {
+__global__ void calculateDistances(const StaticGPUVector<Cell> cells,
+    StaticGPUVector<int> cellIdxs,
+    const GPUVector<Point> points,
+    StaticGPUVector<float> output) {
     size_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
     size_t idx2 = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (idx1 >= cells.size() || idx2 >= cells.size() || idx1 >= idx2) return;
+    if (idx1 >= cellIdxs.size() || idx2 >= cellIdxs.size() || idx1 >= idx2) return;
 
-    size_t linearIdx = idx1 * cells.size() - (idx1 * (idx1 + 1)) / 2 + (idx2 - idx1 - 1);
-    auto cell1 = *(cells + idx1);
-    auto cell2 = *(cells + idx2);
+    const int cellIdx1 = cellIdxs[idx1];
+    const int cellIdx2 = cellIdxs[idx2];
+
+    size_t linearIdx = cellIdx1 * cells.size() - (cellIdx1 * (cellIdx1 + 1)) / 2 + (cellIdx2 - cellIdx1 - 1);
+
+    auto cell1 = cells + cellIdx1;
+    auto cell2 = cells + cellIdx2;
     const Point* a = points + cell1->pointIdx;
     const Point* b = points + cell2->pointIdx;
     output[linearIdx] = a->distanceTo(*b);
@@ -31,42 +38,26 @@ __device__ float getCellDistance(const int cellIdx, const int otherCellIdx,
 
 
 __global__ void updateProductConcentration(GeneRegulatoryNetwork grn,
-                                            StaticGPUVector<Cell*> cells,
-                                           const GPUVector<Point> points,
-                                           const int simulationStep,
-                                           const int birthdate,
-                                           const float energy) {
+    StaticGPUVector<Cell> cells,
+    StaticGPUVector<int> cellIdxs,
+       const StaticGPUVector<Point> points,
+       const int simulationStep,
+       const int birthdate,
+       const float energy) {
     int productIdx = blockIdx.x * blockDim.x + threadIdx.x;
     size_t cellIdx = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (productIdx >= grn.factors.size() || cellIdx >= cells.size()) return;
+    if (productIdx >= grn.factors.size() || cellIdx >= cellIdxs.size()) return;
 
-    //Head
-    auto head = *cells[0];
-    if (head.pointIdx >= points.size()) return;
-    auto headPos = points[head.pointIdx].getPos();
+    const size_t headIndex = cellIdxs[0];
+    auto head = cells + headIndex;
+    if (head->pointIdx >= points.size()) return;
+    auto headPos = points[head->pointIdx].getPos();
 
-    auto cell = cells[cellIdx];
-    // Print before accessing products
-    /*if (productIdx == 0) {
-        // Print a range of memory values around the products vector
-        StaticGPUVector<float>* products_vec = &(cell->products);
-        void** memory = (void**)products_vec;
-        printf("Memory at %p:\n", memory);
-        for (int i = -2; i <= 2; i++) {
-            printf("  Offset %d: %p\n", i, memory[i]);
-        }
-    }*/
-    if (cell == nullptr) {
-        printf("Error: null cell pointer at idx %llu, %llu\n", cell->idx, cell->lifeFormIdx);
-        return;
-    }
+    auto cell = cells + cellIdxs[cellIdx];
 
     float* products_data = cell->products.data();
-    if (products_data == nullptr) {
-        printf("Error: null products pointer for cell %llu %llu\n", cell->idx, cell->lifeFormIdx);
-        return;
-    }
+
 
     // Now try to access
     float* amount = products_data + productIdx;
@@ -82,10 +73,10 @@ __global__ void updateProductConcentration(GeneRegulatoryNetwork grn,
 
     // Update product quantities in cell
     if (factor->factorType == Gene::FactorType::MaternalFactor) {
-        float2 factorPos = rotate(factor->extra * 10.0f, head.rotation) + headPos;
+        float2 factorPos = rotate(factor->extra * 10.0f, head->rotation) + headPos;
         *amount = distanceBetween(factorPos, p1->getPos());
     }
-    /*if (factor->factorType == Gene::FactorType::Time) {
+    if (factor->factorType == Gene::FactorType::Time) {
         *amount = factor->extra.y * (factor->sign ? 1.0f : -1.0f)
           + factor->extra.x * (simulationStep - birthdate)/100000.0;
     }
@@ -101,19 +92,20 @@ __global__ void updateProductConcentration(GeneRegulatoryNetwork grn,
     //Decay products
     if (factor->factorType == Gene::FactorType::InternalProduct) {
         *amount *= decayRate;
-    }*/
+    }
 }
 
 __global__ void updateNSquaredProductConcentration(
-  GeneRegulatoryNetwork grn, const StaticGPUVector<Cell*> cells, const GPUVector<Point> points) {
+  GeneRegulatoryNetwork grn, const StaticGPUVector<Cell> cells,
+  StaticGPUVector<int> cellIdxs, const GPUVector<Point> points) {
     size_t productIdx = blockIdx.x * blockDim.x + threadIdx.x;
     size_t cellIdx = blockIdx.y * blockDim.y + threadIdx.y;
     size_t cellIdx2 = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (productIdx >= grn.factors.size() || cellIdx >= cells.size() || cellIdx2 >= cells.size()) return;
+    if (productIdx >= grn.factors.size() || cellIdx >= cellIdxs.size() || cellIdx2 >= cellIdxs.size()) return;
     float decayRate = 0.99;
-    auto cell = *(cells + cellIdx);
-    auto otherCell = *(cells + cellIdx2);
+    auto cell = cells + cellIdxs[cellIdx];
+    auto otherCell = cells + cellIdxs[cellIdx2];
 
     float* amount = cell->products + productIdx;
     float otherAmount = otherCell->products[productIdx];
@@ -151,38 +143,38 @@ __global__ void updateNSquaredProductConcentration(
 }
 
 __global__ void updateRegulatoryUnitExpression(GeneRegulatoryNetwork grn,
-                                               const StaticGPUVector<Cell*> cells,
+                                               const StaticGPUVector<Cell> cells,
+                                               StaticGPUVector<int> cellIdxs,
                                                const GPUVector<Point> points) {
+
     size_t cellIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (cellIdx >= cellIdxs.size()) return;
 
-    if (cellIdx >= cells.size()) return;
+    auto cell = cells + cellIdxs[cellIdx];
 
-    auto cell = *(cells + cellIdx);
     if (cell->frozen) return;
 
     // For each cell, update it's products based on the regulatory units
     for (int i = 0; i < grn.regulatoryUnits.size(); i++) {
-        float* factorLevels = grn.regulatoryUnits[i].calculateActivation(grn.promoters,
-                                                         grn.factors,
-                                                         cell->products,
-                                                         grn.promoterFactorAffinities);
         // Add factor levels back to cell's products
-        for (int j = 0; j < grn.factors.size(); j++) {
-            cell->products[j] += factorLevels[j];
-        }
+        grn.regulatoryUnits[i].calculateActivation(grn.promoters,
+                                                     grn.factors,
+                                                     cell->products,
+                                                     grn.promoterFactorAffinities);
     }
 }
 
 __global__ void updateGeneExpression(GeneRegulatoryNetwork grn,
-    StaticGPUVector<Cell*> cellPtrs,
-    StaticGPUVector<CellLink*> cellLinkPtrs,
+    StaticGPUVector<Cell> cells,
+    StaticGPUVector<int> cellIdxs,
+    StaticGPUVector<CellLink> cellLinks,
     const GPUVector<Point> points) {
     size_t cellIdx = blockIdx.x * blockDim.x + threadIdx.x;
     size_t effectorIdx = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (cellIdx >= cellPtrs.size() || effectorIdx >= grn.effectors.size()) return;
+    if (cellIdx >= cellIdxs.size() || effectorIdx >= grn.effectors.size()) return;
 
-    auto cell = *(cellPtrs + cellIdx);
+    auto cell = cells + cellIdxs[cellIdx];
     auto effector = grn.effectors + effectorIdx;
 
     if (cell->frozen) return;
@@ -240,53 +232,46 @@ __global__ void updateGeneExpression(GeneRegulatoryNetwork grn,
 }
 
 void updateGRN(LifeForm& lifeForm,
-               GPUVector<Point>& points) {
+               GPUVector<Point>& points,
+               GPUVector<Cell>& cells,
+               GPUVector<CellLink>& cellLinks) {
 
-    auto cellsPtrs = static_cast<StaticGPUVector<Cell*>>(lifeForm.cellPointers);
-    auto cellLinksPtrs =  static_cast<StaticGPUVector<CellLink*>>(lifeForm.cellLinkPointers);
+    auto cellIdxs = static_cast<StaticGPUVector<int>>(lifeForm.cells);
+    auto cellLinkIdxs =  static_cast<StaticGPUVector<int>>(lifeForm.links);
+    auto staticCells = static_cast<StaticGPUVector<Cell>>(cells);
+    auto staticCellLinks = static_cast<StaticGPUVector<CellLink>>(cellLinks);
 
-    if (cellsPtrs.size() > Simulator::get().getEnv().getCells().size() || cellsPtrs.size() == 0) return;
-
-    /*for (int i = 0 ; i < cellsPtrs.size(); i++) {
-        Cell* cell;
-        // copy cell to cpu
-        cudaLog(cudaMemcpy(&cell, &cellsPtrs[i], sizeof(Cell*), cudaMemcpyDeviceToHost));
-        if (((size_t)cell->products.data() - 30103272960) > 10000000000 || ((size_t)cell->products.data() - 30103272960) < -10000000000) {
-            printf("something weird1: %p, %llu\n", cellsPtrs[i]->products.data(), cellsPtrs[i]->products.size());
-        }
-    }*/
     // Calculate distances between each pair of cells
-    lifeForm.grn.cellDistances.destroy();
-    lifeForm.grn.cellDistances = StaticGPUVector<float>((cellsPtrs.size() * (cellsPtrs.size() - 1)) / 2);
     dim3 threadsPerBlock(32, 32);
-    dim3 numDistanceBlocks((cellsPtrs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                       (cellsPtrs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    calculateDistances<<<numDistanceBlocks, threadsPerBlock>>>(cellsPtrs, points, lifeForm.grn.cellDistances);
+    dim3 numDistanceBlocks((cellIdxs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                       (cellIdxs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    calculateDistances<<<numDistanceBlocks, threadsPerBlock>>>(staticCells, cellIdxs, points, lifeForm.grn.cellDistances);
 
     // Update product concentration
     dim3 numProductBlocks((lifeForm.grn.factors.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                          (cellsPtrs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
+                          (cellIdxs.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
     updateProductConcentration<<<numProductBlocks, threadsPerBlock>>>(
         lifeForm.grn,
-        cellsPtrs,
+        staticCells,
+        cellIdxs,
         points,
         Simulator::get().getStep(),
         lifeForm.birthdate,
         lifeForm.energy);
 
     // Update product concentration based on n squared interactions
-    /*dim3 threadsPerCellProductBlock(32, 32, 32);
+    dim3 threadsPerCellProductBlock(32, 32, 32);
     dim3 numNSquaredProductBlocks((lifeForm.grn.factors.size() + threadsPerCellProductBlock.x - 1) / threadsPerCellProductBlock.x,
-                                  (cellsPtrs.size() + threadsPerCellProductBlock.y - 1) / threadsPerCellProductBlock.y,
-                                  (cellsPtrs.size() + threadsPerCellProductBlock.z - 1) / threadsPerCellProductBlock.z);
-    updateNSquaredProductConcentration<<<numNSquaredProductBlocks, threadsPerCellProductBlock>>>(lifeForm.grn, cellsPtrs, points);
+                                  (cellIdxs.size() + threadsPerCellProductBlock.y - 1) / threadsPerCellProductBlock.y,
+                                  (cellIdxs.size() + threadsPerCellProductBlock.z - 1) / threadsPerCellProductBlock.z);
+    updateNSquaredProductConcentration<<<numNSquaredProductBlocks, threadsPerCellProductBlock>>>(lifeForm.grn, staticCells, cellIdxs, points);
 
     // Update each cell's products based on regulatory expression
-    size_t numCellBlocks((cellsPtrs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x);
-    updateRegulatoryUnitExpression<<<numCellBlocks, threadsPerBlock>>>(lifeForm.grn, cellsPtrs, points);
+    size_t numCellBlocks((cellIdxs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x);
+    updateRegulatoryUnitExpression<<<numCellBlocks, threadsPerBlock>>>(lifeForm.grn, staticCells, cellIdxs, points);
 
     // Update gene expression based on the products
-    dim3 numEffectorBlocks((cellsPtrs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
+    /*dim3 numEffectorBlocks((cellIdxs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                         (lifeForm.grn.effectors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    updateGeneExpression<<<numEffectorBlocks, threadsPerBlock>>>(lifeForm.grn, cellsPtrs, cellLinksPtrs, points);*/
+    updateGeneExpression<<<numEffectorBlocks, threadsPerBlock>>>(lifeForm.grn, staticCells, cellIdxs, staticCellLinks, points);*/
 }
