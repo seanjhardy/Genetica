@@ -144,30 +144,29 @@ __global__ void updateNSquaredProductConcentration(
 
 __global__ void updateRegulatoryUnitExpression(GeneRegulatoryNetwork grn,
                                                const StaticGPUVector<Cell> cells,
-                                               StaticGPUVector<int> cellIdxs,
-                                               const GPUVector<Point> points) {
+                                               StaticGPUVector<int> cellIdxs) {
 
     size_t cellIdx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (cellIdx >= cellIdxs.size()) return;
+    size_t regulatoryUnitIdx = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (cellIdx >= cellIdxs.size() || regulatoryUnitIdx >= grn.regulatoryUnits.size()) return;
 
     auto cell = cells + cellIdxs[cellIdx];
 
     if (cell->frozen) return;
 
     // For each cell, update it's products based on the regulatory units
-    for (int i = 0; i < grn.regulatoryUnits.size(); i++) {
-        // Add factor levels back to cell's products
-        grn.regulatoryUnits[i].calculateActivation(grn.promoters,
-                                                     grn.factors,
-                                                     cell->products,
-                                                     grn.promoterFactorAffinities);
-    }
+    grn.regulatoryUnits[regulatoryUnitIdx].calculateActivation(grn.promoters,
+                                                 grn.factors,
+                                                 cell->products,
+                                                 grn.promoterFactorAffinities);
 }
 
 __global__ void updateGeneExpression(GeneRegulatoryNetwork grn,
     StaticGPUVector<Cell> cells,
     StaticGPUVector<int> cellIdxs,
     StaticGPUVector<CellLink> cellLinks,
+    StaticGPUVector<int> cellLinkIdxs,
     const GPUVector<Point> points) {
     size_t cellIdx = blockIdx.x * blockDim.x + threadIdx.x;
     size_t effectorIdx = blockIdx.y * blockDim.y + threadIdx.y;
@@ -206,11 +205,12 @@ __global__ void updateGeneExpression(GeneRegulatoryNetwork grn,
         }
     }
     if (effector->effectorType == Effector::EffectorType::Distance) {
-        /*for (auto cellLink : cellLinkPtrs) {
+        for (auto cellLinkIdx : cellLinkIdxs) {
+            CellLink* cellLink = cellLinks + cellLinkIdxs[cellLinkIdx];
             if (cellLink->cellAId == cellIdx || cellLink->cellBId == cellIdx) {
-                cellLink->adjustSize(min(expression, 0.0f));
+                cellLink->targetLength = max(cellLink->targetLength + expression, 0.5f);
             }
-        }*/
+        }
     }
     if (effector->effectorType == Effector::EffectorType::Radius) {
         float sizeChange = expression;
@@ -267,11 +267,12 @@ void updateGRN(LifeForm& lifeForm,
     updateNSquaredProductConcentration<<<numNSquaredProductBlocks, threadsPerCellProductBlock>>>(lifeForm.grn, staticCells, cellIdxs, points);
 
     // Update each cell's products based on regulatory expression
-    size_t numCellBlocks((cellIdxs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x);
-    updateRegulatoryUnitExpression<<<numCellBlocks, threadsPerBlock>>>(lifeForm.grn, staticCells, cellIdxs, points);
+    dim3 numCellRegulatoryUnitBlocks((cellIdxs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                                     (lifeForm.grn.regulatoryUnits.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    updateRegulatoryUnitExpression<<<numCellRegulatoryUnitBlocks, threadsPerBlock>>>(lifeForm.grn, staticCells, cellIdxs);
 
     // Update gene expression based on the products
-    /*dim3 numEffectorBlocks((cellIdxs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
+    dim3 numEffectorBlocks((cellIdxs.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                         (lifeForm.grn.effectors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    updateGeneExpression<<<numEffectorBlocks, threadsPerBlock>>>(lifeForm.grn, staticCells, cellIdxs, staticCellLinks, points);*/
+    updateGeneExpression<<<numEffectorBlocks, threadsPerBlock>>>(lifeForm.grn, staticCells, cellIdxs, staticCellLinks, cellLinkIdxs, points);
 }

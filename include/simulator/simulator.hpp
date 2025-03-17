@@ -6,7 +6,12 @@
 #include "environment.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <modules/graphics/UIManager.hpp>
+#include <modules/graphics/components/viewport.hpp>
 
+/** Singleton class that manages the simulation
+ *
+ * Fetched throughout the program using Simulator::get()
+ **/
 class Simulator {
 public:
     enum class State {
@@ -21,7 +26,7 @@ private:
     // Time and framerate
     double realTime = 0;
     float speed = 1.0;
-    int step = 0;
+    size_t step = 0;
     int MAX_FRAMERATE = 60;
     double FRAME_INTERVAL = CLOCKS_PER_SEC / MAX_FRAMERATE;
     std::clock_t lastRenderTime = std::clock();
@@ -43,6 +48,7 @@ private:
 
 public:
     void run();
+    void handleEvents(Viewport* simulation);
     void reset();
     void setup();
     void setState(State newState);
@@ -52,7 +58,7 @@ public:
 
     std::string getTimeString() const;
     float getSpeed() const;
-    int getStep() const;
+    size_t getStep() const;
     float getRealTime() const;
     State getState();
     sf::RenderWindow& getWindow();

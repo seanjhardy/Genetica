@@ -7,7 +7,6 @@
 #include "modules/cuda/structures/CGPUValue.hpp"
 #include <modules/graphics/vertexManager.hpp>
 #include <modules/graphics/dragHandler.hpp>
-#include <modules/physics/fluid.hpp>
 #include <simulator/planet.hpp>
 #include <geneticAlgorithm/cellParts/cell.hpp>
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
@@ -34,11 +33,6 @@ class Environment {
     GPUVector<Point> points = GPUVector<Point>();
     GPUVector<CellLink> cellLinks = GPUVector<CellLink>();
     GPUVector<Cell> cells = GPUVector<Cell>();
-
-    // Fluid simulator
-    FluidSimulator fluidSimulator;
-    float2 mousePos1{}, mousePos2{};
-    bool fluidEnabled = false;
 
     // Drag handler for holding points
     int heldPoint = -1;
@@ -74,8 +68,6 @@ public:
     [[nodiscard]] float2 randomPos();
     void toggleGridLinesVisible();
     [[nodiscard]] bool getGridLineVisibility() const;
-    [[nodiscard]] bool getFluidEnabled() const;
-    void toggleFluidEnabled();
     Planet& getPlanet();
     void setPlanet(Planet* newPlanet);
 

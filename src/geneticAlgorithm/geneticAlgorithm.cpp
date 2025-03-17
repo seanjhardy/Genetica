@@ -8,7 +8,7 @@ void GeneticAlgorithm::simulate() {
     for (auto& lifeForm : population) {
         lifeForm.update();
     }
-};
+}
 
 void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Cell>& cells, GPUVector<CellLink>& cellLinks, GPUVector<Point>& points) {
     auto hostCells = vector<Cell>(cells.size());
@@ -18,7 +18,6 @@ void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Cell>& cel
     cudaMemcpy(hostCells.data(), cells.data(), cells.size() * sizeof(Cell), cudaMemcpyDeviceToHost);
     cudaMemcpy(hostCellLinks.data(), cellLinks.data(), cellLinks.size() * sizeof(CellLink), cudaMemcpyDeviceToHost);
     cudaMemcpy(hostPoints.data(), points.data(), points.size() * sizeof(Point), cudaMemcpyDeviceToHost);
-    printf("cells size: %d, cellLinks size: %d, points size: %d\n", cells.size() * sizeof(Cell), cellLinks.size() * sizeof(CellLink), points.size() * sizeof(Point));
 
     for (LifeForm& lifeForm : population) {
         lifeForm.render(vertexManager, hostCells, hostCellLinks, hostPoints);

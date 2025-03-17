@@ -9,6 +9,7 @@
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
 
 void updatePoints(GPUVector<Point>& points,
+                  GPUVector<Cell>& cells,
                   GPUVector<CellLink>& cellLinks,
                   CGPUValue<sf::FloatRect>& bounds,
                   float dt = 1.0f);

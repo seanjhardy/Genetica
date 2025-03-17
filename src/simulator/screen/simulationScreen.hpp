@@ -77,18 +77,6 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         screen->getElement("root")->onLayout();
     });
 
-    FunctionManager::add("toggleFluid", [simulator, screen]() {
-        if (simulator->getEnv().getFluidEnabled()) {
-            simulator->getEnv().toggleFluidEnabled();
-            screen->getElement("fluidBtnIcon")->overrideProperty("style", "image: fluidEnabled");
-            screen->getElement("fluidBtnIcon")->overrideProperty("styleOnHover", "image: fluidEnabledHighlighted");
-        } else {
-            simulator->getEnv().toggleFluidEnabled();
-            screen->getElement("fluidBtnIcon")->overrideProperty("style", "image: fluidDisabled");
-            screen->getElement("fluidBtnIcon")->overrideProperty("styleOnHover", "image: fluidDisabledHighlighted");
-        }
-    });
-
     FunctionManager::add("clone", [simulator]() {
         simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].clone(false);
     });

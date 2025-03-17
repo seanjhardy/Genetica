@@ -5,7 +5,6 @@
 #include <SFML/Graphics.hpp>
 #include <modules/cuda/logging.hpp>
 #include <modules/utils/floatOps.hpp>
-#include <modules/utils/GPU/atomicOps.hpp>
 
 __global__ void updatePointsKernel(GPUVector<Point> points, float dt, sf::FloatRect *bounds) {
     size_t index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -18,30 +17,17 @@ __global__ void updatePointsKernel(GPUVector<Point> points, float dt, sf::FloatR
 }
 
 
-__global__ void constrainDistancesKernel(GPUVector<Point> points, GPUVector<CellLink> cellLinks) {
+__global__ void constrainDistancesKernel(GPUVector<Point> points, GPUVector<Cell> cells, GPUVector<CellLink> cellLinks) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index >= cellLinks.size()) return;
 
     const CellLink& cellLink = cellLinks[index];
-    constrainDistance(points[cellLink.p1], points[cellLink.p2], cellLink.length);
+    constrainDistance(points[cellLink.p1], points[cellLink.p2], cellLink.length + points[cellLink.p1].radius + points[cellLink.p2].radius);
+    const float angle = cells[cellLink.cellAId].rotation;
+    // TODO: This seems to be glitching a lot
+    //constrainAngle(points[cellLink.p1], points[cellLink.p2], angle + cellLink.angle, cellLink.stiffness);
 }
-
-/*
-__global__ void updateParentChildLinkKernel(Point *points, ParentChildLink *angles, int numAngles, float dt) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index < numAngles) {
-        ParentChildLink &pcl = angles[index];
-        float parentAngle = FastMath::atan2f(points[pcl.parentEndPoint].pos.y -
-                                                    points[pcl.parentStartPoint].pos.y,
-                                                    points[pcl.parentEndPoint].pos.x -
-                                                    points[pcl.parentStartPoint].pos.x);
-        constrainAngle(points[pcl.startPoint], points[pcl.endPoint], parentAngle + pcl.targetAngle, pcl.stiffness, dt);
-        points[pcl.startPoint].pos = points[pcl.parentStartPoint].pos + rotate(pcl.pointOnParent, parentAngle);
-    }
-}
-*/
 
 // Soft collisions (resistive forces)
 __global__ void computeCollisions(GPUVector<Point> points) {
@@ -86,6 +72,7 @@ __global__ void computeCollisions(GPUVector<Point> points) {
 }
 
 void updatePoints(GPUVector<Point>& points,
+                  GPUVector<Cell>& cells,
                   GPUVector<CellLink>& cellLinks,
                   CGPUValue<sf::FloatRect> &bounds,
                   float dt) {
@@ -97,7 +84,7 @@ void updatePoints(GPUVector<Point>& points,
 
     // Update connections
     numBlocks = (cellLinks.size() + blockSize - 1) / blockSize;
-    constrainDistancesKernel<<<numBlocks, blockSize>>>(points, cellLinks);
+    constrainDistancesKernel<<<numBlocks, blockSize>>>(points, cells, cellLinks);
 
     // Update the points
     numBlocks = (points.size() + blockSize - 1) / blockSize;

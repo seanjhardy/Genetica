@@ -2,8 +2,8 @@
 #include <simulator/simulator.hpp>
 #include <geneticAlgorithm/cellParts/cell.hpp>
 
-Cell::Cell(int lifeFormIdx, const float2& pos, float radius) : products(0) {
-    pointIdx = Simulator::get().getEnv().addPoint(Point(lifeFormIdx, pos.x, pos.y, radius));
+Cell::Cell(int lifeFormIdx, const float2& pos, float radius) : products(0), targetRadius(radius) {
+    pointIdx = Simulator::get().getEnv().addPoint(Point(lifeFormIdx, pos.x, pos.y, radius * 0.5f));
     this->lifeFormIdx = lifeFormIdx;
 
     hue = Random::random(255.0f);

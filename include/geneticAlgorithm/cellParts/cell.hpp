@@ -15,8 +15,7 @@ public:
     size_t pointIdx;
 
     int generation = 0;
-    int lastDivideTime = 0;
-    int divisionFrequency = 10 + Random::random(20);
+    size_t lastDivideTime = 0;
 
     StaticGPUVector<float> products;
 

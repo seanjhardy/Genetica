@@ -6,12 +6,11 @@ using namespace std;
 
 LifeForm::LifeForm(Genome& genome)
     : genome(genome) {
-    init();
     birthdate = Simulator::get().getStep();
 }
 
 void LifeForm::update() {
-    // Update the GRN
+    // Update the GRN every GROWTH_INTERVAL steps
     if (Simulator::get().getStep() - lastGrnUpdate > GROWTH_INTERVAL) {
         lastGrnUpdate = Simulator::get().getStep();
         updateGRN(*this,
@@ -19,8 +18,6 @@ void LifeForm::update() {
             Simulator::get().getEnv().getCells(),
             Simulator::get().getEnv().getCellLinks());
     }
-
-    // Update NN
 }
 
 void LifeForm::render(VertexManager& vertexManager, vector<Cell>& hostCells, vector<CellLink>& cellLinks, vector<Point>& points) {
@@ -44,60 +41,16 @@ void LifeForm::render(VertexManager& vertexManager, vector<Cell>& hostCells, vec
 
 
 void LifeForm::clone(bool mutate){
-    // Copy genome
-
-    Genome copiedGenome = genome;
-    // Create new LifeForm
-    auto clone = LifeForm(copiedGenome);
-    Simulator::get().getEnv().getGA().addLifeForm(clone);
-
-    // Mutate lifeForm genome
-    if (mutate) {
-        Simulator::get().getEnv().getGA().mutate(clone.genome);
-    }
-
-    // Setup lifeForm parameters
-    // TODO: Fix energy splitting
-    float energyChange = energy * 0.5f;
-    energy -= energyChange;
-    clone.energy += energyChange;
-    numChildren++;
-
-    // Assign to species and add to population
-    //TODO: Simulator::get().getEnv().getGA().assignSpecies(clone);
+    // TODO: Implement this
 }
-
-/*
-void LifeForm::combine(LifeForm* partner) {
-    // Combine genomes
-    Genome combinedGenome = crossover(genome,partner->genome);
-    // Create new LifeForm
-    auto child = LifeForm(getEnv(), combinedGenome);
-
-    // Mutate lifeForm genome
-    Simulator::get().getEnv().getGA().mutate(child.genome);
-
-    // Setup child lifeForm parameters - share energy from parents
-    auto* partnerLF = dynamic_cast<LifeForm*>(partner);
-    float energyChange = energy * 0.25;
-    float partnerEnergyChange = partnerLF->energy * 0.25;
-    energy -= energyChange;
-    partnerLF->energy -= partnerEnergyChange;
-    child.energy += energyChange + partnerEnergyChange;
-    numChildren++; partner->numChildren++;
-
-    // Assign to species and add to population
-    //TODO: Simulator::get().getEnv().getGA()..assignSpecies(clone);
-    return Simulator::get().getEnv().getGA().addLifeForm(child);
-}*/
 
 void LifeForm::kill() {
     //TODO: Implement this
-    //env->removePoint(this->entityID);
 }
 
 void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& point) {
-    auto cell = Cell(idx, point.getPos(), point.radius);
+    float2 pos = point.getPos() + vec(mother.rotation + mother.divisionRotation) * point.radius;
+    auto cell = Cell(idx, pos, point.radius);
     cell.generation = mother.generation;
     cell.hue = mother.hue;
     cell.saturation = mother.saturation;
@@ -114,16 +67,12 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& point)
         motherIdx,
         cell.pointIdx,
         mother.pointIdx,
-        point.radius*2);
+        point.radius*2,
+        Random::random(0, 2 * M_PI), 0.01);
+
     const size_t linkIdx = Simulator::get().getEnv().nextCellLinkIdx();
     Simulator::get().getEnv().addCellLink(cellLink);
     links.push(linkIdx);
     grn.cellDistances.destroy();
     grn.cellDistances = StaticGPUVector<float>((cells.size() * (cells.size() - 1)) / 2);
-}
-
-void LifeForm::init(){
-    energy = 0;
-    numChildren = 0;
-    birthdate = Simulator::get().getStep();
 }

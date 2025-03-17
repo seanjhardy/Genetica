@@ -16,7 +16,7 @@
         return; // No significant change needed
     }
 
-    double2 delta = (point2.pos - point1.pos) * deltaDistance / currentDistance;
+    double2 delta = 0.99 * (point2.pos - point1.pos) * deltaDistance / currentDistance;
 
     double massRatio = point1.radius / (point1.radius + point2.radius);
     atomicAddDouble(&point1.deltaPos.x, - delta.x * (1 - massRatio));
@@ -27,12 +27,12 @@
     atomicAdd(&point2.connections, 1);
 }
 
-__host__ __device__ inline void constrainAngle(Point& point1, Point& point2, float targetAngle, float stiffness, float dt) {
-    float length = point1.distanceTo(point2);
-    double2 newPos = point1.pos + vec(targetAngle) * length;
-    point2.prevPos += (newPos - point2.pos) * stiffness * dt * 0.99;
-    point2.pos += (newPos - point2.pos) * stiffness * dt;
-}
+__device__ inline void constrainAngle(Point& point1, Point& point2, float targetAngle, float stiffness) {
+     float length = point1.distanceTo(point2);
+     double2 newPos = point1.pos + vec(targetAngle) * length;
+     point2.prevPos += (newPos - point2.pos) * stiffness * 0.99;
+     point2.pos += (newPos - point2.pos) * stiffness;
+ }
 
 __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect bounds) {
     float updateDist = 0.0f;

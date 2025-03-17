@@ -44,7 +44,6 @@ struct RegulatoryUnit {
         if (value < 0.01f) transformedValue = 0.0f;
 
         // Calculate the amount of each factor produced based on the unit's activity
-        auto* deltaFactorLevels = new float[grnFactors.size()];
         for (int i = 0; i < factors.size(); i++) {
             int geneIndex = factors[i];
             auto* gene = &grnFactors[geneIndex];

@@ -1,5 +1,4 @@
 #include <simulator/planet.hpp>
-#include <modules/graphics/shaderManager.hpp>
 #include <modules/utils/print.hpp>
 #include <simulator/simulator.hpp>
 

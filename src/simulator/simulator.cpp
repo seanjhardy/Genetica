@@ -32,57 +32,15 @@ void Simulator::run() {
     Viewport* simulation = dynamic_cast<Viewport*>(uiManager.getScreen("simulation")->getElement("simulation"));
 
     while (window.isOpen()) {
-        /*
-        *Point p(123, 88.8115f, 53.1058f, 5.0f); // Initialize the host Point object
+        sf::Time elapsed = clock.restart();
+        float deltaTime = elapsed.asSeconds();
 
-    // Allocate memory on the device
-    Point* d_data_test = nullptr;
-    cudaMalloc(&d_data_test, sizeof(Point));
+        // Manage all UI and simulation events
+        handleEvents(simulation);
 
-    // Copy the host object to the device
-    cudaMemcpy(d_data_test, &p, sizeof(Point), cudaMemcpyHostToDevice);
-
-    // Allocate memory on the host for receiving data from the device
-    Point* h_data_Test = new Point; // Dynamically allocate memory for the host Point
-
-    // Copy the data back from the device to the host
-    cudaMemcpy(h_data_Test, d_data_test, sizeof(Point), cudaMemcpyDeviceToHost);
-
-    // Print the copied values to verify
-    std::cout << "Point1(" << p.pos.x << ", " << p.pos.y << ", " << p.radius << ")"  << std::endl;
-    std::cout << "Point2(" << h_data_Test->pos.x << ", " << h_data_Test->pos.y << ", " << h_data_Test->radius << ")" << std::endl;
-
-    // Free device memory
-    cudaFree(d_data_test);
-
-    // Free host memory
-    delete h_data_Test;
-         */
-        sf::Time elapsed = clock.restart(); // Restart the clock and get elapsed time
-        float deltaTime = elapsed.asSeconds(); // Convert elapsed time to seconds
-
-        sf::Event event{};
+        // Handle continuous events (e.g. holding down a key/hovering over a UI element)
         auto mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
         sf::Vector2f worldCoords = simulation->mapPixelToCoords(mousePos);
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed) {
-                window.close();
-            }
-            if (event.type == sf::Event::Resized) {
-                updateWindowView();
-            }
-            // Handle discrete events (e.g. key press, mouse click)
-            bool consumed = uiManager.handleEvent(event);
-            if (consumed) continue;
-
-            std::pair<bool, int> selectedEntity = env.handleEvent(event, worldCoords);
-
-            if (selectedEntity.first && selectedEntity.second != selectedEntityId) {
-                selectedEntityId = selectedEntity.second;
-                setTab(selectedEntityId == -1 ? Tab::Simulation : Tab::LifeForm);
-            }
-        }
-        // Handle continuous events (e.g. holding down a key/hovering over a UI element)
         bool UIHovered = uiManager.update(deltaTime, mousePos);
         env.update(worldCoords, simulation->getCamera()->getZoom(), UIHovered);
 
@@ -108,6 +66,32 @@ void Simulator::run() {
             uiManager.draw(window);
 
             window.display();
+        }
+    }
+}
+
+// Handle all events in the simulation
+void Simulator::handleEvents(Viewport* simulation) {
+    sf::Event event{};
+    auto mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
+    sf::Vector2f worldCoords = simulation->mapPixelToCoords(mousePos);
+
+    while (window.pollEvent(event)) {
+        if (event.type == sf::Event::Closed) {
+            window.close();
+        }
+        if (event.type == sf::Event::Resized) {
+            updateWindowView();
+        }
+        bool consumed = uiManager.handleEvent(event);
+        if (consumed) continue;
+
+        // If the UI hasn't consumed the event, handle it in the environment and
+        // check if an entity was selected
+        std::pair<bool, int> selectedEntity = env.handleEvent(event, worldCoords);
+        if (selectedEntity.first && selectedEntity.second != selectedEntityId) {
+            selectedEntityId = selectedEntity.second;
+            setTab(selectedEntityId == -1 ? Tab::Simulation : Tab::LifeForm);
         }
     }
 }
@@ -154,6 +138,8 @@ void Simulator::slowDown() {
 }
 
 void Simulator::reset() {
+    selectedEntityId = -1;
+    setTab(Tab::Simulation);
     env.reset();
 }
 
@@ -177,7 +163,7 @@ float Simulator::getSpeed() const {
     return speed;
 }
 
-int Simulator::getStep() const {
+size_t Simulator::getStep() const {
     return step;
 }
 

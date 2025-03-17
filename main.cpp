@@ -10,8 +10,7 @@
 int main() {
     try {
         print("Starting Genetica");
-
-        // Initialising systems
+        // Initialise and load resources
         Styles::init();
         FastMath::init();
         SpriteManager::init();
@@ -21,7 +20,7 @@ int main() {
         CursorManager::init();
         Planet::init();
 
-        // Set up simulation
+        // Set up and run simulation
         Simulator::get().setup();
         Simulator::get().run();
 

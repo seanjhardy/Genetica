@@ -14,7 +14,7 @@ class Environment;
 
 class LifeForm {
 public:
-    static constexpr int GROWTH_INTERVAL = 200;
+    static constexpr int GROWTH_INTERVAL = 5000;
     static constexpr float BUILD_COST_SCALE = 0.00001f;
     static constexpr float BUILD_RATE = 50.0f;
 
@@ -34,7 +34,6 @@ public:
 
     LifeForm() = default;
     LifeForm(Genome& genome);
-    void init();
 
     void update();
     void render(VertexManager& vertexManager, vector<Cell>& cells, vector<CellLink>& cellLinks, vector<Point>& points);

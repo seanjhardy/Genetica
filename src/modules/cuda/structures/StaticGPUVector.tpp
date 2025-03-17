@@ -38,11 +38,8 @@ void StaticGPUVector<T>::reallocateDevice(size_t new_capacity) {
     T* new_data = nullptr;
     cudaLog(cudaMalloc(&new_data, new_capacity * sizeof(T)));
 
-    // Only zero the NEW portion of memory
-    if (size_ < new_capacity) {
-        size_t new_bytes = (new_capacity - size_) * sizeof(T);
-        cudaLog(cudaMemset(new_data + size_, 0, new_bytes));
-    }
+    // Zero out new buffer
+    cudaLog(cudaMemset(new_data, 0,  new_capacity * sizeof(T)));
 
     // Copy old data if it exists
     if (data_ != nullptr && size_ > 0) {
