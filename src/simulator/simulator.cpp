@@ -3,7 +3,6 @@
 #include "./screen/simulationScreen.hpp"
 #include <sstream>
 #include <iomanip>
-#include <modules/cuda/GPUDirectRenderer.hpp>
 
 Simulator& Simulator::get(){
     static Simulator simulator;
@@ -19,7 +18,8 @@ Simulator::Simulator()
     window.setMouseCursor(CursorManager::getDefault());
 }
 
-void Simulator::setup() {
+void Simulator::init() {
+    // TOOO: add main menu in future
     uiManager.addScreen("simulation", getSimulationScreen(this));
     uiManager.setCurrentScreen("simulation");
     reset();
@@ -28,7 +28,6 @@ void Simulator::setup() {
 // Run simulation step
 void Simulator::run() {
     sf::Clock clock;
-
     Viewport* simulation = dynamic_cast<Viewport*>(uiManager.getScreen("simulation")->getElement("simulation"));
 
     while (window.isOpen()) {

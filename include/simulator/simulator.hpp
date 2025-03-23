@@ -50,7 +50,7 @@ public:
     void run();
     void handleEvents(Viewport* simulation);
     void reset();
-    void setup();
+    void init();
     void setState(State newState);
     void speedUp();
     void slowDown();

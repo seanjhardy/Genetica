@@ -11,8 +11,7 @@
 void updatePoints(GPUVector<Point>& points,
                   GPUVector<Cell>& cells,
                   GPUVector<CellLink>& cellLinks,
-                  CGPUValue<sf::FloatRect>& bounds,
-                  float dt = 1.0f);
+                  CGPUValue<sf::FloatRect>& bounds);
 
 int movePoint(GPUVector<Point>& points, int pointIndex, const sf::Vector2f& newPos);
 

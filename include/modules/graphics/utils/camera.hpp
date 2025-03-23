@@ -3,7 +3,6 @@
 
 #include <vector_types.h>
 #include "SFML/Graphics.hpp"
-#include "iostream"
 #include "unordered_map"
 
 class Camera {

@@ -19,9 +19,9 @@ int main() {
         ComponentManager::init();
         CursorManager::init();
         Planet::init();
+        Simulator::get().init();
 
         // Set up and run simulation
-        Simulator::get().setup();
         Simulator::get().run();
 
     } catch (const std::runtime_error& error) {

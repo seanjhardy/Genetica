@@ -6,13 +6,13 @@
 #include <modules/cuda/logging.hpp>
 #include <modules/utils/floatOps.hpp>
 
-__global__ void updatePointsKernel(GPUVector<Point> points, float dt, sf::FloatRect *bounds) {
+__global__ void updatePointsKernel(GPUVector<Point> points, sf::FloatRect *bounds) {
     size_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index >= points.size()) return;
 
     Point &point = points[index];
-    point.update(dt);
+    point.update();
     constrainPosition(point, *bounds);
 }
 
@@ -74,8 +74,7 @@ __global__ void computeCollisions(GPUVector<Point> points) {
 void updatePoints(GPUVector<Point>& points,
                   GPUVector<Cell>& cells,
                   GPUVector<CellLink>& cellLinks,
-                  CGPUValue<sf::FloatRect> &bounds,
-                  float dt) {
+                  CGPUValue<sf::FloatRect> &bounds) {
 
     int blockSize = 256; // Number of threads per block
     int numBlocks = 0;
@@ -88,7 +87,7 @@ void updatePoints(GPUVector<Point>& points,
 
     // Update the points
     numBlocks = (points.size() + blockSize - 1) / blockSize;
-    updatePointsKernel<<<numBlocks, blockSize>>>(points, dt, bounds.deviceData());
+    updatePointsKernel<<<numBlocks, blockSize>>>(points, bounds.deviceData());
 
     dim3 threadsPerBlock(32, 32);
     dim3 numCollisionBlocks((points.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,

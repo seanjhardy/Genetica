@@ -41,7 +41,7 @@ class Environment {
 public:
     explicit Environment(sf::FloatRect bounds);
 
-    void simulate(float deltaTime);
+    void simulate();
     void render(VertexManager& window);
     void reset();
     std::pair<bool, int> handleEvent(const sf::Event& event, sf::Vector2f mousePos);

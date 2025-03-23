@@ -15,8 +15,8 @@ public:
         lifeform->addInput(this);
     }
 
-    void simulate(float dt) override {
-        Protein::simulate(dt);
+    void simulate() override {
+        Protein::simulate();
         if (Simulator::get().getStep() % 10 == 0) {
             checkForOverlap();
         }

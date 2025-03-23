@@ -12,12 +12,12 @@ Environment::Environment(sf::FloatRect bounds) :
     planet = &Planet::planets["Delune"];
 }
 
-void Environment::simulate(float deltaTime) {
+void Environment::simulate() {
     planet->update();
     geneticAlgorithm.simulate();
 
     // Physics simulation of life forms
-    updatePoints(points, cells, cellLinks, bounds, deltaTime);
+    updatePoints(points, cells, cellLinks, bounds);
     updateCells(getGA().getPopulation(), cells, points);
 };
 
