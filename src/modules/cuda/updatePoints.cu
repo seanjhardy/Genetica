@@ -3,8 +3,6 @@
 #include "cuda_runtime.h"
 #include <modules/cuda/updatePoints.hpp>
 #include <SFML/Graphics.hpp>
-#include <modules/cuda/logging.hpp>
-#include <modules/utils/floatOps.hpp>
 
 __global__ void updatePointsKernel(GPUVector<Point> points, sf::FloatRect *bounds) {
     size_t index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -14,19 +12,6 @@ __global__ void updatePointsKernel(GPUVector<Point> points, sf::FloatRect *bound
     Point &point = points[index];
     point.update();
     constrainPosition(point, *bounds);
-}
-
-
-__global__ void constrainDistancesKernel(GPUVector<Point> points, GPUVector<Cell> cells, GPUVector<CellLink> cellLinks) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (index >= cellLinks.size()) return;
-
-    const CellLink& cellLink = cellLinks[index];
-    constrainDistance(points[cellLink.p1], points[cellLink.p2], cellLink.length + points[cellLink.p1].radius + points[cellLink.p2].radius);
-    const float angle = cells[cellLink.cellAId].rotation;
-    // TODO: This seems to be glitching a lot
-    //constrainAngle(points[cellLink.p1], points[cellLink.p2], angle + cellLink.angle, cellLink.stiffness);
 }
 
 // Soft collisions (resistive forces)
@@ -39,7 +24,7 @@ __global__ void computeCollisions(GPUVector<Point> points) {
     Point& pointA = points[a];
     Point& pointB = points[b];
 
-    if (pointA.entityID == pointB.entityID) return;
+    //if (pointA.entityID == pointB.entityID) return;
 
     double2 posA = pointA.pos;
     double2 posB = pointB.pos;
@@ -72,18 +57,12 @@ __global__ void computeCollisions(GPUVector<Point> points) {
 }
 
 void updatePoints(GPUVector<Point>& points,
-                  GPUVector<Cell>& cells,
-                  GPUVector<CellLink>& cellLinks,
                   CGPUValue<sf::FloatRect> &bounds) {
 
     int blockSize = 256; // Number of threads per block
     int numBlocks = 0;
 
     if (points.size() == 0) return;
-
-    // Update connections
-    numBlocks = (cellLinks.size() + blockSize - 1) / blockSize;
-    constrainDistancesKernel<<<numBlocks, blockSize>>>(points, cells, cellLinks);
 
     // Update the points
     numBlocks = (points.size() + blockSize - 1) / blockSize;

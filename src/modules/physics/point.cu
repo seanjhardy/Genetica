@@ -9,16 +9,16 @@
     return make_double2(speed, dir);
 }
 
-__host__ __device__ void Point::update(float dt) {
+__host__ __device__ void Point::update() {
     // Add accumulated position changes
-     if (connections > 0) {
-         pos += deltaPos / connections;
-     }
+    if (connections > 0) {
+        pos += deltaPos / connections;
+    }
     deltaPos = make_double2(0.0f, 0.0f);
     double2 velocity = pos - prevPos;
     double2 accel = force / radius;
 
-    double2 newPosition = pos + velocity * 0.99 + accel * dt * dt;
+    double2 newPosition = pos + velocity * 0.99 + accel;
     prevPos = pos;
     pos = newPosition;
 

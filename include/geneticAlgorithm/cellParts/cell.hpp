@@ -4,7 +4,7 @@
 #include <geneticAlgorithm/systems/morphology/geneticUnit.hpp>
 #include <modules/utils/GUIUtils.hpp>
 #include <modules/utils/random.hpp>
-#include <modules/cuda/structures/StaticGPUVector.hpp>
+#include <modules/cuda/structures/staticGPUVector.hpp>
 
 class LifeForm;
 
@@ -17,10 +17,9 @@ public:
     int generation = 0;
     size_t lastDivideTime = 0;
 
-    StaticGPUVector<float> products;
+    staticGPUVector<float> products;
 
-    float energyUse = 0.0f;
-    float rotation = 0.0f;
+    float energy = 0.0f;
     float divisionRotation = 0.0f;
     float targetRadius = 0.0f;
     int numDivisions = 0;
@@ -32,12 +31,13 @@ public:
     float thickness = 1.0f;
 
     Cell() = default;
-    Cell(int lifeFormIdx, const float2& pos, float radius = 0.1);
+    Cell(int lifeFormIdx, Point& point);
 
     __host__ __device__ void fuse(Cell* other);
 
     void renderBody(VertexManager& vertexManager, vector<Point>& points) const;
     void renderCellWalls(VertexManager& vertexManager, vector<Point>& points) const;
+    void renderDetails(VertexManager& vertexManager, vector<Point>& points) const;
 
     __host__ __device__ void updateHue(PIGMENT pigment, float amount) {
         float target_hue = pigment == Red ? 0.0f :

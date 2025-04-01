@@ -5,8 +5,11 @@
 #include <geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp>
 #include "genome.hpp"
 #include "modules/cuda/structures/CGPUVector.hpp"
-
 #include "cellParts/cellLink.hpp"
+#include <modules/utils/structures/AdjacencyMatrix.hpp>
+
+#define MAX_CELLS 32
+#define GRN_INTERVAL 5000
 
 using namespace std;
 
@@ -14,26 +17,21 @@ class Environment;
 
 class LifeForm {
 public:
-    static constexpr int GROWTH_INTERVAL = 5000;
-    static constexpr float BUILD_COST_SCALE = 0.00001f;
-    static constexpr float BUILD_RATE = 50.0f;
-
     size_t idx;
 
     Genome genome;
 
     GeneRegulatoryNetwork grn;
     int lastGrnUpdate = 0;
-    CGPUVector<int> cells = CGPUVector<int>(0);
-    CGPUVector<int> links = CGPUVector<int>(0);
+    vector<size_t> cellIdxs = vector<size_t>(0);
+    vector<size_t> linkIdxs = vector<size_t>(0);
+    AdjacencyMatrix<size_t> cellLinksMatrix = AdjacencyMatrix<size_t>();
 
-
-    double energy = 0;
     int numChildren = 0;
     int birthdate = 0;
 
     LifeForm() = default;
-    LifeForm(Genome& genome);
+    LifeForm(size_t idx, Genome& genome, float2 pos);
 
     void update();
     void render(VertexManager& vertexManager, vector<Cell>& cells, vector<CellLink>& cellLinks, vector<Point>& points);

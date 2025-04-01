@@ -1,5 +1,5 @@
-#ifndef UPDATE_POINTS
-#define UPDATE_POINTS
+#ifndef UPDATE_CELL_LINKS
+#define UPDATE_CELL_LINKS
 
 #include <modules/physics/point.hpp>
 #include "cuda_runtime.h"
@@ -7,10 +7,10 @@
 #include "modules/cuda/structures/GPUVector.hpp"
 #include "modules/cuda/structures/CGPUValue.hpp"
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
+#include <modules/utils/mathUtils.hpp>
 
-void updatePoints(GPUVector<Point>& points,
-                  CGPUValue<sf::FloatRect>& bounds);
-
-int movePoint(GPUVector<Point>& points, int pointIndex, const sf::Vector2f& newPos);
+void updateCellLinks(GPUVector<Point>& points,
+                  GPUVector<Cell>& cells,
+                  GPUVector<CellLink>& cellLinks);
 
 #endif

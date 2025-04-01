@@ -6,33 +6,32 @@
 
 // DynamicStableVector: A container that provides stable indices even when items are added or removed.
 template <typename T>
-class DynamicStableVector {
+class dynamicStableVector {
 public:
     std::vector<T> data_;  // Stores pointers to objects
     std::unordered_set<size_t> freeList_; // Tracks free indices for reuse
 
 	class Iterator {
-	public:
+    private:
+        typename std::vector<T>::iterator current_;
+        typename std::vector<T>::iterator end_;
+        const std::unordered_set<size_t>* freeList_;
+        size_t index_;
+
+        void skipFreeSlots() {
+            while (current_ != end_ && freeList_->contains(index_)) {
+                ++current_;
+                ++index_;
+            }
+        }
+
+    public:
 		using iterator_category = std::forward_iterator_tag;
 		using value_type = T;
 		using difference_type = std::ptrdiff_t;
 		using pointer = T*;
 		using reference = T&;
 
-	private:
-		typename std::vector<T>::iterator current_;
-		typename std::vector<T>::iterator end_;
-		const std::unordered_set<size_t>* freeList_;
-		size_t index_;
-
-		void skipFreeSlots() {
-			while (current_ != end_ && freeList_->contains(index_)) {
-				++current_;
-				++index_;
-			}
-		}
-
-	public:
 		Iterator(typename std::vector<T>::iterator current,
 				 typename std::vector<T>::iterator end,
 				 const std::unordered_set<size_t>* freeList,
@@ -66,7 +65,7 @@ public:
 		}
 	};
 
-    DynamicStableVector() = default;
+    dynamicStableVector() = default;
 
     // Insert a new object and return its index
     size_t push(const T& value);
@@ -99,6 +98,6 @@ public:
 	size_t getSize() { return data_.size(); }
 };
 
-#include "../../../../src/modules/utils/structures/DynamicStableVector.tpp"
+#include "../../../../src/modules/utils/structures/dynamicStableVector.tpp"
 
 #endif  // DYNAMIC_STABLE_VECTOR_HPP

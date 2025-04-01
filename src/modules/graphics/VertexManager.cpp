@@ -36,22 +36,15 @@ void VertexManager::addTexturedTriangle(const float2& p1, const float2& p2, cons
     // Adjust the scale factors to maintain aspect ratio
     float scaleX = textureAspect / textureWidth;
     float scaleY = (1.0f / textureAspect) / textureWidth;
+    float2 scale = {scaleX, scaleY};
 
     float centerX = (bbox.left + bbox.width / 2);
     float centerY = (bbox.top + bbox.height / 2);
+    float2 center = {centerX, centerY};
 
-    float2 texCoord1 = rotate({
-      scaleX * (p1.x - centerX),
-      scaleY * (p1.y - centerY)
-    }, -angle);
-    float2 texCoord2 = rotate({
-      scaleX * (p2.x - centerX),
-      scaleY * (p2.y - centerY)
-    }, -angle);
-    float2 texCoord3 = rotate({
-      scaleX * (p3.x - centerX),
-      scaleY * (p3.y - centerY),
-    }, -angle);
+    float2 texCoord1 = rotate(scale * (p1 - center), -angle);
+    float2 texCoord2 = rotate(scale * (p2 - center), -angle);
+    float2 texCoord3 = rotate(scale * (p3 - center), -angle);
 
     texturedVertices.append(sf::Vertex({p1.x, p1.y}, color, {texCoord1.x, texCoord1.y}));
     texturedVertices.append(sf::Vertex({p2.x, p2.y}, color, {texCoord2.x, texCoord2.y}));

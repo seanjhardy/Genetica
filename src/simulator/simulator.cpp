@@ -46,7 +46,7 @@ void Simulator::run() {
         // Update simulation state if playing
         if (state == State::Playing) {
             realTime += deltaTime * speed;
-            env.simulate(1);
+            env.simulate();
             step += 1;
         }
 

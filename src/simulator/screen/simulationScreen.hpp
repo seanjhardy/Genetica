@@ -84,7 +84,7 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         //simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].mutate();
     });
     FunctionManager::add("energy", [simulator]() {
-        simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].energy = 100;
+        //simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].energy = 100;
     });
     FunctionManager::add("delete", [simulator]() {
         simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].kill();
@@ -138,7 +138,7 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
 
         if (simulator->getSelectedEntityId() != -1) {
             auto selectedLifeform = Simulator::get().getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()];
-            string text = "Energy: " + std::to_string(selectedLifeform.energy);
+            //string text = "Energy: " + //std::to_string(selectedLifeform.energy);
 
             if (screen->getElement("genomePanel")->visible) {
                 selectedLifeform.genome.render(

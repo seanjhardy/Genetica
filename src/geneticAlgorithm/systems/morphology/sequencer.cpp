@@ -4,7 +4,7 @@
 #include <utility>
 #include "modules/cuda/calculateAffinities.hpp"
 
-void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
+void sequenceGRN(LifeForm& lifeForm) {
     // Temporary vars
     std::vector<Gene> factors;
     std::vector<Promoter> promoters;
@@ -17,7 +17,7 @@ void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
     std::vector<int> regulatoryFactors;
 
     bool readingPromoters = true;
-    for (auto [id, sequence] : genome.hoxGenes) {
+    for (auto [id, sequence] : lifeForm.genome.hoxGenes) {
         std::string rna = std::move(sequence); // Create rna copy
         try {
             int type = (int)(readUniqueBaseRange(rna, 2) * 16) % 5;
@@ -81,8 +81,8 @@ void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
                 auto promoter = Promoter(promoterType, sign, modifier, embedding);
 
                 if (!readingPromoters) {
-                    regulatoryUnit.promoters = StaticGPUVector(regulatoryPromoters);
-                    regulatoryUnit.factors = StaticGPUVector(regulatoryFactors);
+                    regulatoryUnit.promoters = staticGPUVector(regulatoryPromoters);
+                    regulatoryUnit.factors = staticGPUVector(regulatoryFactors);
                     regulatoryUnits.push_back(regulatoryUnit);
                     regulatoryUnit = RegulatoryUnit();
                     readingPromoters = true;
@@ -111,10 +111,10 @@ void sequenceGRN(LifeForm& lifeForm, const Genome& genome) {
         }
     }
 
-    lifeForm.grn.factors = StaticGPUVector(factors);
-    lifeForm.grn.promoters = StaticGPUVector(promoters);
-    lifeForm.grn.effectors = StaticGPUVector(effectors);
+    lifeForm.grn.factors = staticGPUVector(factors);
+    lifeForm.grn.promoters = staticGPUVector(promoters);
+    lifeForm.grn.effectors = staticGPUVector(effectors);
 
-    lifeForm.grn.regulatoryUnits = StaticGPUVector(regulatoryUnits);
+    lifeForm.grn.regulatoryUnits = staticGPUVector(regulatoryUnits);
     calculateAffinities(lifeForm.grn);
 }

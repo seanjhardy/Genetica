@@ -31,18 +31,18 @@ class LifeForm;
 */
 class GeneRegulatoryNetwork {
 public:
-    StaticGPUVector<Gene> factors;
-    StaticGPUVector<Promoter> promoters;
-    StaticGPUVector<Effector> effectors;
-    StaticGPUVector<RegulatoryUnit> regulatoryUnits;
+    staticGPUVector<Gene> factors;
+    staticGPUVector<Promoter> promoters;
+    staticGPUVector<Effector> effectors;
+    staticGPUVector<RegulatoryUnit> regulatoryUnits;
 
-    StaticGPUVector<float> promoterFactorAffinities;
-    StaticGPUVector<float> factorEffectorAffinities;
-    StaticGPUVector<float> factorReceptorAffinities;
+    staticGPUVector<float> promoterFactorAffinities;
+    staticGPUVector<float> factorEffectorAffinities;
+    staticGPUVector<float> factorReceptorAffinities;
 
     // We need to keep track of the distances between each pair of cells (here stored as a flat triangular matrix)
     // To calculate how factors diffuse as they get further away from where they're produced
-    StaticGPUVector<float> cellDistances;
+    staticGPUVector<float> cellDistances;
 
     void destroy() {
         factors.destroy();

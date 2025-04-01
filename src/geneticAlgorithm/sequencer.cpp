@@ -2,14 +2,18 @@
 #include <geneticAlgorithm/systems/morphology/sequencer.hpp>
 #include <simulator/simulator.hpp>
 
-void sequence(LifeForm& lifeForm, const Genome& genome, const float2& pos) {
+void sequence(LifeForm& lifeForm, const float2& pos) {
     // Read hox genes
-    sequenceGRN(lifeForm, genome);
+    sequenceGRN(lifeForm);
+    //TODO: Sequence connectome
 
-    // Create head cell
+    // Create initial cell
     float size = Random::random(20) + 0.05;
-    auto cell = Cell(lifeForm.idx, pos, size);
-    cell.rotation = Random::random(0.0f, M_PI_2);
+    float angle = Random::random(0.0f, M_PI_2);
+    Point point = Point(lifeForm.idx, pos.x, pos.y, size * 0.5f, angle);
+    auto cell = Cell(lifeForm.idx, point);
+    cell.energy = 100.0f;
+    cell.targetRadius = point.radius;
 
     // Add initial products to cell
     size_t numProducts = lifeForm.grn.factors.size();
@@ -17,11 +21,11 @@ void sequence(LifeForm& lifeForm, const Genome& genome, const float2& pos) {
     for (int i = 0; i < numProducts; ++i) {
         products[i] = 0.0f;
     }
-    cell.products = StaticGPUVector(products);
+    //Random cuda function to log errors
+    cell.products = staticGPUVector(products);
     cell.idx = Simulator::get().getEnv().nextCellIdx();
     Simulator::get().getEnv().addCell(cell);
 
-    lifeForm.cells.push(cell.idx);
-    lifeForm.grn.cellDistances.destroy();
-    lifeForm.grn.cellDistances = StaticGPUVector<float>((lifeForm.cells.size() * (lifeForm.cells.size() - 1)) / 2);
+    lifeForm.cellIdxs.push_back(cell.idx);
+    lifeForm.grn.cellDistances = staticGPUVector<float>((lifeForm.cellIdxs.size() * (lifeForm.cellIdxs.size() - 1)) / 2);
 }

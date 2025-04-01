@@ -11,7 +11,7 @@
 #include <geneticAlgorithm/cellParts/cell.hpp>
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
-
+#include <modules/cuda/structures/cellGrowthData.hpp>
 /**
  * The environment contains information about all physics objects in the scene, as well as various
  * environmental variables such as the background map, an optional fluid simulator, grid lines,
@@ -30,9 +30,11 @@ class Environment {
     bool gridLinesVisible = true;
 
     // GPU data storage
+    // TODO: rename this to something better
     GPUVector<Point> points = GPUVector<Point>();
     GPUVector<CellLink> cellLinks = GPUVector<CellLink>();
     GPUVector<Cell> cells = GPUVector<Cell>();
+    cellGrowthData cellDivisionData = cellGrowthData();
 
     // Drag handler for holding points
     int heldPoint = -1;

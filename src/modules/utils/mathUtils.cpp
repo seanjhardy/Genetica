@@ -35,10 +35,6 @@ sf::Color interpolate(const sf::Color c1, const sf::Color c2, float x) {
                      clamp(0, a, 255));
 }
 
-__host__ __device__ float clamp(float min_val, float x, float max_val) {
-    return std::max(min_val, std::min(x, max_val));
-}
-
 float normAngle(float angle) {
     return std::fmod(angle + M_PI, 2 * M_PI) - M_PI;
 }

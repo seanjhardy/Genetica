@@ -2,22 +2,29 @@
 #include <simulator/simulator.hpp>
 #include <geneticAlgorithm/cellParts/cell.hpp>
 
-Cell::Cell(int lifeFormIdx, const float2& pos, float radius) : products(0), targetRadius(radius) {
-    pointIdx = Simulator::get().getEnv().addPoint(Point(lifeFormIdx, pos.x, pos.y, radius * 0.5f));
-    this->lifeFormIdx = lifeFormIdx;
+Cell::Cell(int lifeFormIdx, Point& point) : lifeFormIdx(lifeFormIdx), products(0) {
+    pointIdx = Simulator::get().getEnv().addPoint(point);
 
     hue = Random::random(255.0f);
     saturation = Random::random(0.0f, 0.4f);
 }
 
 void Cell::renderBody(VertexManager& vertexManager, vector<Point>& points) const {
-    const Point pointObj = points[pointIdx];
-    const float2 pos = pointObj.getPos();
-    const float radius = pointObj.radius;
+    const Point point = points[pointIdx];
+    const float2 pos = point.getPos();
+    const float radius = point.radius;
     const auto color = getColor();
     vertexManager.addCircle(pos, radius, color);
-    vertexManager.addLine(pos, pos + vec(rotation) * radius, sf::Color::Blue, 0.4f);
-    vertexManager.addLine(pos, pos + vec(rotation + divisionRotation) * radius, sf::Color::Red, 0.2f);
+}
+
+void Cell::renderDetails(VertexManager& vertexManager, vector<Point>& points) const {
+    const Point point = points[pointIdx];
+    const float2 pos = point.getPos();
+    const float radius = point.radius;
+    const auto color = getColor();
+    float nucleusSize = point.radius / 3;
+    vertexManager.addCircle(point.getPos(),nucleusSize, brightness(color, 1.2), 10);
+    vertexManager.addLine(pos, pos + vec(point.angle + divisionRotation) * radius, sf::Color::Red, 0.2f);
 }
 
 void Cell::renderCellWalls(VertexManager& vertexManager, vector<Point>& points) const {

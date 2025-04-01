@@ -5,6 +5,7 @@
 #include <simulator/simulator.hpp>
 #include <modules/cuda/findNearest.hpp>
 #include <modules/cuda/updateCells.hpp>
+#include <modules/cuda/updateCellLinks.hpp>
 
 Environment::Environment(sf::FloatRect bounds) :
     initialBounds(bounds),
@@ -17,8 +18,9 @@ void Environment::simulate() {
     geneticAlgorithm.simulate();
 
     // Physics simulation of life forms
-    updatePoints(points, cells, cellLinks, bounds);
-    updateCells(getGA().getPopulation(), cells, points);
+    updatePoints(points, bounds);
+    updateCells(getGA().getPopulation(), cells, points, cellDivisionData);
+    updateCellLinks(points, cells, cellLinks);
 };
 
 void Environment::render(VertexManager& vertexManager) {

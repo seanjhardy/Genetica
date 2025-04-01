@@ -4,42 +4,70 @@
 #include "cmath"
 #include <modules/utils/GPU/atomicOps.hpp>
 
- __device__ inline void constrainDistance(Point& point1, Point& point2, float distance) {
-    float currentDistance = point1.distanceTo(point2);
-    float deltaDistance = 0.5 * (distance - currentDistance);
+ __device__ inline void constrainDistance(Point& pointA, Point& pointB, double distance) {
+    double currentDistance = pointA.distanceTo(pointB);
+    double deltaDistance = 0.5 * (distance - currentDistance);
 
     if (currentDistance == 0) {
-        currentDistance += 1e-5f; // Avoid division by zero
+        currentDistance += 1e-6f; // Avoid division by zero
     }
 
-    if (std::abs(deltaDistance) < 0.01) {
+    if (std::abs(deltaDistance) < 1e-7) {
         return; // No significant change needed
     }
 
-    double2 delta = 0.99 * (point2.pos - point1.pos) * deltaDistance / currentDistance;
+    double2 delta = (pointB.pos - pointA.pos) * deltaDistance / currentDistance;
 
-    double massRatio = point1.radius / (point1.radius + point2.radius);
-    atomicAddDouble(&point1.deltaPos.x, - delta.x * (1 - massRatio));
-    atomicAddDouble(&point1.deltaPos.y, - delta.y * (1 - massRatio));
-    atomicAddDouble(&point2.deltaPos.x, delta.x * massRatio);
-    atomicAddDouble(&point2.deltaPos.y, delta.y * massRatio);
-    atomicAdd(&point1.connections, 1);
-    atomicAdd(&point2.connections, 1);
+    double pointAMass = pointA.radius * pointA.radius;
+    double pointBMass = pointB.radius * pointB.radius;
+    double massRatio = pointAMass / (pointAMass + pointBMass);
+    atomicAddDouble(&pointA.deltaPos.x, - delta.x * (1 - massRatio));
+    atomicAddDouble(&pointA.deltaPos.y, - delta.y * (1 - massRatio));
+    atomicAddDouble(&pointB.deltaPos.x, delta.x * massRatio);
+    atomicAddDouble(&pointB.deltaPos.y, delta.y * massRatio);
+    atomicAdd(&pointA.connections, 1);
+    atomicAdd(&pointB.connections, 1);
 }
 
-__device__ inline void constrainAngle(Point& point1, Point& point2, float targetAngle, float stiffness) {
-     float length = point1.distanceTo(point2);
-     double2 newPos = point1.pos + vec(targetAngle) * length;
-     point2.prevPos += (newPos - point2.pos) * stiffness * 0.99;
-     point2.pos += (newPos - point2.pos) * stiffness;
- }
+__device__ inline void constrainAngle(Point& pointA, Point& pointB, float prevAngle, float targetAngle, float stiffness) {
+    float currentAngle = dir(pointA.getPos(), pointB.getPos());
+    float angleChange = currentAngle - prevAngle;
+    pointA.angle += angleChange;
+    pointB.angle += angleChange;
+    return;
+    
+    float angleDiff = (pointA.angle + targetAngle) - currentAngle;
+
+    // Normalize angleDiff to the interval [-pi, pi]
+    while(angleDiff > M_PI)  angleDiff -= 2 * M_PI;
+    while(angleDiff < -M_PI) angleDiff += 2 * M_PI;
+
+    // Calculate the correction based on stiffness.
+    float correction = stiffness * angleDiff;
+    float halfCorrection = correction / 2.0f;
+
+    // Find the midpoint between A and B.
+    float pointAMass = pointA.radius * pointA.radius;
+    float pointBMass = pointB.radius * pointB.radius;
+    double massRatio = pointBMass / (pointAMass + pointBMass);
+    double2 centerOfMass = pointA.pos + (pointB.pos - pointA.pos) * massRatio;
+
+    // Rotate A around center by -halfCorrection.
+    //pointA.pos = centerOfMass + rotate(pointA.pos - centerOfMass, -halfCorrection);
+    // Rotate B around center by +halfCorrection.
+    //pointB.pos = centerOfMass + rotate(pointB.pos - centerOfMass, halfCorrection);
+
+    // Update the points' angles.
+    pointA.angle -= halfCorrection;
+    pointB.angle += halfCorrection;
+}
 
 __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect bounds) {
     float updateDist = 0.0f;
-    float minMax[4] = {bounds.left + point.radius,
-                       bounds.width - point.radius,
-                       bounds.top + point.radius,
-                       bounds.height - point.radius};
+    float minMax[4] = {bounds.left + (float)point.radius,
+                       bounds.width - (float)point.radius,
+                       bounds.top + (float)point.radius,
+                       bounds.height - (float)point.radius};
 
     if (point.pos.x < minMax[0]) {
         point.prevPos.x = point.pos.x;

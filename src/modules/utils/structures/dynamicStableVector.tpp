@@ -1,10 +1,10 @@
 #ifndef DYNAMIC_STABLE_VECTOR_TPP
 #define DYNAMIC_STABLE_VECTOR_TPP
 
-#include "DynamicStableVector.hpp"
+#include <modules/utils/structures/dynamicStableVector.hpp>
 
 template <typename T>
-size_t DynamicStableVector<T>::push(const T& value) {
+size_t dynamicStableVector<T>::push(const T& value) {
     if (!freeList_.empty()) {
         // Reuse a free slot
         size_t index = *freeList_.begin(); // Get first free index
@@ -18,7 +18,7 @@ size_t DynamicStableVector<T>::push(const T& value) {
 }
 
 template <typename T>
-void DynamicStableVector<T>::remove(size_t index) {
+void dynamicStableVector<T>::remove(size_t index) {
     if (index >= data_.size() || !data_[index]) {
         throw std::out_of_range("Invalid index for removal");
     }
@@ -26,7 +26,7 @@ void DynamicStableVector<T>::remove(size_t index) {
 }
 
 template <typename T>
-T& DynamicStableVector<T>::at(size_t index) {
+T& dynamicStableVector<T>::at(size_t index) {
     if (index >= data_.size()) {
         throw std::out_of_range("Invalid index for access");
     }
@@ -34,7 +34,7 @@ T& DynamicStableVector<T>::at(size_t index) {
 }
 
 template <typename T>
-const T& DynamicStableVector<T>::at(size_t index) const {
+const T& dynamicStableVector<T>::at(size_t index) const {
     if (index >= data_.size() || !data_[index]) {
         throw std::out_of_range("Invalid index for access");
     }
@@ -42,17 +42,17 @@ const T& DynamicStableVector<T>::at(size_t index) const {
 }
 
 template <typename T>
-size_t DynamicStableVector<T>::size() const {
+size_t dynamicStableVector<T>::size() const {
     return data_.size() - freeList_.size();
 }
 
 template <typename T>
-bool DynamicStableVector<T>::isValid(size_t index) const {
+bool dynamicStableVector<T>::isValid(size_t index) const {
     return index < data_.size() && data_[index] != nullptr;
 }
 
 template <typename T>
-size_t DynamicStableVector<T>::getNextIndex() {
+size_t dynamicStableVector<T>::getNextIndex() {
     if (!freeList_.empty()) {
         // Reuse a free slot
         size_t index = *freeList_.begin(); // Get first free index
@@ -65,7 +65,7 @@ size_t DynamicStableVector<T>::getNextIndex() {
 }
 
 template <typename T>
-void DynamicStableVector<T>::clear() {
+void dynamicStableVector<T>::clear() {
     data_.clear();
     freeList_.clear();
 }

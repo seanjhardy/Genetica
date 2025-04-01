@@ -9,16 +9,16 @@
 struct RegulatoryUnit {
     static constexpr float W = 10.0f;
 
-    StaticGPUVector<int> promoters;
-    StaticGPUVector<int> factors;
+    staticGPUVector<int> promoters;
+    staticGPUVector<int> factors;
 
     __host__ __device__ RegulatoryUnit() = default;
 
     __device__ void calculateActivation(
-      StaticGPUVector<Promoter>& grnPromoters,
-      StaticGPUVector<Gene>& grnFactors,
-      StaticGPUVector<float>& factorLevels,
-      StaticGPUVector<float>& promoterFactorAffinities) {
+      staticGPUVector<Promoter>& grnPromoters,
+      staticGPUVector<Gene>& grnFactors,
+      staticGPUVector<float>& factorLevels,
+      staticGPUVector<float>& promoterFactorAffinities) {
 
         // Calculate activity of promoters based on input factors
         // and combine those activities into one overall regulatory unit activity

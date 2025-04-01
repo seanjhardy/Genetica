@@ -89,20 +89,12 @@ void GeneticAlgorithm::createRandomLifeForm() {
         genome.init();
 
         float2 pos = Simulator::get().getEnv().randomPos();
-        auto lifeForm = LifeForm(genome);
-        lifeForm.energy = 100;
-
-        addLifeForm(lifeForm);
-
-        sequence(population[lifeForm.idx], genome, pos);
+        auto lifeFormIdx = population.getNextIndex();
+        auto lifeForm = LifeForm(lifeFormIdx, genome, pos);
+        population.push(lifeForm);
     }
 }
 
-size_t GeneticAlgorithm::addLifeForm(LifeForm& lifeForm) {
-    lifeForm.idx = population.getNextIndex();
-    population.push(lifeForm);
-    return lifeForm.idx;
-}
 
 
 void GeneticAlgorithm::reset() {
@@ -113,7 +105,7 @@ void GeneticAlgorithm::reset() {
     geneID = 0;
 }
 
-DynamicStableVector<LifeForm>& GeneticAlgorithm::getPopulation() {
+dynamicStableVector<LifeForm>& GeneticAlgorithm::getPopulation() {
     return population;
 }
 

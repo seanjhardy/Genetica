@@ -3,27 +3,29 @@
 #include <modules/cuda/logging.hpp>
 
 template<typename T>
-StaticGPUVector<T>::StaticGPUVector(size_t capacity) {
+staticGPUVector<T>::staticGPUVector(size_t capacity) {
     size_ = capacity;
     reallocateDevice(capacity);
 }
 
 
 template<typename T>
-StaticGPUVector<T>::StaticGPUVector(const std::vector<T>& h_data){
+staticGPUVector<T>::staticGPUVector(const std::vector<T>& h_data){
     size_ = h_data.size();
     capacity_ = h_data.size();
     if (data_ != nullptr) {
         cudaLog(cudaFree(data_));
         data_ = nullptr;
     }
+    T* ptr;
+    cudaLog(cudaMalloc(&ptr, h_data.size() * sizeof(T)));
     cudaLog(cudaMalloc(&data_, h_data.size() * sizeof(T)));
     cudaLog(cudaMemset(data_, 0, h_data.size() * sizeof(T)));
     cudaLog(cudaMemcpy(data_, h_data.data(), h_data.size() * sizeof(T), cudaMemcpyHostToDevice));
 }
 
 template<typename T>
-void StaticGPUVector<T>::reallocateDevice(size_t new_capacity) {
+__host__ __device__ void staticGPUVector<T>::reallocateDevice(size_t new_capacity) {
     if (new_capacity == 0) {
         if (data_ != nullptr) {
             cudaLog(cudaFree(data_));
@@ -52,7 +54,7 @@ void StaticGPUVector<T>::reallocateDevice(size_t new_capacity) {
 }
 
 template<typename T>
-void StaticGPUVector<T>::destroy() {
+void staticGPUVector<T>::destroy() {
     if (data_ != nullptr) {
         cudaLog(cudaFree(data_));
         data_ = nullptr;
@@ -62,8 +64,8 @@ void StaticGPUVector<T>::destroy() {
 }
 
 template<typename T>
-StaticGPUVector<T> StaticGPUVector<T>::copy() const {
-    StaticGPUVector copy(size_);
+__host__ __device__ staticGPUVector<T> staticGPUVector<T>::copy() const {
+    staticGPUVector copy(size_);
     if (size_ > 0) {
         cudaLog(cudaMemcpy(copy.data_, data_, size_ * sizeof(T), cudaMemcpyDeviceToDevice));
     }
@@ -71,7 +73,7 @@ StaticGPUVector<T> StaticGPUVector<T>::copy() const {
 }
 
 template<typename T>
-std::vector<T> StaticGPUVector<T>::toHost() const {
+std::vector<T> staticGPUVector<T>::toHost() const {
     std::vector<T> host_data(size_);
     if (size_ > 0) {
         cudaLog(cudaMemcpy(host_data.data(), data_, size_ * sizeof(T), cudaMemcpyDeviceToHost));
@@ -80,7 +82,7 @@ std::vector<T> StaticGPUVector<T>::toHost() const {
 }
 
 template<typename T>
-T StaticGPUVector<T>::itemToHost(size_t index) const {
+T staticGPUVector<T>::itemToHost(size_t index) const {
     T host_data;
     if (index < size_) {
         cudaLog(cudaMemcpy(&host_data, data_ + index, sizeof(T), cudaMemcpyDeviceToHost));
@@ -89,7 +91,7 @@ T StaticGPUVector<T>::itemToHost(size_t index) const {
 }
 
 template<typename T>
-T& StaticGPUVector<T>::operator[](size_t index) {
+__host__ __device__ T& staticGPUVector<T>::operator[](size_t index) {
     if (data_ == nullptr) {
         printf("Warning: Accessing null data pointer\n");
     }
@@ -97,7 +99,7 @@ T& StaticGPUVector<T>::operator[](size_t index) {
 }
 
 template<typename T>
-T& StaticGPUVector<T>::operator[](size_t index) const {
+__host__ __device__ T& staticGPUVector<T>::operator[](size_t index) const {
     if (data_ == nullptr) {
         printf("Warning: Accessing null data pointer\n");
     }
@@ -105,7 +107,7 @@ T& StaticGPUVector<T>::operator[](size_t index) const {
 }
 
 template<typename T>
-void StaticGPUVector<T>::resize(size_t new_size) {
+__host__ __device__ void staticGPUVector<T>::resize(size_t new_size) {
     if (new_size > capacity_) {
         reallocateDevice(new_size);
     }

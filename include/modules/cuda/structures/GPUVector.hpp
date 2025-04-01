@@ -2,19 +2,19 @@
 #define GPU_VECTOR_H
 
 #include <vector>
-#include "StaticGPUVector.hpp"
+#include "staticGPUVector.hpp"
 
 template<typename T>
-class GPUVector : public StaticGPUVector<T> {
-    size_t* overflow_ = nullptr;
-    size_t overflow_size_ = 0;
-    size_t overflow_capacity_ = 0;
+class GPUVector : public staticGPUVector<T> {
+    size_t* free_list_ = nullptr;
+    size_t free_size_ = 0;
+    size_t free_capacity_ = 0;
 
 public:
-    __host__ __device__ GPUVector() = default;
-    __host__ __device__ explicit GPUVector(const int capacity) : StaticGPUVector<T>(capacity) {}
-    __host__ __device__ explicit GPUVector(const std::vector<T>& hostData);
-    __host__ __device__ void destroy();
+    __host__  GPUVector() = default;
+    __host__  explicit GPUVector(const int capacity) : staticGPUVector<T>(capacity) {}
+    __host__  explicit GPUVector(const std::vector<T>& hostData);
+    __host__  void destroy();
 
     __host__ __device__ size_t push(const T& value);
     __host__ __device__ void remove(size_t index);

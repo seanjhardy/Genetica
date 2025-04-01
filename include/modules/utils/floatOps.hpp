@@ -173,6 +173,14 @@ inline __host__ __device__ float2 rotate(float2 point, float angle) {
     return make_float2(x, y);
 }
 
+inline __host__ __device__ double2 rotate(double2 point, float angle) {
+    float2 d = vec(angle);
+    double x = point.x * d.x - point.y * d.y;
+    double y = point.x * d.y + point.y * d.x;
+    return make_double2(x, y);
+}
+
+
 inline __host__ __device__ float2 rotateOrigin(float2 point, float2 origin, float angle) {
     float2 d = vec(angle);
     float x = (point.x - origin.x) * d.x - (point.y - origin.y) * d.y;

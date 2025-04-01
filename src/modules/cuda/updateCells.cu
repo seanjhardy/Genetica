@@ -1,71 +1,112 @@
 #include <modules/cuda/updateCells.hpp>
-#include <modules/utils/structures/DynamicStableVector.hpp>
 #include <simulator/simulator.hpp>
 
-struct LfUpdateData {
-    int dividing = 0;
-    float energyChange = 0;
-    size_t motherIdx = 0;
-};
-#
-
-__global__ void updateCell(GPUVector<Cell> cells, GPUVector<Point> points, StaticGPUVector<LfUpdateData> lfUpdateData, size_t step) {
+__global__ void updateCell(GPUVector<Cell> cells, GPUVector<Point> points, size_t step, cellGrowthData output) {
     size_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (index >= cells.size()) return;
+
     Cell &cell = cells[index];
-
-    if (cell.pointIdx > points.size()) return;
     Point &point = points[cell.pointIdx];
-    auto* lfData = &lfUpdateData[cell.lifeFormIdx];
-    float cellEnergyCost = 0.00001f * M_PI * point.radius * point.radius + cell.energyUse;
-    if (abs(point.radius - cell.targetRadius) > 1.0f) {
-        cellEnergyCost += 0;
-        point.radius = sqrt((M_PI * point.radius * point.radius + 1.0f) / M_PI);
+
+    // - Base metabolic rate (proportional to area)
+    cell.energy -= 0.00001f * M_PI * point.radius * point.radius;
+
+    // TODO: Implement these
+    // - Energy spent when moving
+    // - Photosynthesis, eating, thermal induction
+    // - Reduce energy loss due to insulation based on cell wall properties
+    // - Energy used by organelles
+
+    // - Growth - if target size not reached, gain energy according to area gained
+    if (abs(point.radius - cell.targetRadius) > 0.0f) {
+        // TODO: Dynamic growth rate (1.0f) from GRN
+        float newArea = sqrt((M_PI * point.radius * point.radius + 0.1f) / M_PI);
+        float areaChange = newArea - point.radius;
+        float growthEnergy = 0.001f * areaChange;
+        if (cell.energy > growthEnergy) {
+            cell.energy -= growthEnergy;
+            point.radius = newArea;
+        }
     }
-    atomicAdd(&lfUpdateData[cell.lifeFormIdx].energyChange, -cellEnergyCost);
-    cell.energyUse = 0.0f;
 
-    if (cell.dividing && (step - cell.lastDivideTime) > 10 && point.radius >= cell.targetRadius * 0.98) {
-        if (atomicCAS(&lfData->dividing, 0, 1) == 0) {
-            cell.dividing = false;
-            lfData->motherIdx = cell.idx;
-
+    // Check if the cell should divide
+    if ((step - cell.lastDivideTime) > 200 &&
+        point.radius >= cell.targetRadius &&
+        cell.energy > 0) {
+        auto hasDivided = output.push(cell.idx);
+        if (hasDivided) {
+            // Update cell properties
             cell.numDivisions += 1;
             cell.lastDivideTime = step;
-            //point.radius *= 0.7f;
-            printf("lifeFormIdx: %llu, motherIdx: %llu\n", cell.lifeFormIdx, cell.idx);
+            point.radius *= 0.7f; // 30% reduction in size
+            cell.energy *= 0.5f; // half energy for this cell and daughter cell
         }
-   };
+    }
 }
 
-void updateCells(DynamicStableVector<LifeForm>& lifeForms,
+__global__ void updateCellCellInteractions(GPUVector<Cell> cells, GPUVector<CellLink> cellLinks, GPUVector<Point> points, size_t step, cellGrowthData output) {
+    size_t indexA = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t indexB = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (indexA >= cells.size() || indexB >= cells.size() || indexA >= indexB) return;
+
+    Cell &cellA = cells[indexA];
+    Cell &cellB = cells[indexB];
+    Point &pointA = points[cellA.pointIdx];
+    Point &pointB = points[cellB.pointIdx];
+
+    if (cellA.lifeFormIdx == cellB.lifeFormIdx) {
+        if (cellA.lastDivideTime <= 100 || cellB.lastDivideTime <= 100) {
+            float distance = distanceBetween(pointA.pos, pointB.pos);
+            float linkDistance = pointA.radius + pointB.radius;
+            //if (distance < linkDistance);
+        }
+    }
+}
+
+void updateCells(dynamicStableVector<LifeForm>& lifeForms,
                  const GPUVector<Cell>& cells,
-                 const GPUVector<Point>& points) {
-    // Only run every 20 simulation steps
+                 const GPUVector<Point>& points,
+                 cellGrowthData& cellDivisionData) {
+    // Only run every 10 simulation steps
     if (Simulator::get().getStep() % 10 != 0) {
         return;
     }
-
-    int threadsPerBlock = 512;
-    int numCellBlocks((cells.size() + threadsPerBlock - 1) / threadsPerBlock);
 
     if (cells.size() == 0) {
         return;
     }
 
-    auto lfUpdateData = StaticGPUVector<LfUpdateData>(lifeForms.size());
-    updateCell<<<numCellBlocks, threadsPerBlock>>>(cells, points, lfUpdateData, Simulator::get().getStep());
-    std::vector<LfUpdateData> lfUpdateDataHost = lfUpdateData.toHost();
+    // Only process division events every 100 steps to prevent slow gpu calls
+    cellDivisionData.setEnabled(Simulator::get().getStep() % 100 == 0);
+    cellDivisionData.reset();
 
-    for (int i = 0; i < lifeForms.size(); i++) {
-        if (lifeForms.freeList_.contains(i)) continue;
-        lifeForms[i].energy += lfUpdateDataHost[i].energyChange;
-        if (lfUpdateDataHost[i].dividing) {
-            Cell mother = cells.itemToHost(lfUpdateDataHost[i].motherIdx);
+    // Launch kernel
+    int threadsPerBlock = 512;
+    int numCellBlocks = (cells.size() + threadsPerBlock - 1) / threadsPerBlock;
+    updateCell<<<numCellBlocks, threadsPerBlock>>>(cells, points, Simulator::get().getStep(), cellDivisionData);
+
+    dim3 cellThreadsPerBlock(32, 32);
+    dim3 numCellCellBlocks((cells.size() + cellThreadsPerBlock.x - 1) / cellThreadsPerBlock.x,
+                       (cells.size() + cellThreadsPerBlock.y - 1) / cellThreadsPerBlock.y);
+    //updateCellCellInteractions<<<numCellBlocks, threadsPerBlock>>>(cells, points);
+
+    int numDivisions = cellDivisionData.getNumDivisions();
+    if (numDivisions > 0) {
+        int eventsToProcess = min(numDivisions, MAX_DIVISION_EVENTS);
+        auto* hostDividingIndices = new size_t[eventsToProcess];
+
+        cellDivisionData.getDividingCellIndices(hostDividingIndices, eventsToProcess);
+
+        for (int i = 0; i < eventsToProcess; i++) {
+            size_t motherIdx = hostDividingIndices[i];
+            Cell mother = cells.itemToHost(motherIdx);
             Point p = points.itemToHost(mother.pointIdx);
-            lifeForms[i].addCell(lfUpdateDataHost[i].motherIdx, mother, p);
+
+            lifeForms[mother.lifeFormIdx].addCell(motherIdx, mother, p);
         }
-    };
-    lfUpdateData.destroy();
+
+        delete[] hostDividingIndices;
+    }
 }

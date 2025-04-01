@@ -1,15 +1,17 @@
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
 #include "geneticAlgorithm/lifeform.hpp"
 
-CellLink::CellLink(const size_t lifeFormId, const size_t cellAId, const size_t cellBId, const size_t p1, const size_t p2, float startLength, float angle, float stiffness)
-: lifeFormId(lifeFormId), cellAId(cellAId), cellBId(cellBId), p1(p1), p2(p2), length(startLength), targetLength(startLength), angle(angle), stiffness(stiffness) {};
+CellLink::CellLink(const size_t lifeFormIdx, const size_t cellAId, const size_t cellBId, const size_t p1, const size_t p2,
+                   float startLength, float targetLength, float angle, float stiffness)
+: lifeFormIdx(lifeFormIdx), cellAIdx(cellAId), cellBIdx(cellBId), pointAIdx(p1), pointBIdx(p2),
+  length(startLength), targetLength(targetLength), angle(angle), stiffness(stiffness) {};
 
 
 void CellLink::renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points) {
-    const Point point1 = points[p1];
-    const Point point2 = points[p2];
-    const Cell* cell1 = &cells[cellAId];
-    const Cell* cell2 = &cells[cellBId];
+    const Point point1 = points[pointAIdx];
+    const Point point2 = points[pointBIdx];
+    const Cell* cell1 = &cells[cellAIdx];
+    const Cell* cell2 = &cells[cellBIdx];
     const sf::Color cell1Color = brightness(cell1->getColor(), 0.6);
     const sf::Color cell2Color = brightness(cell2->getColor(), 0.6);
 
@@ -37,10 +39,10 @@ void CellLink::renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells
 }
 
 void CellLink::renderBody(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points) {
-    const Point point1 = points[p1];
-    const Point point2 = points[p2];
-    const Cell* cell1 = &cells[cellAId];
-    const Cell* cell2 = &cells[cellBId];
+    const Point point1 = points[pointAIdx];
+    const Point point2 = points[pointBIdx];
+    const Cell* cell1 = &cells[cellAIdx];
+    const Cell* cell2 = &cells[cellBIdx];
     const sf::Color cell1Color = cell1->getColor();
     const sf::Color cell2Color = cell2->getColor();
 
@@ -63,6 +65,19 @@ void CellLink::renderBody(VertexManager& vertexManager, vector<Cell>& cells, vec
         {v3, cell2Color},
         {v4, cell1Color},
         {v1, cell1Color}}));
+}
+
+void CellLink::renderDetails(VertexManager &vertexManager, vector<Cell> &cells, vector<Point> &points) {
+    const Point point1 = points[pointAIdx];
+    const Point point2 = points[pointBIdx];
+    const Cell* cell1 = &cells[cellAIdx];
+    const Cell* cell2 = &cells[cellBIdx];
+    const sf::Color cell1Color = cell1->getColor();
+    const sf::Color cell2Color = cell2->getColor();
+
+    // Add line across the length of the link
+    float thickness = (point1.radius + point2.radius) / 5;
+    vertexManager.addLine(point1.getPos(), point2.getPos(), brightness(cell1Color, 1.2),thickness);
 }
 
 

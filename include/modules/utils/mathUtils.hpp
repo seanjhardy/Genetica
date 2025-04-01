@@ -2,6 +2,7 @@
 #define MATHUTILS_HPP
 
 #include <modules/physics/point.hpp>
+#include "cuda_runtime.h"
 
 #ifndef M_PI_HALF
     #define M_PI_HALF 1.57079632679
@@ -25,7 +26,10 @@ std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& po
 float getVelocity(const Point& point);
 
 sf::Color interpolate(sf::Color c1, sf::Color c2, float x);
-float clamp(float min_val, float x, float max_val);
+
+inline __host__ __device__  float clamp(float min_val, float x, float max_val) {
+    return std::max(min_val, std::min(x, max_val));
+}
 
 float normAngle(float angle);
 

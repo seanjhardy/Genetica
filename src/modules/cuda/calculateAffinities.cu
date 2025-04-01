@@ -2,7 +2,7 @@
 #include <modules/cuda/calculateAffinities.hpp>
 
 template <typename T, typename U>
-__global__ void calculateAffinity(const StaticGPUVector<T> a_elements, const StaticGPUVector<U> b_elements, StaticGPUVector<float> output) {
+__global__ void calculateAffinity(const staticGPUVector<T> a_elements, const staticGPUVector<U> b_elements, staticGPUVector<float> output) {
     size_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
     size_t idx2 = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -32,7 +32,7 @@ void calculateAffinities(GeneRegulatoryNetwork &grn) {
     dim3 numPromoterFactorBlocks((grn.promoters.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                    (grn.factors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
 
-    grn.promoterFactorAffinities = StaticGPUVector<float>(grn.promoters.size() * grn.factors.size());
+    grn.promoterFactorAffinities = staticGPUVector<float>(grn.promoters.size() * grn.factors.size());
     calculateAffinity<<<numPromoterFactorBlocks, threadsPerBlock>>>(
       grn.promoters,
       grn.factors,
@@ -40,7 +40,7 @@ void calculateAffinities(GeneRegulatoryNetwork &grn) {
 
     dim3 numFactorEffectorBlocks((grn.factors.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                                     (grn.effectors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    grn.factorEffectorAffinities = StaticGPUVector<float>(grn.factors.size() * grn.effectors.size());
+    grn.factorEffectorAffinities = staticGPUVector<float>(grn.factors.size() * grn.effectors.size());
     calculateAffinity<<<numFactorEffectorBlocks, threadsPerBlock>>>(
       grn.factors,
     grn.effectors,
@@ -48,7 +48,7 @@ void calculateAffinities(GeneRegulatoryNetwork &grn) {
 
     dim3 numFactorReceptorBlocks((grn.factors.size() + threadsPerBlock.x - 1) / threadsPerBlock.x,
                                     (grn.factors.size() + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    grn.factorReceptorAffinities = StaticGPUVector<float>(grn.factors.size() * grn.factors.size());
+    grn.factorReceptorAffinities = staticGPUVector<float>(grn.factors.size() * grn.factors.size());
     calculateAffinity<<<numFactorReceptorBlocks, threadsPerBlock>>>(
       grn.factors,
       grn.factors,
