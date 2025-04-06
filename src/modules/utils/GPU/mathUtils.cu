@@ -1,8 +1,79 @@
 #include "cmath"
-#include "utility" // For std::pair
-#include <modules/physics/point.hpp>
-#include <modules/utils/floatOps.hpp>
-#include <modules/utils/mathUtils.hpp>
+#include "modules/physics/point.hpp"
+#include "modules/utils/operations.hpp"
+#include "modules/utils/GPU/mathUtils.hpp"
+
+ __host__ __device__ float2 vec(float direction) {
+    return {cosf(direction), sinf(direction)};
+}
+
+__host__ __device__ float dir(float2 p1, float2 p2) {
+    float2 d = p1 - p2;
+    return std::atan2f(d.y, d.x);
+}
+
+__host__ __device__ float2 rotate(float2 point, float angle) {
+    float2 d = vec(angle);
+    float x = point.x * d.x - point.y * d.y;
+    float y = point.x * d.y + point.y * d.x;
+    return make_float2(x, y);
+}
+
+__host__ __device__ double2 rotate(double2 point, float angle) {
+    float2 d = vec(angle);
+    double x = point.x * d.x - point.y * d.y;
+    double y = point.x * d.y + point.y * d.x;
+    return make_double2(x, y);
+}
+
+
+__host__ __device__ float2 rotateOrigin(float2 point, float2 origin, float angle) {
+    float2 d = vec(angle);
+    float x = (point.x - origin.x) * d.x - (point.y - origin.y) * d.y;
+    float y = (point.x - origin.x) * d.y + (point.y - origin.y) * d.x;
+    return make_float2(x, y);
+}
+
+__host__ __device__ float diff(float2 p1, float2 p2) {
+    return abs(p1.x - p2.x) + abs(p1.y - p2.y);
+}
+
+__host__ __device__ float sum(float2 p1) {
+    return p1.x + p1.y;
+}
+__host__ __device__ float sum(double2 p1) {
+    return p1.x + p1.y;
+}
+
+__host__ __device__ float sum(float3 p1) {
+    return p1.x + p1.y + p1.z;
+}
+
+__host__ __device__ float distanceBetween(float2 p1, float2 p2) {
+    float2 d = p1 - p2;
+    return sqrt(sum(d*d));
+}
+__host__ __device__ float distanceBetween(double2 p1, double2 p2) {
+    double2 d = p1 - p2;
+    return sqrt(sum(d*d));
+}
+
+__host__ __device__ float distanceBetween(float3 p1, float3 p2) {
+    float3 d = p1 - p2;
+    return sqrt(sum(d*d));
+}
+
+__host__ __device__ float magnitude(float2 p1) {
+    return sqrtf(p1.x * p1.x + p1.y * p1.y);
+}
+
+__host__ __device__ double magnitude(double2 p1) {
+    return sqrt(p1.x * p1.x + p1.y * p1.y);
+}
+
+__host__ __device__ float magnitude(float3 p1) {
+    return sqrt(p1.x * p1.x + p1.y * p1.y + p1.z * p1.z);
+}
 
 std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& point2, float r1, float r2) {
     float x1 = point1.pos.x, y1 = point1.pos.y;
@@ -35,8 +106,12 @@ sf::Color interpolate(const sf::Color c1, const sf::Color c2, float x) {
                      clamp(0, a, 255));
 }
 
-float normAngle(float angle) {
-    return std::fmod(angle + M_PI, 2 * M_PI) - M_PI;
+__host__ __device__ float normAngle(float angle) {
+    return atan2f(sin(angle), cos(angle));
+}
+
+__host__ __device__ double normAngle(double angle) {
+    return atan2(sin(angle), cos(angle));
 }
 
 float angleDiff(float angle1, float angle2, bool norm) {

@@ -1,5 +1,5 @@
 #include <functional>
-#include <modules/utils/mathUtils.hpp>
+#include "modules/utils/GPU/mathUtils.hpp"
 
 class Animation {
 public:

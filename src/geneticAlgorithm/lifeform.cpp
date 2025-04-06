@@ -70,7 +70,7 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& mother
 
     // Create the daughterCell
     auto daughter = Cell(idx, daughterPoint);
-    daughter.generation = mother.generation;
+    daughter.generation = mother.generation + 1;
     daughter.hue = mother.hue;
     daughter.saturation = mother.saturation;
     daughter.luminosity = mother.luminosity;
@@ -91,11 +91,13 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& mother
     auto cellLink = CellLink(idx,
         daughter.idx,
         motherIdx,
-        daughter.pointIdx,
         mother.pointIdx,
+        daughter.pointIdx,
         motherPoint.radius * 2,
         mother.targetRadius * 2,
-        Random::random(0, 2 * M_PI), 0.01);
+        mother.divisionRotation,
+        M_PI - mother.divisionRotation,
+        0.01);
 
     const size_t linkIdx = Simulator::get().getEnv().nextCellLinkIdx();
     Simulator::get().getEnv().addCellLink(cellLink);
@@ -111,6 +113,8 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& mother
         const Point otherPoint = Simulator::get().getEnv().getPoints().itemToHost(other.pointIdx);
         float distance = daughterPoint.distanceTo(otherPoint);
         if (distance >= (otherPoint.radius + daughterPoint.radius) * 0.8) continue;
+        float angleFromDaughter = daughterPoint.angleTo(otherPoint) - daughterPoint.angle;
+        float angleFromOther = otherPoint.angleTo(daughterPoint) - otherPoint.angle;
 
         auto link = CellLink(idx,
             daughter.idx,
@@ -119,7 +123,8 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& mother
             other.pointIdx,
             distance,
             distance * 2,
-            Random::random(0, 2 * M_PI), 0.01);
+            angleFromDaughter,
+            angleFromOther, 0.01);
         const size_t newLinkIdx = Simulator::get().getEnv().nextCellLinkIdx();
         Simulator::get().getEnv().addCellLink(link);
         linkIdxs.push_back(newLinkIdx);

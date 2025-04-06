@@ -1,5 +1,5 @@
 #include <modules/physics/point.hpp>
-#include <modules/utils/floatOps.hpp>
+#include <modules/utils/operations.hpp>
 #include <modules/graphics/vertexManager.hpp>
 
  __host__ __device__ double2 Point::getVelocity() const {
@@ -13,8 +13,10 @@ __host__ __device__ void Point::update() {
     // Add accumulated position changes
     if (connections > 0) {
         pos += deltaPos / connections;
+        angle += deltaAngle / connections;
     }
     deltaPos = make_double2(0.0f, 0.0f);
+    deltaAngle = 0.0f;
     double2 velocity = pos - prevPos;
     double2 accel = force / radius;
 
@@ -39,10 +41,10 @@ __host__ __device__ float Point::angleTo(const Point& other) const{
     return FastMath::atan2f(other.pos.y - pos.y, other.pos.x - pos.x);
 }
 
-__host__ __device__ void Point::rotate(const float2& origin, float angle) {
-    float2 d = getPos() - origin;
-    pos.x = origin.x + cosf(angle) * d.x - sinf(angle) * d.y;
-    pos.y = origin.y + sinf(angle) * d.x + cosf(angle) * d.y;
+__host__ __device__ void Point::rotate(const double2& origin, double angleToRotate) {
+    double2 d = pos - origin;
+    pos.x = origin.x + cosf(angleToRotate) * d.x - sinf(angleToRotate) * d.y;
+    pos.y = origin.y + sinf(angleToRotate) * d.x + cosf(angleToRotate) * d.y;
 }
 
 void Point::render(VertexManager& viewer, sf::Color colour) const {

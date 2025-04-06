@@ -2,6 +2,7 @@
 #include "../physics/constraints.cu"
 #include "cuda_runtime.h"
 #include <modules/cuda/updateCellLinks.hpp>
+#include "modules/utils/GPU/mathUtils.hpp"
 
 __global__ void updateCellLink(GPUVector<Point> points, GPUVector<Cell> cells, GPUVector<CellLink> cellLinks) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -18,8 +19,7 @@ __global__ void updateCellLink(GPUVector<Point> points, GPUVector<Cell> cells, G
     constrainDistance(pointA, pointB, cellLink.length + pointA.radius + pointB.radius);
 
     // Update the link to maintain its angle relative to the cell
-    //constrainAngle(pointA, pointB,  cellLink.prevAngle, cellLink.angle, 0.0001);//cellLink.stiffness
-    cellLink.prevAngle = dir(pointA.getPos(), pointB.getPos());
+    constrainAngle(pointA, pointB,  cellLink.angleFromA, cellLink.angleFromB, 0.1);//cellLink.stiffness
 
     if (cellLink.length < cellLink.targetLength && cellA.energy > 0 && cellB.energy > 0) {
         float delta = 0.1f * 2/(pointA.radius + pointB.radius);

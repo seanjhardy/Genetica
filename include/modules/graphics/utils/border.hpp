@@ -3,7 +3,7 @@
 
 #include "SFML/Graphics.hpp"
 #include <array>
-#include <modules/utils/mathUtils.hpp>
+#include "modules/utils/GPU/mathUtils.hpp"
 
 class Border {
 public:

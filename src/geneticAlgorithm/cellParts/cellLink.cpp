@@ -1,10 +1,10 @@
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
 #include "geneticAlgorithm/lifeform.hpp"
 
-CellLink::CellLink(const size_t lifeFormIdx, const size_t cellAId, const size_t cellBId, const size_t p1, const size_t p2,
-                   float startLength, float targetLength, float angle, float stiffness)
-: lifeFormIdx(lifeFormIdx), cellAIdx(cellAId), cellBIdx(cellBId), pointAIdx(p1), pointBIdx(p2),
-  length(startLength), targetLength(targetLength), angle(angle), stiffness(stiffness) {};
+CellLink::CellLink(const size_t lifeFormIdx, const size_t cellAIdx, const size_t cellBIdx, const size_t pointAIdx, const size_t pointBIdx,
+                   float startLength, float targetLength, float angleFromA, float angleFromB, float stiffness)
+: lifeFormIdx(lifeFormIdx), cellAIdx(cellAIdx), cellBIdx(cellBIdx), pointAIdx(pointAIdx), pointBIdx(pointBIdx),
+  length(startLength), targetLength(targetLength), angleFromA(angleFromA), angleFromB(angleFromB), stiffness(stiffness) {};
 
 
 void CellLink::renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points) {

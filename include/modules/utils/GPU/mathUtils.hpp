@@ -1,7 +1,7 @@
 #ifndef MATHUTILS_HPP
 #define MATHUTILS_HPP
 
-#include <modules/physics/point.hpp>
+#include "modules/physics/point.hpp"
 #include "cuda_runtime.h"
 
 #ifndef M_PI_HALF
@@ -21,6 +21,22 @@
 #endif
 
 
+__host__ __device__ float2 vec(float direction);
+__host__ __device__ float dir(float2 p1, float2 p2);
+__host__ __device__ float2 rotate(float2 point, float angle);
+__host__ __device__ double2 rotate(double2 point, float angle);
+__host__ __device__ float2 rotateOrigin(float2 point, float2 origin, float angle);
+__host__ __device__ float diff(float2 p1, float2 p2);
+__host__ __device__ float sum(float2 p1);
+__host__ __device__ float sum(double2 p1);
+__host__ __device__ float sum(float3 p1);
+__host__ __device__ float distanceBetween(float2 p1, float2 p2);
+__host__ __device__ float distanceBetween(double2 p1, double2 p2);
+__host__ __device__ float distanceBetween(float3 p1, float3 p2);
+__host__ __device__ float magnitude(float2 p1);
+__host__ __device__ double magnitude(double2 p1);
+__host__ __device__ float magnitude(float3 p1) ;
+
 std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& point2, float r1, float r2);
 
 float getVelocity(const Point& point);
@@ -31,7 +47,7 @@ inline __host__ __device__  float clamp(float min_val, float x, float max_val) {
     return std::max(min_val, std::min(x, max_val));
 }
 
-float normAngle(float angle);
+__host__ __device__ float normAngle(float angle);
 
 float angleDiff(float angle1, float angle2, bool norm = true);
 

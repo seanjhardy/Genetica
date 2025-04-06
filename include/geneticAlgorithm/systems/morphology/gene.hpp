@@ -3,7 +3,7 @@
 
 #include "./geneticUnit.hpp"
 #include <vector_types.h>
-#include <modules/utils/floatOps.hpp>
+#include <modules/utils/operations.hpp>
 
 /**
  * A gene is a genetic unit that can be expressed in a cell

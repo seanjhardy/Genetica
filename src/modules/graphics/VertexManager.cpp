@@ -7,7 +7,7 @@
 #include <modules/graphics/fontManager.hpp>
 #include <modules/graphics/spriteManager.hpp>
 #include <modules/graphics/shaderManager.hpp>
-#include <modules/utils/floatOps.hpp>
+#include <modules/utils/operations.hpp>
 
 
 VertexManager::VertexManager()

@@ -15,6 +15,7 @@ public:
     double2 force{};
     double2 deltaPos{};
     float angle;
+    float deltaAngle;
     int connections = 0;
     double radius = 1.0f;
 
@@ -36,7 +37,7 @@ public:
     __host__ __device__ float distanceTo(const Point& other) const;
     __host__ __device__ float angleTo(const Point& other) const;
 
-    __host__ __device__ void rotate(const float2& origin, float angle);
+    __host__ __device__ void rotate(const double2& origin, double angle);
     __host__ __device__ float2 getPos() const {
         return make_float2(pos.x, pos.y);
     }

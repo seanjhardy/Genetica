@@ -8,20 +8,20 @@ class LifeForm;
 
 class CellLink {
 public:
-    int lifeFormIdx;
-    int cellAIdx;
-    int cellBIdx;
-    int pointAIdx;
-    int pointBIdx;
-    float angle;
-    float prevAngle = -1.0f;
+    size_t lifeFormIdx;
+    size_t cellAIdx;
+    size_t cellBIdx;
+    size_t pointAIdx;
+    size_t pointBIdx;
+    float angleFromA;
+    float angleFromB;
     float stiffness = 1.0f;
     double length;
     double targetLength;
 
     CellLink() = default;
-    CellLink(size_t lifeFormId, size_t cellAId, size_t cellBId, size_t p1, size_t p2,
-             float startLength, float targetLength, float angle, float stiffness);
+    CellLink(size_t lifeFormIdx, size_t cellAIdx, size_t cellBIdx, size_t pointAIdx, size_t pointBIdx,
+             float startLength, float targetLength, float angleFromA, float angleFromB, float stiffness);
 
     __host__ void renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
     __host__ void renderBody(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);

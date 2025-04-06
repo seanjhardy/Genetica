@@ -7,7 +7,7 @@
 #include "modules/cuda/structures/GPUVector.hpp"
 #include "modules/cuda/structures/CGPUValue.hpp"
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
-#include <modules/utils/mathUtils.hpp>
+#include "modules/utils/GPU/mathUtils.hpp"
 
 void updateCellLinks(GPUVector<Point>& points,
                   GPUVector<Cell>& cells,

@@ -1,8 +1,10 @@
 #include <modules/physics/point.hpp>
-#include <modules/utils/floatOps.hpp>
+#include <modules/utils/operations.hpp>
 #include <modules/utils/print.hpp>
+#include "modules/utils/GPU/mathUtils.hpp"
 #include "cmath"
 #include <modules/utils/GPU/atomicOps.hpp>
+#include "cuda_runtime.h"
 
  __device__ inline void constrainDistance(Point& pointA, Point& pointB, double distance) {
     double currentDistance = pointA.distanceTo(pointB);
@@ -29,38 +31,48 @@
     atomicAdd(&pointB.connections, 1);
 }
 
-__device__ inline void constrainAngle(Point& pointA, Point& pointB, float prevAngle, float targetAngle, float stiffness) {
-    float currentAngle = dir(pointA.getPos(), pointB.getPos());
-    float angleChange = currentAngle - prevAngle;
-    pointA.angle += angleChange;
-    pointB.angle += angleChange;
-    return;
-    
-    float angleDiff = (pointA.angle + targetAngle) - currentAngle;
+__device__ inline void constrainAngle(Point& pointA, Point& pointB, float angleFromA, float angleFromB, float stiffness) {
+    // 1. Compute the current angle of the AB link.
+    float theta_AB = dir(pointA.getPos(), pointB.getPos());
 
-    // Normalize angleDiff to the interval [-pi, pi]
-    while(angleDiff > M_PI)  angleDiff -= 2 * M_PI;
-    while(angleDiff < -M_PI) angleDiff += 2 * M_PI;
+    // 2. Compute the two target directions for the link:
+    //    For A, the desired outgoing direction is its own angle plus the offset.
+    float target_A = pointA.angle + angleFromA;
+    //    For B, the desired incoming direction (for the link, which is opposite to its outgoing side)
+    //    is the opposite of (pointB.angle + angleFromB). That is, if you add π to B's desired direction,
+    //    you get the target for the AB link.
+    float target_B = pointB.angle + angleFromB;
 
-    // Calculate the correction based on stiffness.
-    float correction = stiffness * angleDiff;
-    float halfCorrection = correction / 2.0f;
+    // 3. Determine how far the current link is from each target.
+    //    errorA is how much the link’s angle must change to match A’s target.
+    float errorA = normAngle(target_A - theta_AB);
+    //    errorB is how much it must change to match B’s target.
+    float errorB = normAngle(target_B - theta_AB);
 
-    // Find the midpoint between A and B.
-    float pointAMass = pointA.radius * pointA.radius;
-    float pointBMass = pointB.radius * pointB.radius;
-    double massRatio = pointBMass / (pointAMass + pointBMass);
-    double2 centerOfMass = pointA.pos + (pointB.pos - pointA.pos) * massRatio;
+    // 4. Ideally both errors would be the same. If not, we let the link itself rotate by the average.
+    float errorMean = (errorA + errorB) * 0.5f;
+    // 5. The remaining error for each point is the difference between its own error and the mean.
+    float deltaA_angle = errorA;
+    float deltaB_angle = errorB;
 
-    // Rotate A around center by -halfCorrection.
-    //pointA.pos = centerOfMass + rotate(pointA.pos - centerOfMass, -halfCorrection);
-    // Rotate B around center by +halfCorrection.
-    //pointB.pos = centerOfMass + rotate(pointB.pos - centerOfMass, halfCorrection);
+    // 6. Scale corrections by stiffness.
+    deltaA_angle *= stiffness;
+    deltaB_angle *= stiffness;
 
-    // Update the points' angles.
-    pointA.angle -= halfCorrection;
-    pointB.angle += halfCorrection;
+    // 7. Rotate both points around the weighted center-of-mass by the average error.
+    float massA = pointA.radius * pointA.radius;
+    float massB = pointB.radius * pointB.radius;
+    float totalMass = massA + massB;
+    double2 centerOfMass = (pointA.pos * massA + pointB.pos * massB) / totalMass;
+
+    //pointA.rotate(centerOfMass, errorMean * 0.0001f);
+    //pointB.rotate(centerOfMass, errorMean * 0.0001f);
+
+    // 8. Finally, adjust the stored angles so that A and B “pay” for the remainder of the correction.
+    atomicAdd(&pointA.angle, deltaA_angle);
+    atomicAdd(&pointB.angle, deltaB_angle);
 }
+
 
 __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect bounds) {
     float updateDist = 0.0f;

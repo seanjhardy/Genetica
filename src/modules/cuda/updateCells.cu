@@ -10,7 +10,7 @@ __global__ void updateCell(GPUVector<Cell> cells, GPUVector<Point> points, size_
     Point &point = points[cell.pointIdx];
 
     // - Base metabolic rate (proportional to area)
-    cell.energy -= 0.00001f * M_PI * point.radius * point.radius;
+    cell.energy -= 0.00000001f * M_PI * point.radius * point.radius;
 
     // TODO: Implement these
     // - Energy spent when moving
@@ -23,7 +23,7 @@ __global__ void updateCell(GPUVector<Cell> cells, GPUVector<Point> points, size_
         // TODO: Dynamic growth rate (1.0f) from GRN
         float newArea = sqrt((M_PI * point.radius * point.radius + 0.1f) / M_PI);
         float areaChange = newArea - point.radius;
-        float growthEnergy = 0.001f * areaChange;
+        float growthEnergy = 0.0001f * areaChange;
         if (cell.energy > growthEnergy) {
             cell.energy -= growthEnergy;
             point.radius = newArea;
@@ -33,6 +33,7 @@ __global__ void updateCell(GPUVector<Cell> cells, GPUVector<Point> points, size_
     // Check if the cell should divide
     if ((step - cell.lastDivideTime) > 200 &&
         point.radius >= cell.targetRadius &&
+        //cell.numDivisions == 0 && cell.generation == 0 &&
         cell.energy > 0) {
         auto hasDivided = output.push(cell.idx);
         if (hasDivided) {
