@@ -35,6 +35,7 @@ public:
 
     void update();
     void render(VertexManager& vertexManager, vector<Cell>& cells, vector<CellLink>& cellLinks, vector<Point>& points);
+    void renderBlueprint(VertexManager& vertexManager, vector<Cell>& cells, vector<CellLink>& cellLinks);
 
     void combine(LifeForm *partner);
     void clone(bool mutate);

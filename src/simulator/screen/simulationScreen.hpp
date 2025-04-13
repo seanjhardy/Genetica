@@ -137,12 +137,16 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         ->overrideProperty("style", "tint: " + thermometerColorString);
 
         if (simulator->getSelectedEntityId() != -1) {
-            auto selectedLifeform = Simulator::get().getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()];
+            auto& env = Simulator::get().getEnv();
+            auto selectedLifeform = env.getGA().getPopulation()[simulator->getSelectedEntityId()];
             //string text = "Energy: " + //std::to_string(selectedLifeform.energy);
 
             if (screen->getElement("genomePanel")->visible) {
-                selectedLifeform.genome.render(
-                  ((Viewport *) screen->getElement("genome"))->getVertexManager());
+                auto vertexManager = ((Viewport *) screen->getElement("simulation"))->getVertexManager();
+                selectedLifeform.genome.render(vertexManager);
+                vector<Cell> cells = env.getCells().toHost();
+                vector<CellLink> cellLinks = env.getCellLinks().toHost();
+                //selectedLifeform.renderBlueprint(vertexManager, cells, cellLinks);
             }
 
             if (screen->getElement("grnPanel")->visible) {

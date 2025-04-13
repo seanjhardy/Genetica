@@ -23,7 +23,7 @@
         </Text>
         <View key="genomePanel" class="panel" style="position: absolute;
                 visible: false; top: 50px; width: 200px; height: 250px; flex-direction: column; padding: 10px; background: rgba(0,0,0,100)">
-            <Viewport key="genome" style="width: 100%; flex: 1; background: transparent;"
+            <Viewport key="genomePanelViewport" style="width: 100%; flex: 1; background: transparent;"
                       camera="locked" bounds="0px 0px 400px 400px"/>
             <View style="flex-direction: row; width: 100%; height: 20px; align-row: start; align-col: start; gap: 10px;">
                 <Button class="miniBtn" onClick="copyGenome">

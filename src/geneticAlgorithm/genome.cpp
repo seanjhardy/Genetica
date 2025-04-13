@@ -61,11 +61,12 @@ void Genome::render(VertexManager& vertexManager) {
     // Draw DNA data
     sf::RectangleShape dna(sf::Vector2f(2, 2));
     float width = 400.0f;
+    float height = 400.0f;
     int numBases = 0;
     for (auto& geneID : hoxGeneOrder) {
         numBases += hoxGenes.at(geneID).size();
     }
-    float baseSize = sqrt((width * width) / numBases);
+    float baseSize = sqrt((width * height) / numBases);
     float basesPerRow = width / baseSize;
     float yPos = 2;
     int baseIndex = 0;
@@ -92,10 +93,6 @@ void Genome::render(VertexManager& vertexManager) {
     }
 }
 
-/**
- * DEFINE TEMPLATE GENERATORS
- */
-
 void Genome::init(Template templateType) {
     if (templateType == Template::RANDOM) {
         int numHoxGenes = (int) Random::random(20, 100);
@@ -109,10 +106,6 @@ void Genome::init(Template templateType) {
             hoxGenes.insert({index, randomGene});
             hoxGeneOrder.push_back(index);
         }
-    }
-
-    if (templateType == Template::PROKARYOTE) {
-
     }
 }
 

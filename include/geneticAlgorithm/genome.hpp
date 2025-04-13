@@ -13,18 +13,7 @@ public:
     static constexpr int HOX_SIZE = 100;
     enum class Template {
         RANDOM, // Completely random genome
-
-        // PROKARYOTES
-        PROKARYOTE, // Simple single-celled organisms that absorb nutrients from the environment
-
-        //EUKARYOTIC PLANTS
-        RANDOM_PLANT, // Multi-celled, complex organisms that photosynthesize to produce energy
-
-        // EUKARYOTIC ANIMALS
-        RANDOM_ANIMAL, // Multi-celled, complex organisms that move and consume other organic matter
-        FLATWORM, // Simple creatures with behavior mediated by chemicals
-        FISH, // Multi-celled, complex organisms with advanced nervous systems
-        AMPHIBIAN, // Multi-celled, complex organisms that undergo metamorphosis
+        //TODO: Add more templates
     };
 
     map<size_t, string> hoxGenes;

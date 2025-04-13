@@ -5,8 +5,8 @@
 Cell::Cell(int lifeFormIdx, Point& point) : lifeFormIdx(lifeFormIdx), products(0) {
     pointIdx = Simulator::get().getEnv().addPoint(point);
 
-    hue = Random::random(255.0f);
-    saturation = Random::random(0.0f, 0.4f);
+    hue = 100.0f;//Random::random(255.0f);
+    saturation = 0.2f;//Random::random(0.0f, 0.4f);
 }
 
 void Cell::renderBody(VertexManager& vertexManager, vector<Point>& points) const {

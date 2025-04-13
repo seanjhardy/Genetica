@@ -48,6 +48,41 @@ void LifeForm::render(VertexManager& vertexManager, vector<Cell>& hostCells, vec
     }
 }
 
+void LifeForm::renderBlueprint(VertexManager& vertexManager, vector<Cell>& hostCells, vector<CellLink>& hostCellLinks) {
+    float width = 300.0f;
+    float height = 400.0f;
+    float minX, minY, maxX, maxY = 0.0f;
+    for (int cell : cellIdxs) {
+        const Cell& hostCell = hostCells[cell];
+        minX = min(minX, hostCell.bluePrintPosition.x);
+        minY = min(minY, hostCell.bluePrintPosition.y);
+        maxX = max(maxX, hostCell.bluePrintPosition.x);
+        maxY = max(maxY, hostCell.bluePrintPosition.y);
+    }
+    float scaleX = width / (maxX - minX);
+    float scaleY = height / (maxY - minY);
+    float scale = min(scaleX, scaleY);
+    float offsetX = (width - (maxX - minX) * scale) / 2;
+    float offsetY = (height - (maxY - minY) * scale) / 2;
+    for (int cell : cellIdxs) {
+        const Cell& hostCell = hostCells[cell];
+        const Point& point = Simulator::get().getEnv().getPoints().itemToHost(hostCell.pointIdx);
+        float2 pos = point.getPos() * scale + make_float2(offsetX, offsetY);
+        vertexManager.addCircle(pos, point.radius * scale, hostCell.getColor());
+    }
+    for (int link : linkIdxs) {
+        const CellLink& hostCellLink = hostCellLinks[link];
+        const Cell& cell1 = hostCells[hostCellLink.cellAIdx];
+        const Cell& cell2 = hostCells[hostCellLink.cellBIdx];
+        const Point& point1 = Simulator::get().getEnv().getPoints().itemToHost(cell1.pointIdx);
+        const Point& point2 = Simulator::get().getEnv().getPoints().itemToHost(cell2.pointIdx);
+        float2 pos1 = point1.getPos() * scale + make_float2(offsetX, offsetY);
+        float2 pos2 = point2.getPos() * scale + make_float2(offsetX, offsetY);
+        vertexManager.addLine(pos1, pos2, sf::Color::White, 0.5f);
+    }
+}
+
+
 
 
 void LifeForm::clone(bool mutate){
@@ -65,7 +100,7 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& mother
     float2 pos = motherPoint.getPos() + vec(motherPoint.angle + mother.divisionRotation) * motherPoint.radius * 2;
     double2 prevPos = motherPoint.prevPos + vec(motherPoint.angle + mother.divisionRotation) * motherPoint.radius * 2;
     Point daughterPoint = Point(idx, pos.x, pos.y, motherPoint.radius);
-    daughterPoint.angle = motherPoint.angle;
+    daughterPoint.angle = motherPoint.angle + mother.divisionRotation + M_PI;
     daughterPoint.prevPos = prevPos;
 
     // Create the daughterCell
@@ -79,6 +114,8 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother, const Point& mother
     daughter.lastDivideTime = mother.lastDivideTime;
     daughter.targetRadius = mother.targetRadius;
     daughter.energy = mother.energy;
+    daughter.bluePrintPosition = mother.bluePrintPosition + vec(mother.blueprintAngle + mother.divisionRotation) * motherPoint.radius * 2;
+    daughter.blueprintAngle = mother.blueprintAngle + mother.divisionRotation + M_PI;
 
     daughter.idx = Simulator::get().getEnv().nextCellIdx();
     Simulator::get().getEnv().addCell(daughter);

@@ -19,6 +19,8 @@ public:
 
     staticGPUVector<float> products;
 
+    float blueprintAngle = 0.0f;
+    float2 bluePrintPosition = {0.0f, 0.0f};
     float energy = 0.0f;
     float divisionRotation = 0.0f;
     float targetRadius = 0.0f;

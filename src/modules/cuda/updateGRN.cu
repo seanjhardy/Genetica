@@ -58,7 +58,6 @@ __global__ void updateProductConcentration(GeneRegulatoryNetwork grn,
     float* products_data = cell->products.data();
 
 
-    // Now try to access
     float* amount = products_data + productIdx;
     if (cell->products.data() == nullptr) return;
 
