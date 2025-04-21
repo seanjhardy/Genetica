@@ -5,14 +5,14 @@
 
 // Atomic function for updating a float value using atomicCAS
 __device__ float atomicMinFloat(float* addr, float value) {
-    int* addr_as_int = (int*)addr;  // Treat the address as an integer
-    int old_as_int = *addr_as_int;  // Load the old value as an integer
-    float old = __int_as_float(old_as_int);  // Convert it back to float
+    int* addr_as_int = (int*)addr; // Treat the address as an integer
+    int old_as_int = *addr_as_int; // Load the old value as an integer
+    float old = __int_as_float(old_as_int); // Convert it back to float
 
     while (value < old) {
         int assumed_as_int = old_as_int;
         old_as_int = atomicCAS(addr_as_int, assumed_as_int, __float_as_int(value));
-        old = __int_as_float(old_as_int);  // Update old with the new value
+        old = __int_as_float(old_as_int); // Update old with the new value
 
         if (old == __int_as_float(assumed_as_int)) {
             // If CAS was successful, break the loop
@@ -55,14 +55,16 @@ __global__ void findNearestKernel(const GPUVector<Point> points,
         if (local_min_idx != -1) {
             *closestIndex = local_min_idx;
             *distance = sqrt(local_min_dist);
-        } else {
+        }
+        else {
             *closestIndex = -1.0f;
             *distance = -1;
         }
     }
 }
 
-std::pair<int, float> findNearest(const GPUVector<Point> &points, const float x, const float y, const float minDistance) {
+std::pair<int, float> findNearest(const GPUVector<Point>& points, const float x, const float y,
+                                  const float minDistance) {
     if (points.size() == 0) {
         return std::make_pair(-1, -1);
     }

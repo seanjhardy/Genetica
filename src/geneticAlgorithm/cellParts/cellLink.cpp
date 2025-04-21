@@ -1,10 +1,11 @@
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
 #include "geneticAlgorithm/lifeform.hpp"
 
-CellLink::CellLink(const size_t lifeFormIdx, const size_t cellAIdx, const size_t cellBIdx, const size_t pointAIdx, const size_t pointBIdx,
+CellLink::CellLink(const size_t cellAIdx, const size_t cellBIdx, const size_t pointAIdx, const size_t pointBIdx,
                    float startLength, float targetLength, float angleFromA, float angleFromB, float stiffness)
-: lifeFormIdx(lifeFormIdx), cellAIdx(cellAIdx), cellBIdx(cellBIdx), pointAIdx(pointAIdx), pointBIdx(pointBIdx),
-  length(startLength), targetLength(targetLength), angleFromA(angleFromA), angleFromB(angleFromB), stiffness(stiffness) {};
+    : cellAIdx(cellAIdx), cellBIdx(cellBIdx), pointAIdx(pointAIdx), pointBIdx(pointBIdx),
+      length(startLength), targetLength(targetLength), angleFromA(angleFromA), angleFromB(angleFromB),
+      stiffness(stiffness) {};
 
 
 void CellLink::renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points) {
@@ -24,10 +25,10 @@ void CellLink::renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells
     const float angle2 = angle - M_PI_HALF;
 
     if (vertexManager.getSizeInView(point1.radius) < 5 && vertexManager.getSizeInView(point2.radius) < 5) return;
-    float2 v1 = point1.getPos() + make_float2(cos(angle1), sin(angle1)) * (point1.radius + cell1->thickness);
-    float2 v2 = point2.getPos() + make_float2(cos(angle1), sin(angle1)) * (point2.radius + cell2->thickness);
-    float2 v3 = point2.getPos() + make_float2(cos(angle2), sin(angle2)) * (point2.radius + cell2->thickness);
-    float2 v4 = point1.getPos() + make_float2(cos(angle2), sin(angle2)) * (point1.radius + cell1->thickness);
+    float2 v1 = point1.getPos() + make_float2(cos(angle1), sin(angle1)) * (point1.radius + cell1->membraneThickness);
+    float2 v2 = point2.getPos() + make_float2(cos(angle1), sin(angle1)) * (point2.radius + cell2->membraneThickness);
+    float2 v3 = point2.getPos() + make_float2(cos(angle2), sin(angle2)) * (point2.radius + cell2->membraneThickness);
+    float2 v4 = point1.getPos() + make_float2(cos(angle2), sin(angle2)) * (point1.radius + cell1->membraneThickness);
     vertexManager.addPolygon(std::vector<VertexManager::Vertex>({
         {v1, cell1Color},
         {v2, cell2Color},
@@ -35,7 +36,8 @@ void CellLink::renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells
 
         {v3, cell2Color},
         {v4, cell1Color},
-        {v1, cell1Color}}));
+        {v1, cell1Color}
+    }));
 }
 
 void CellLink::renderBody(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points) {
@@ -64,10 +66,11 @@ void CellLink::renderBody(VertexManager& vertexManager, vector<Cell>& cells, vec
 
         {v3, cell2Color},
         {v4, cell1Color},
-        {v1, cell1Color}}));
+        {v1, cell1Color}
+    }));
 }
 
-void CellLink::renderDetails(VertexManager &vertexManager, vector<Cell> &cells, vector<Point> &points) {
+void CellLink::renderDetails(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points) {
     const Point point1 = points[pointAIdx];
     const Point point2 = points[pointBIdx];
     const Cell* cell1 = &cells[cellAIdx];
@@ -77,9 +80,8 @@ void CellLink::renderDetails(VertexManager &vertexManager, vector<Cell> &cells, 
 
     // Add line across the length of the link
     float thickness = (point1.radius + point2.radius) / 5;
-    vertexManager.addLine(point1.getPos(), point2.getPos(), brightness(cell1Color, 1.2),thickness);
+    vertexManager.addLine(point1.getPos(), point2.getPos(), brightness(cell1Color, 1.2), thickness);
 }
-
 
 
 /*

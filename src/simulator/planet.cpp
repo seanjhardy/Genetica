@@ -6,7 +6,7 @@ std::map<std::string, Planet> Planet::planets = {};
 std::vector<std::string> Planet::planetNames = {};
 int Planet::current = 0;
 
-Planet::Planet(std::string name){
+Planet::Planet(std::string name) {
     this->name = name;
     thumbnail = name;
     thumbnail.erase(std::remove(thumbnail.begin(), thumbnail.end(), '-'), thumbnail.end());
@@ -20,7 +20,7 @@ void Planet::update() {
     }
 }
 
-void Planet::render(VertexManager &vertexManager) {
+void Planet::render(VertexManager& vertexManager) {
     vertexManager.addSprite(mapSprite);
 }
 
@@ -77,10 +77,11 @@ void Planet::updateMap() {
 }
 
 Planet* Planet::getRandom() {
-    std::string planet = planetNames[current];//planetNames[Random::random((int)planetNames.size())]
+    std::string planet = planetNames[current]; //planetNames[Random::random((int)planetNames.size())]
     if (current < planetNames.size() - 1) {
         current += 1;
-    } else {
+    }
+    else {
         current = 0;
     }
     return &planets.at(planet);
@@ -90,10 +91,12 @@ void Planet::init() {
     Planet mars("Mars");
     mars.temperature = -5.0f;
     mars.noise = {
-      new Add(Noise({sf::Color(61, 40, 54),
-             sf::Color(81, 50, 62),
-             sf::Color(172, 47, 68)},
-            5.0f, 0.7f, 0.7f, true)),
+        new Add(Noise({
+                          sf::Color(61, 40, 54),
+                          sf::Color(81, 50, 62),
+                          sf::Color(172, 47, 68)
+                      },
+                      5.0f, 0.7f, 0.7f, true)),
     };
     planets.insert({mars.name, mars});
     planetNames.push_back(mars.name);
@@ -101,34 +104,38 @@ void Planet::init() {
     Planet cyrus("Cyrus");
     cyrus.temperature = 70.0f;
     cyrus.noise = {
-      new Add(Noise(
-            {sf::Color(43, 30, 39),
-             sf::Color(61, 41, 54),
-             sf::Color(82, 51, 63),
-             sf::Color(143, 77, 87)},
+        new Add(Noise(
+            {
+                sf::Color(43, 30, 39),
+                sf::Color(61, 41, 54),
+                sf::Color(82, 51, 63),
+                sf::Color(143, 77, 87)
+            },
             8.0f, 1.0f, 0.7f, true, false)),
-      new Add(Noise(
-            {sf::Color(0, 0, 0, 0),
-             sf::Color(0, 0, 0, 0),
-             sf::Color(0, 0, 0, 0),
-             sf::Color(0, 0, 0, 0),
-             sf::Color(43, 30, 39, 0),
-             sf::Color(43, 30, 39, 25),
-             sf::Color(43, 30, 39, 50),
-             sf::Color(43, 30, 39, 100),
-             sf::Color(61, 41, 54, 200),
-             sf::Color(230, 69, 57),
-             sf::Color(255, 180, 51),
-             sf::Color(230, 69, 57),
-             sf::Color(61, 41, 54, 200),
-             sf::Color(43, 30, 39, 100),
-             sf::Color(43, 30, 39, 50),
-             sf::Color(43, 30, 39, 25),
-             sf::Color(43, 30, 39, 0),
-             sf::Color(0, 0, 0, 0),
-             sf::Color(0, 0, 0, 0),
-             sf::Color(0, 0, 0, 0),
-             sf::Color(0, 0, 0, 0),},
+        new Add(Noise(
+            {
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(43, 30, 39, 0),
+                sf::Color(43, 30, 39, 25),
+                sf::Color(43, 30, 39, 50),
+                sf::Color(43, 30, 39, 100),
+                sf::Color(61, 41, 54, 200),
+                sf::Color(230, 69, 57),
+                sf::Color(255, 180, 51),
+                sf::Color(230, 69, 57),
+                sf::Color(61, 41, 54, 200),
+                sf::Color(43, 30, 39, 100),
+                sf::Color(43, 30, 39, 50),
+                sf::Color(43, 30, 39, 25),
+                sf::Color(43, 30, 39, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+            },
             10.0f, 0.1f, 0.7f, true, true)),
 
     };
@@ -138,12 +145,14 @@ void Planet::init() {
     Planet syth("Syth");
     syth.temperature = 70.0f;
     syth.noise = {
-      new Add(Noise(
-        {sf::Color(43, 30, 39),
-         sf::Color(61, 41, 54),
-         sf::Color(82, 51, 63),
-         sf::Color(143, 77, 87)},
-        8.0f, 0.1f, 0.0f, true)),
+        new Add(Noise(
+            {
+                sf::Color(43, 30, 39),
+                sf::Color(61, 41, 54),
+                sf::Color(82, 51, 63),
+                sf::Color(143, 77, 87)
+            },
+            8.0f, 0.1f, 0.0f, true)),
     };
     planets.insert({syth.name, syth});
     planetNames.push_back(syth.name);
@@ -151,12 +160,14 @@ void Planet::init() {
     Planet xeria("Xeria");
     xeria.temperature = 20.0f;
     xeria.noise = {
-      new Add(Noise(
-        {sf::Color(8, 92, 110),
-         sf::Color(52, 119, 134),
-         sf::Color(62, 146, 165),
-         sf::Color(79, 164, 184)},
-        10.0f, 0.1f, 0.0f, true)),
+        new Add(Noise(
+            {
+                sf::Color(8, 92, 110),
+                sf::Color(52, 119, 134),
+                sf::Color(62, 146, 165),
+                sf::Color(79, 164, 184)
+            },
+            10.0f, 0.1f, 0.0f, true)),
     };
     planetNames.push_back(xeria.name);
     planets.insert({xeria.name, xeria});
@@ -164,12 +175,14 @@ void Planet::init() {
     Planet xeriab("Xeria-b");
     xeriab.temperature = 20.0f;
     xeriab.noise = {
-      new Add(Noise(
-        {sf::Color(8, 92, 110),
-         sf::Color(52, 119, 134),
-         sf::Color(62, 146, 165),
-         sf::Color(79, 164, 184)},
-        6.0f, 1.0f, 0.0f, true)),
+        new Add(Noise(
+            {
+                sf::Color(8, 92, 110),
+                sf::Color(52, 119, 134),
+                sf::Color(62, 146, 165),
+                sf::Color(79, 164, 184)
+            },
+            6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(xeriab.name);
     planets.insert({xeriab.name, xeriab});
@@ -177,9 +190,11 @@ void Planet::init() {
     Planet ichigo("Ichigo");
     ichigo.temperature = -30.0f;
     ichigo.noise = {
-      new Add(Noise(
-            {sf::Color(11, 104, 128),
-             sf::Color(27, 143, 171),},
+        new Add(Noise(
+            {
+                sf::Color(11, 104, 128),
+                sf::Color(27, 143, 171),
+            },
             6.0f, 0.05f, 8.0f, true)),
     };
     planetNames.push_back(ichigo.name);
@@ -188,10 +203,12 @@ void Planet::init() {
     Planet b12axo("B12-Axo");
     b12axo.temperature = -10.0f;
     b12axo.noise = {
-      new Add(Noise(
-            {sf::Color(42, 46, 73),
-             sf::Color(58, 63, 94),
-             sf::Color(76, 104, 133)},
+        new Add(Noise(
+            {
+                sf::Color(42, 46, 73),
+                sf::Color(58, 63, 94),
+                sf::Color(76, 104, 133)
+            },
             10.0f, 0.2f, 0.0f, true)),
     };
     planetNames.push_back(b12axo.name);
@@ -200,12 +217,14 @@ void Planet::init() {
     Planet aridium("Aridium");
     aridium.temperature = 30.0f;
     aridium.noise = {
-      new Add(Noise(
-            {sf::Color(41, 49, 21),
-             sf::Color(67, 83, 29),
-             sf::Color(97, 95, 41),
-             sf::Color(146, 117, 62),
-             sf::Color(166, 123, 80)},
+        new Add(Noise(
+            {
+                sf::Color(41, 49, 21),
+                sf::Color(67, 83, 29),
+                sf::Color(97, 95, 41),
+                sf::Color(146, 117, 62),
+                sf::Color(166, 123, 80)
+            },
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(aridium.name);
@@ -214,12 +233,14 @@ void Planet::init() {
     Planet ocea("Ocea");
     ocea.temperature = 30.0f;
     ocea.noise = {
-      new Add(Noise(
-            {sf::Color(55, 68, 106),
-             sf::Color(67, 81, 125),
-             sf::Color(31, 100, 156),
-             sf::Color(79, 164, 184),
-             sf::Color(146, 117, 62)},
+        new Add(Noise(
+            {
+                sf::Color(55, 68, 106),
+                sf::Color(67, 81, 125),
+                sf::Color(31, 100, 156),
+                sf::Color(79, 164, 184),
+                sf::Color(146, 117, 62)
+            },
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(ocea.name);
@@ -228,20 +249,24 @@ void Planet::init() {
     Planet gundam("Gundam");
     gundam.temperature = 15.0f;
     gundam.noise = {
-      new Add(Noise(
-            {sf::Color(51, 34, 25),
-             sf::Color(61, 46, 38),
-             sf::Color(80, 51, 49),
-             sf::Color(92, 59, 57)},
+        new Add(Noise(
+            {
+                sf::Color(51, 34, 25),
+                sf::Color(61, 46, 38),
+                sf::Color(80, 51, 49),
+                sf::Color(92, 59, 57)
+            },
             6.0f, 0.6f, 0.2f, true)),
-      new Add(Noise(
-          {sf::Color(0, 0, 0, 0),
-          sf::Color(0, 0, 0, 0),
-          sf::Color(80, 51, 49, 0),
-          sf::Color(43, 118, 92),
-          sf::Color(65, 177, 94)},
+        new Add(Noise(
+            {
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(80, 51, 49, 0),
+                sf::Color(43, 118, 92),
+                sf::Color(65, 177, 94)
+            },
             10.0f, 0.2f, 0.2f, true
-          ))
+        ))
     };
     planetNames.push_back(gundam.name);
     planets.insert({gundam.name, gundam});
@@ -249,9 +274,11 @@ void Planet::init() {
     Planet roche("Roche");
     roche.temperature = 70.0f;
     roche.noise = {
-      new Add(Noise(
-            {sf::Color(59, 32, 39),
-             sf::Color(171, 81, 48),},
+        new Add(Noise(
+            {
+                sf::Color(59, 32, 39),
+                sf::Color(171, 81, 48),
+            },
             10.0f, 0.4f, 0.0f, true)),
     };
     planetNames.push_back(roche.name);
@@ -260,13 +287,15 @@ void Planet::init() {
     Planet xia("Xia");
     xia.temperature = -10.0f;
     xia.noise = {
-      new Add(Noise(
-            {sf::Color(56, 39, 9),
-             sf::Color(112, 50, 19),
-             sf::Color(64, 151, 144),
-             sf::Color(96, 227, 164),
-             sf::Color(112, 50, 19),
-             sf::Color(168, 33, 28)},
+        new Add(Noise(
+            {
+                sf::Color(56, 39, 9),
+                sf::Color(112, 50, 19),
+                sf::Color(64, 151, 144),
+                sf::Color(96, 227, 164),
+                sf::Color(112, 50, 19),
+                sf::Color(168, 33, 28)
+            },
             8.0f, 0.2f, 0.0f, true)),
     };
     planetNames.push_back(xia.name);
@@ -275,11 +304,13 @@ void Planet::init() {
     Planet glau("Glau");
     glau.temperature = 5.0f;
     glau.noise = {
-      new Add(Noise(
-        {sf::Color(11, 10, 14),
-         sf::Color(16, 16, 23),
-         sf::Color(25, 29, 34)},
-        6.0f, 1.0f, 0.0f, true)),
+        new Add(Noise(
+            {
+                sf::Color(11, 10, 14),
+                sf::Color(16, 16, 23),
+                sf::Color(25, 29, 34)
+            },
+            6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(glau.name);
     planets.insert({glau.name, glau});
@@ -287,9 +318,11 @@ void Planet::init() {
     Planet eden("Eden");
     eden.temperature = 25.0f;
     eden.noise = {
-      new Add(Noise(
-            {sf::Color(26, 90, 45),
-             sf::Color(38, 134, 39)},
+        new Add(Noise(
+            {
+                sf::Color(26, 90, 45),
+                sf::Color(38, 134, 39)
+            },
             6.0f, 0.3f, 3.0f, true)),
     };
     planetNames.push_back(eden.name);
@@ -298,17 +331,21 @@ void Planet::init() {
     Planet zolo("Zolo");
     zolo.temperature = 5.0f;
     zolo.noise = {
-      new Add(Noise(
-            {sf::Color(70, 42, 18),
-             sf::Color(120, 74, 32)},
+        new Add(Noise(
+            {
+                sf::Color(70, 42, 18),
+                sf::Color(120, 74, 32)
+            },
             6.0f, 1.0f, 0.1f, true)),
-      new Add(Noise(
-            {sf::Color(0, 0, 0, 0),
-             sf::Color(0, 0, 0, 0),
-             sf::Color(0, 0, 0, 0),
-             sf::Color(52, 59, 22, 0),
-             sf::Color(52, 59, 22),
-             sf::Color(104, 138, 42)},
+        new Add(Noise(
+            {
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(52, 59, 22, 0),
+                sf::Color(52, 59, 22),
+                sf::Color(104, 138, 42)
+            },
             8.0f, 0.2f, 0.1f, true)),
     };
     planetNames.push_back(zolo.name);
@@ -317,26 +354,30 @@ void Planet::init() {
     Planet riula("Riula");
     riula.temperature = 10.0f;
     riula.noise = {
-      new Add(Noise(
-            {sf::Color(33, 29, 19),
-             sf::Color(97, 95, 62),},
+        new Add(Noise(
+            {
+                sf::Color(33, 29, 19),
+                sf::Color(97, 95, 62),
+            },
             6.0f, 0.2f, 0.0f, true)),
-      new Add(Noise(
-        {sf::Color(0, 0, 0, 0),
-         sf::Color(0, 0, 0, 0),
-         sf::Color(0, 0, 0, 0),
-         sf::Color(0, 0, 0, 0),
-         sf::Color(4, 109, 114, 0),
-          //sf::Color(173, 47, 69),
-         sf::Color(4, 109, 114),
-         sf::Color(29, 191, 184),
-         sf::Color(4, 109, 114),
-          //sf::Color(173, 47, 69),
-         sf::Color(4, 109, 114,0),
-         sf::Color(0, 0, 0, 0),
-         sf::Color(0, 0, 0, 0),
-         sf::Color(0, 0, 0, 0),},
-        10.0f, 0.1f, 0.7f, true, true)),
+        new Add(Noise(
+            {
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(4, 109, 114, 0),
+                //sf::Color(173, 47, 69),
+                sf::Color(4, 109, 114),
+                sf::Color(29, 191, 184),
+                sf::Color(4, 109, 114),
+                //sf::Color(173, 47, 69),
+                sf::Color(4, 109, 114, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+                sf::Color(0, 0, 0, 0),
+            },
+            10.0f, 0.1f, 0.7f, true, true)),
     };
     planetNames.push_back(riula.name);
     planets.insert({riula.name, riula});
@@ -344,11 +385,13 @@ void Planet::init() {
     Planet flax("Flax");
     flax.temperature = -10.0f;
     flax.noise = {
-      new Add(Noise(
-        {sf::Color(35, 15, 3),
-         sf::Color(70, 42, 18),
-         sf::Color(120, 74, 32)},
-        6.0f, 0.2f, 0.0f, true)),
+        new Add(Noise(
+            {
+                sf::Color(35, 15, 3),
+                sf::Color(70, 42, 18),
+                sf::Color(120, 74, 32)
+            },
+            6.0f, 0.2f, 0.0f, true)),
     };
     planetNames.push_back(flax.name);
     planets.insert({flax.name, flax});
@@ -356,36 +399,42 @@ void Planet::init() {
     Planet romea("Romea");
     romea.temperature = 20.0f;
     romea.noise = {
-      new Add(Noise(
-            {sf::Color(22, 62, 83),
-             sf::Color(34, 87, 103),
-             sf::Color(45, 118, 140),
-             sf::Color(51, 155, 148)},
+        new Add(Noise(
+            {
+                sf::Color(22, 62, 83),
+                sf::Color(34, 87, 103),
+                sf::Color(45, 118, 140),
+                sf::Color(51, 155, 148)
+            },
             6.0f, 0.3f, 0.0f, true)),
         new Mask(Noise(
-            {sf::Color(0,0,0, 0),
-             sf::Color(0,0,0, 0),
-             sf::Color(0,0,0, 0),
-             sf::Color(10, 68, 22, 0),
-             sf::Color(10, 68, 22, 150),
-             sf::Color(41, 136, 20, 150)},
-            5.0f, 0.1f, 0.0f, false
-          ),
-        Noise(
-          {sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 255),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),
-           sf::Color(0, 0, 0, 0),},
-          10.0f, 0.2f, 2.0f, true)),
+                     {
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(10, 68, 22, 0),
+                         sf::Color(10, 68, 22, 150),
+                         sf::Color(41, 136, 20, 150)
+                     },
+                     5.0f, 0.1f, 0.0f, false
+                 ),
+                 Noise(
+                     {
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 255),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                         sf::Color(0, 0, 0, 0),
+                     },
+                     10.0f, 0.2f, 2.0f, true)),
     };
     planetNames.push_back(romea.name);
     planets.insert({romea.name, romea});
@@ -394,15 +443,19 @@ void Planet::init() {
     emulo.temperature = 10.0f;
     emulo.noise = {
         new Add(Noise(
-            {sf::Color(35, 15, 3),
-             sf::Color(70, 42, 18),
-             sf::Color(120, 74, 32)},
+            {
+                sf::Color(35, 15, 3),
+                sf::Color(70, 42, 18),
+                sf::Color(120, 74, 32)
+            },
             6.0f, 1.0f, 0.0f, true)),
         new Add(Noise(
-          {sf::Color(0,0,0,0),
-           sf::Color(104, 138, 42,0),
-           sf::Color(104, 138, 42),
-           sf::Color(169, 173, 55)},
+            {
+                sf::Color(0, 0, 0, 0),
+                sf::Color(104, 138, 42, 0),
+                sf::Color(104, 138, 42),
+                sf::Color(169, 173, 55)
+            },
             6.0f, 1.0f, 0.1f, true)),
     };
     planetNames.push_back(emulo.name);
@@ -411,9 +464,11 @@ void Planet::init() {
     Planet azeuros("Azeuros");
     azeuros.temperature = -20.0f;
     azeuros.noise = {
-      new Add(Noise(
-            {sf::Color(46, 102, 126),
-             sf::Color(69, 189, 188)},
+        new Add(Noise(
+            {
+                sf::Color(46, 102, 126),
+                sf::Color(69, 189, 188)
+            },
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(azeuros.name);
@@ -422,9 +477,11 @@ void Planet::init() {
     Planet iridium("Iridium");
     iridium.temperature = 30.0f;
     iridium.noise = {
-      new Add(Noise(
-            {sf::Color(65, 43, 81),
-             sf::Color(80, 64, 121)},
+        new Add(Noise(
+            {
+                sf::Color(65, 43, 81),
+                sf::Color(80, 64, 121)
+            },
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(iridium.name);
@@ -433,10 +490,12 @@ void Planet::init() {
     Planet nauca("Nauca");
     nauca.temperature = 20.0f;
     nauca.noise = {
-      new Add(Noise(
-            {sf::Color(38, 21, 40),
-             sf::Color(65, 43, 81),
-             sf::Color(80, 64, 121)},
+        new Add(Noise(
+            {
+                sf::Color(38, 21, 40),
+                sf::Color(65, 43, 81),
+                sf::Color(80, 64, 121)
+            },
             6.0f, 0.4f, 0.0f, true)),
     };
     planetNames.push_back(nauca.name);
@@ -445,9 +504,11 @@ void Planet::init() {
     Planet abogee("Abogee");
     abogee.temperature = 60.0f;
     abogee.noise = {
-      new Add(Noise(
-            {sf::Color(22, 57, 40),
-             sf::Color(75, 171, 66)},
+        new Add(Noise(
+            {
+                sf::Color(22, 57, 40),
+                sf::Color(75, 171, 66)
+            },
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(abogee.name);
@@ -456,10 +517,12 @@ void Planet::init() {
     Planet delune("Delune");
     delune.temperature = 10.0f;
     delune.noise = {
-      new Add(Noise(
-            {sf::Color(1, 1, 18),
-             sf::Color(7, 4, 51),
-             sf::Color(20, 11, 92)},
+        new Add(Noise(
+            {
+                sf::Color(1, 1, 18),
+                sf::Color(7, 4, 51),
+                sf::Color(20, 11, 92)
+            },
             6.0f, 0.1f, 0.0f, true)),
     };
     planetNames.push_back(delune.name);
@@ -468,9 +531,11 @@ void Planet::init() {
     Planet cerebrus("Cerebrus");
     cerebrus.temperature = 0.0f;
     cerebrus.noise = {
-      new Add(Noise(
-            {sf::Color(137, 36, 82),
-             sf::Color(62, 13, 35)},
+        new Add(Noise(
+            {
+                sf::Color(137, 36, 82),
+                sf::Color(62, 13, 35)
+            },
             6.0f, 0.1f, 0.0f, true)),
     };
     planetNames.push_back(cerebrus.name);

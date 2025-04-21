@@ -9,7 +9,7 @@ std::unordered_map<std::string, sf::Font> FontManager::fonts;
 void FontManager::init() {
     // Hardcoded map of key to file path
     std::unordered_map<std::string, std::string> fontMappings = {
-            // Icons
+        // Icons
         {"russo", "./assets/fonts/russoone-regular.ttf"}
     };
 
@@ -26,7 +26,7 @@ void FontManager::init() {
     }
 }
 
-sf::Font* FontManager::get(const std::string &key) {
+sf::Font* FontManager::get(const std::string& key) {
     auto it = fonts.find(key);
     if (it != fonts.end()) {
         return &it->second;

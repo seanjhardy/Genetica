@@ -14,7 +14,7 @@ void ShaderManager::init() {
     loadShader("genome", "", "./assets/shaders/genome.frag");
 }
 
-void ShaderManager::loadShader(const std::string &key, const std::string &vertexPath, const std::string &fragmentPath) {
+void ShaderManager::loadShader(const std::string& key, const std::string& vertexPath, const std::string& fragmentPath) {
     if (fragmentPath.empty()) {
         shaders[key].loadFromFile(vertexPath, sf::Shader::Vertex);
         shaders[key].setUniform("texture", SpriteManager::get("default"));
@@ -31,7 +31,7 @@ void ShaderManager::loadShader(const std::string &key, const std::string &vertex
     }
 }
 
-sf::Shader* ShaderManager::get(const std::string &key) {
+sf::Shader* ShaderManager::get(const std::string& key) {
     if (shaders.contains(key)) {
         return &shaders[key];
     }

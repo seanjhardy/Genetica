@@ -9,7 +9,8 @@
             -5*
         </Text>
     </View>
-    <View key="planetSettings" class="container" style="position: absolute; flex-direction: row; height: 140px; width: 140px; left: -20px; top: 20px;">
+    <View key="planetSettings" class="container"
+          style="position: absolute; flex-direction: row; height: 140px; width: 140px; left: -20px; top: 20px;">
         <Button class="planetBtn" onClick="randomPlanet">
             <Image key="planetBtnIcon" style="flex: 1; image: delune"/>
             <Text key="planetBtnName" style="position: absolute; outline: 3px; font-size: 25px">Delune</Text>

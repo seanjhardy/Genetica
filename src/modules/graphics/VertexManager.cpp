@@ -11,7 +11,7 @@
 
 
 VertexManager::VertexManager()
-: vertices(sf::PrimitiveType::Triangles), texturedVertices(sf::PrimitiveType::Triangles) {
+    : vertices(sf::PrimitiveType::Triangles), texturedVertices(sf::PrimitiveType::Triangles) {
     ShaderManager::get("texture")->setParameter("texture", sf::Shader::CurrentTexture);
     states.shader = ShaderManager::get("texture");
     states.texture = SpriteManager::getTexture("cellTexture");
@@ -20,15 +20,13 @@ VertexManager::VertexManager()
 
 void VertexManager::addTriangle(const float2& p1, const float2& p2, const float2& p3,
                                 const sf::Color& color) {
-
     vertices.append(sf::Vertex({p1.x, p1.y}, color));
     vertices.append(sf::Vertex({p2.x, p2.y}, color));
     vertices.append(sf::Vertex({p3.x, p3.y}, color));
 }
 
 void VertexManager::addTexturedTriangle(const float2& p1, const float2& p2, const float2& p3,
-                                const sf::Color& color, const sf::FloatRect& bbox, float angle) {
-
+                                        const sf::Color& color, const sf::FloatRect& bbox, float angle) {
     float textureWidth = 50;
     float textureHeight = 50;
     float textureAspect = textureWidth / textureHeight;
@@ -62,7 +60,8 @@ void VertexManager::addCircle(const float2& center, float radius, const sf::Colo
     }
 }
 
-void VertexManager::addRectangle(const float2& p1, const float2& p2, const float2& p3, const float2& p4, const sf::Color& color) {
+void VertexManager::addRectangle(const float2& p1, const float2& p2, const float2& p3, const float2& p4,
+                                 const sf::Color& color) {
     addTriangle(p1, p2, p3, color);
     addTriangle(p3, p4, p1, color);
 }
@@ -102,20 +101,22 @@ void VertexManager::addPolygon(const std::vector<Vertex>& points) {
 
 void VertexManager::addSegment(float2 p1, float2 p2, float r1, float r2, float angle, const sf::Color& color) {
     // Keep track of body polygon points
-    std::array<float2, 4> polygon = {0,0,0,0};
+    std::array<float2, 4> polygon = {0, 0, 0, 0};
     int LOD1 = getCircleLOD(r1) / 2;
     int LOD2 = getCircleLOD(r2) / 2;
 
-    sf::FloatRect bbox = {min(p1.x - r1, p2.x - r2),
-                          min(p1.y - r1, p2.y - r2),
-                          max(p1.x + r1, p2.x + r2) - min(p1.x - r1, p2.x - r2),
-                          max(p1.y + r1, p2.y + r2) - min(p1.y - r1, p2.y - r2)};
+    sf::FloatRect bbox = {
+        min(p1.x - r1, p2.x - r2),
+        min(p1.y - r1, p2.y - r2),
+        max(p1.x + r1, p2.x + r2) - min(p1.x - r1, p2.x - r2),
+        max(p1.y + r1, p2.y + r2) - min(p1.y - r1, p2.y - r2)
+    };
 
     // Create body
-    float2 prevVertex = p1 + vec(angle + M_PI/2) * r1;
+    float2 prevVertex = p1 + vec(angle + M_PI / 2) * r1;
     polygon[0] = prevVertex;
     for (int i = 0; i < LOD1; ++i) {
-        float currentAngle = (i + 1) * M_PI / LOD1 + angle + M_PI/2;
+        float currentAngle = (i + 1) * M_PI / LOD1 + angle + M_PI / 2;
         float2 nextVertex = p1 + vec(currentAngle) * r1;
         addTexturedTriangle(p1, prevVertex, nextVertex, color, bbox, angle);
         prevVertex = nextVertex;
@@ -123,10 +124,10 @@ void VertexManager::addSegment(float2 p1, float2 p2, float r1, float r2, float a
     polygon[1] = prevVertex;
 
     // Second semicircle
-    prevVertex = p2 + vec(angle - M_PI/2) * r2;
+    prevVertex = p2 + vec(angle - M_PI / 2) * r2;
     polygon[2] = prevVertex;
     for (int i = 0; i < LOD2; i++) {
-        float currentAngle = (i + 1) * M_PI / LOD2 + angle + 3*M_PI/2;
+        float currentAngle = (i + 1) * M_PI / LOD2 + angle + 3 * M_PI / 2;
         float2 nextVertex = p2 + vec(currentAngle) * r2;
         addTexturedTriangle(p2, prevVertex, nextVertex, color, bbox, angle);
         prevVertex = nextVertex;
@@ -141,7 +142,7 @@ void VertexManager::addSegment(float2 p1, float2 p2, float r1, float r2, float a
 
 void VertexManager::addLine(const float2 start, const float2 end, const sf::Color& color, const float thickness) {
     float angle = FastMath::atan2f(end.y - start.y, end.x - start.x);
-    float2 d = vec(angle + M_PI/2) * thickness * 0.5f;
+    float2 d = vec(angle + M_PI / 2) * thickness * 0.5f;
 
     addTriangle(start + d, end + d, end - d, color);
     addTriangle(end - d, start - d, start + d, color);
@@ -158,17 +159,17 @@ void VertexManager::addText(const std::string& text, const float2& pos,
 
     sf::FloatRect bounds = label.getGlobalBounds();
     switch (alignment) {
-        case TextAlignment::Left:
-            label.setPosition(pos.x, pos.y);
-            break;
+    case TextAlignment::Left:
+        label.setPosition(pos.x, pos.y);
+        break;
 
-        case TextAlignment::Center:
-            label.setPosition(pos.x - bounds.width / 2, pos.y - bounds.height / 2);
-            break;
+    case TextAlignment::Center:
+        label.setPosition(pos.x - bounds.width / 2, pos.y - bounds.height / 2);
+        break;
 
-        case TextAlignment::Right:
-            label.setPosition(pos.x - bounds.width, pos.y);
-            break;
+    case TextAlignment::Right:
+        label.setPosition(pos.x - bounds.width, pos.y);
+        break;
     }
     labels.push_back(label);
 }
@@ -179,7 +180,7 @@ void VertexManager::addSprite(const sf::Sprite& sprite) {
 
 int VertexManager::getCircleLOD(float radius) {
     // Linearly interpolate between 3 points and 30 points based on apparent size from 10 pixels to over 100 pixels wide
-    int value = 4 + 30*std::clamp(getSizeInView(radius) / 100.0f, 0.0f, 1.0f);
+    int value = 4 + 30 * std::clamp(getSizeInView(radius) / 100.0f, 0.0f, 1.0f);
     return value;
 }
 

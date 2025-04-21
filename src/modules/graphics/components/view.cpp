@@ -38,7 +38,8 @@ View::View(const unordered_map<string, string>& properties, vector<UIElement*> c
     for (auto child : children) {
         if (child->absolute) {
             layers.push_back({child});
-        } else {
+        }
+        else {
             baseLayer.push_back(child);
         }
     }
@@ -51,7 +52,7 @@ View::View(const unordered_map<string, string>& properties, vector<UIElement*> c
 void View::onLayout() {
     UIElement::onLayout();
     sf::FloatRect clampedBorder = border.getRadius();
-    float maxBorderRadius = std::min(layout.width/2, layout.height/2);
+    float maxBorderRadius = std::min(layout.width / 2, layout.height / 2);
     clampedBorder.left = clamp(0, clampedBorder.left, maxBorderRadius);
     clampedBorder.top = clamp(0, clampedBorder.top, maxBorderRadius);
     clampedBorder.width = clamp(0, clampedBorder.width, maxBorderRadius);
@@ -59,12 +60,12 @@ void View::onLayout() {
 
     if (shadow.getColor() != sf::Color::Transparent) {
         shadowShape = sf::RoundedRectangleShape(layout.getSize() +
-                                                 sf::Vector2f(shadow.getSize(), shadow.getSize()));
+            sf::Vector2f(shadow.getSize(), shadow.getSize()));
         shadowShape.setFillColor(shadow.getColor());
         shadowShape.setRadius(clampedBorder);
         shadowShape.setPosition(layout.getPosition() +
-                                 sf::Vector2f(shadow.getOffset()[0] - shadow.getSize()/2,
-                                              shadow.getOffset()[1] - shadow.getSize()/2));
+            sf::Vector2f(shadow.getOffset()[0] - shadow.getSize() / 2,
+                         shadow.getOffset()[1] - shadow.getSize() / 2));
     }
     shape.setFillColor(backgroundColor);
     shape.setOutlineColor(border.getColor());
@@ -150,20 +151,20 @@ void View::updateLayout() {
         int flexItemCount = 0;
         float totalFlexGrow = 0;
 
-        for (const auto &child: layer) {
+        for (const auto& child : layer) {
             if (!child->visible) continue;
-            const Size &mainSize = (flexDirection == Direction::Row) ? child->width : child->height;
+            const Size& mainSize = (flexDirection == Direction::Row) ? child->width : child->height;
             switch (mainSize.getMode()) {
-                case Size::Mode::Pixel:
-                    totalFixedMainSize += mainSize.getValue();
-                    break;
-                case Size::Mode::Percent:
-                    totalFixedMainSize += availableMainSize * mainSize.getValue() / 100.0f;
-                    break;
-                case Size::Mode::Flex:
-                    flexItemCount++;
-                    totalFlexGrow += max(0.0f, mainSize.getValue());
-                    break;
+            case Size::Mode::Pixel:
+                totalFixedMainSize += mainSize.getValue();
+                break;
+            case Size::Mode::Percent:
+                totalFixedMainSize += availableMainSize * mainSize.getValue() / 100.0f;
+                break;
+            case Size::Mode::Flex:
+                flexItemCount++;
+                totalFlexGrow += max(0.0f, mainSize.getValue());
+                break;
             }
         }
 
@@ -172,12 +173,12 @@ void View::updateLayout() {
         float totalSpaceTaken = flexItemCount > 0 ? availableMainSize : totalFixedMainSize;
 
         // Second pass: set sizes and positions
-        float currentMainPos = (flexDirection == Direction::Row) ?
-                               layout.left + padding[0].getValue() :
-                               layout.top + padding[1].getValue();
+        float currentMainPos = (flexDirection == Direction::Row)
+                                   ? layout.left + padding[0].getValue()
+                                   : layout.top + padding[1].getValue();
 
-        for (const auto &child: layer) {
-            UIElement *element = child;
+        for (const auto& child : layer) {
+            UIElement* element = child;
             if (!child->visible) continue;
             Size childWidth = child->width.getValue() == 0 ? child->calculateWidth() : child->width;
             Size childHeight = child->height.getValue() == 0 ? child->calculateHeight() : child->height;
@@ -189,58 +190,58 @@ void View::updateLayout() {
 
             // Calculate main axis size
             switch (mainSize.getMode()) {
-                case Size::Mode::Pixel:
-                    itemMainSize = mainSize.getValue();
-                    break;
-                case Size::Mode::Percent:
-                    itemMainSize = availableMainSize * mainSize.getValue() / 100.0f;
-                    break;
-                case Size::Mode::Flex:
-                    itemMainSize = flexUnit * max(0.0f, mainSize.getValue());
-                    break;
+            case Size::Mode::Pixel:
+                itemMainSize = mainSize.getValue();
+                break;
+            case Size::Mode::Percent:
+                itemMainSize = availableMainSize * mainSize.getValue() / 100.0f;
+                break;
+            case Size::Mode::Flex:
+                itemMainSize = flexUnit * max(0.0f, mainSize.getValue());
+                break;
             }
 
             // Calculate cross axis size
             switch (crossSize.getMode()) {
-                case Size::Mode::Pixel:
-                    itemCrossSize = crossSize.getValue();
-                    break;
-                case Size::Mode::Percent:
-                    itemCrossSize = availableCrossSize * crossSize.getValue() / 100.0f;
-                    break;
-                case Size::Mode::Flex:
-                    itemCrossSize = availableCrossSize;
-                    break;
+            case Size::Mode::Pixel:
+                itemCrossSize = crossSize.getValue();
+                break;
+            case Size::Mode::Percent:
+                itemCrossSize = availableCrossSize * crossSize.getValue() / 100.0f;
+                break;
+            case Size::Mode::Flex:
+                itemCrossSize = availableCrossSize;
+                break;
             }
 
             // Set element size
             sf::Vector2f elementSize = (flexDirection == Direction::Row)
-                                       ? sf::Vector2f(itemMainSize, itemCrossSize)
-                                       : sf::Vector2f(itemCrossSize, itemMainSize);
+                                           ? sf::Vector2f(itemMainSize, itemCrossSize)
+                                           : sf::Vector2f(itemCrossSize, itemMainSize);
             element->base_layout.width = elementSize.x;
             element->base_layout.height = elementSize.y;
 
             // Set element position
-            Alignment &alignment = (flexDirection == Direction::Row) ? columnAlignment : rowAlignment;
-            float crossPos = (flexDirection == Direction::Row) ?
-                             layout.top + padding[1].getValue() :
-                             layout.left + padding[0].getValue();
+            Alignment& alignment = (flexDirection == Direction::Row) ? columnAlignment : rowAlignment;
+            float crossPos = (flexDirection == Direction::Row)
+                                 ? layout.top + padding[1].getValue()
+                                 : layout.left + padding[0].getValue();
 
             switch (alignment) {
-                case Alignment::Center:
-                    crossPos += (availableCrossSize - itemCrossSize) / 2;
-                    break;
-                case Alignment::End:
-                    crossPos += availableCrossSize - itemCrossSize -
-                                ((flexDirection == Direction::Row) ? padding[2].getValue() : padding[3].getValue());
-                    break;
-                default:
-                    break;
+            case Alignment::Center:
+                crossPos += (availableCrossSize - itemCrossSize) / 2;
+                break;
+            case Alignment::End:
+                crossPos += availableCrossSize - itemCrossSize -
+                    ((flexDirection == Direction::Row) ? padding[2].getValue() : padding[3].getValue());
+                break;
+            default:
+                break;
             }
 
             sf::Vector2f elementPos = (flexDirection == Direction::Row)
-                                      ? sf::Vector2f(currentMainPos, crossPos)
-                                      : sf::Vector2f(crossPos, currentMainPos);
+                                          ? sf::Vector2f(currentMainPos, crossPos)
+                                          : sf::Vector2f(crossPos, currentMainPos);
             element->base_layout.left = elementPos.x;
             element->base_layout.top = elementPos.y;
             currentMainPos += itemMainSize + gap;
@@ -252,20 +253,20 @@ void View::updateLayout() {
         if (extraSpace > 0) {
             Alignment mainAlignment = (flexDirection == Direction::Row) ? rowAlignment : columnAlignment;
             switch (mainAlignment) {
-                case Alignment::Center:
-                    applyOffset(layer, extraSpace / 2);
-                    break;
-                case Alignment::End:
-                    applyOffset(layer, extraSpace);
-                    break;
-                case Alignment::SpaceBetween:
-                    distributeSpace(layer, extraSpace, false, numChildren);
-                    break;
-                case Alignment::SpaceAround:
-                    distributeSpace(layer, extraSpace, true, numChildren);
-                    break;
-                default:
-                    break;
+            case Alignment::Center:
+                applyOffset(layer, extraSpace / 2);
+                break;
+            case Alignment::End:
+                applyOffset(layer, extraSpace);
+                break;
+            case Alignment::SpaceBetween:
+                distributeSpace(layer, extraSpace, false, numChildren);
+                break;
+            case Alignment::SpaceAround:
+                distributeSpace(layer, extraSpace, true, numChildren);
+                break;
+            default:
+                break;
             }
         }
     }
@@ -276,13 +277,15 @@ void View::applyOffset(const std::vector<UIElement*>& elements, float offset) {
         if (!child->visible) continue;
         if (flexDirection == Direction::Row) {
             child->base_layout.left += offset;
-        } else {
+        }
+        else {
             child->base_layout.top += offset;
         }
     }
 }
 
-void View::distributeSpace(const std::vector<UIElement*>& elements, float space, bool includeEnds, int numVisibleChildren) {
+void View::distributeSpace(const std::vector<UIElement*>& elements, float space, bool includeEnds,
+                           int numVisibleChildren) {
     int divisions = includeEnds ? numVisibleChildren + 1 : numVisibleChildren - 1;
     if (divisions <= 0) return;
 
@@ -293,7 +296,8 @@ void View::distributeSpace(const std::vector<UIElement*>& elements, float space,
         if (!child->visible) continue;
         if (flexDirection == Direction::Row) {
             child->base_layout.left += currentOffset;
-        } else {
+        }
+        else {
             child->base_layout.top += currentOffset;
         }
         currentOffset += gap;

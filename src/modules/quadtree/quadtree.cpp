@@ -2,7 +2,7 @@
 #include <modules/utils/print.hpp>
 
 Quadtree::Quadtree(float2 center, float2 dimensions)
-: root(center, make_float2(dimensions.x / 2, dimensions.y / 2)) {}
+    : root(center, make_float2(dimensions.x / 2, dimensions.y / 2)) {}
 
 void Quadtree::insert(Point* point) {
     root.insert(point);
@@ -24,7 +24,6 @@ Point* Quadtree::findNearestPoint(float2 position, float maxDistance) {
 
     return nearestPoint;
 }
-
 
 
 void Quadtree::update() {

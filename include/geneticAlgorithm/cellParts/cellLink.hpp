@@ -8,7 +8,6 @@ class LifeForm;
 
 class CellLink {
 public:
-    size_t lifeFormIdx;
     size_t cellAIdx;
     size_t cellBIdx;
     size_t pointAIdx;
@@ -20,7 +19,7 @@ public:
     double targetLength;
 
     CellLink() = default;
-    CellLink(size_t lifeFormIdx, size_t cellAIdx, size_t cellBIdx, size_t pointAIdx, size_t pointBIdx,
+    CellLink(size_t cellAIdx, size_t cellBIdx, size_t pointAIdx, size_t pointBIdx,
              float startLength, float targetLength, float angleFromA, float angleFromB, float stiffness);
 
     __host__ void renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);

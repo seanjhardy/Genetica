@@ -13,14 +13,12 @@ public:
     size_t idx;
     size_t lifeFormIdx;
     size_t pointIdx;
+    size_t blueprintPointIdx;
+
+    StaticGPUVector<float> products;
 
     int generation = 0;
     size_t lastDivideTime = 0;
-
-    staticGPUVector<float> products;
-
-    float blueprintAngle = 0.0f;
-    float2 bluePrintPosition = {0.0f, 0.0f};
     float energy = 0.0f;
     float divisionRotation = 0.0f;
     float targetRadius = 0.0f;
@@ -28,9 +26,8 @@ public:
     bool frozen = false;
     bool dividing = false;
     bool dead = false;
-
     float hue = 200.0f, saturation = 0.0f, luminosity = 0.0f;
-    float thickness = 1.0f;
+    float membraneThickness = 1.0f;
 
     Cell() = default;
     Cell(int lifeFormIdx, Point& point);

@@ -1,5 +1,5 @@
 <!-- Control Panel -->
-<View class="UIPanel"  style="flex-direction: column; gap: 10px; align-row: center; align-col: end; padding: 5px;">
+<View class="UIPanel" style="flex-direction: column; gap: 10px; align-row: center; align-col: end; padding: 5px;">
     <View style="flex-direction: row; gap: 20px; align-row: center; align-col: center; width: 100%; height: 20px">
         <Text key="time" style="font-size: 20px; outline: 2px; width: 100px; height: 20px; text-align: center"/>
         <Text key="step" style="font-size: 20px; outline: 2px; width: 100px; height: 20px; text-align: center"/>
@@ -10,10 +10,11 @@
             <View class="container" style="background: rgba(255,255,255,70); border: 0px 20px;
              flex-direction: row; height: 100%; flex: 1;
              align-row: center; align-col: start; gap: 10px; padding: 0px;">
-                    <Button key="slowDownBtn" class="mainBtn"
+                <Button key="slowDownBtn" class="mainBtn"
                         style="height: 100%; border: 0px 10px 20px 20px 10px;"
                         onClick="slowDown">
-                    <Image key="slowDownIcon" style="flex: 1; image: slowDown" styleOnHover="image: slowDownHighlighted"/>
+                    <Image key="slowDownIcon" style="flex: 1; image: slowDown"
+                           styleOnHover="image: slowDownHighlighted"/>
                 </Button>
                 <Button key="playBtn" class="mainBtn"
                         style="height: 100%; border: 0px 10px;"
@@ -32,7 +33,8 @@
                 </Text>
             </View>
         </View>
-        <Button key="createRandom" class="mainBtn" style="margin: 60px 0px; width: 100%; flex: 1" onClick="createRandom">
+        <Button key="createRandom" class="mainBtn" style="margin: 60px 0px; width: 100%; flex: 1"
+                onClick="createRandom">
             <Text>Create Random</Text>
         </Button>
         <Button key="reset" class="mainBtn" style="margin: 60px 0px; width: 100%; flex: 1" onClick="reset">

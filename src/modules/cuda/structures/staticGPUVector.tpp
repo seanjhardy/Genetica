@@ -2,15 +2,15 @@
 #include <modules/utils/print.hpp>
 #include <modules/cuda/logging.hpp>
 
-template<typename T>
-staticGPUVector<T>::staticGPUVector(size_t capacity) {
+template <typename T>
+StaticGPUVector<T>::StaticGPUVector(size_t capacity) {
     size_ = capacity;
     reallocateDevice(capacity);
 }
 
 
-template<typename T>
-staticGPUVector<T>::staticGPUVector(const std::vector<T>& h_data){
+template <typename T>
+StaticGPUVector<T>::StaticGPUVector(const std::vector<T>& h_data) {
     size_ = h_data.size();
     capacity_ = h_data.size();
     if (data_ != nullptr) {
@@ -24,15 +24,15 @@ staticGPUVector<T>::staticGPUVector(const std::vector<T>& h_data){
     cudaLog(cudaMemcpy(data_, h_data.data(), h_data.size() * sizeof(T), cudaMemcpyHostToDevice));
 }
 
-template<typename T>
-__host__ __device__ void staticGPUVector<T>::reallocateDevice(size_t new_capacity) {
+template <typename T>
+__host__ __device__ void StaticGPUVector<T>::reallocateDevice(size_t new_capacity) {
     if (new_capacity == 0) {
         if (data_ != nullptr) {
             cudaLog(cudaFree(data_));
             data_ = nullptr;
         }
         size_ = 0;
-        capacity_ = 0;  // Changed from 1 to 0
+        capacity_ = 0; // Changed from 1 to 0
         return;
     }
 
@@ -41,7 +41,7 @@ __host__ __device__ void staticGPUVector<T>::reallocateDevice(size_t new_capacit
     cudaLog(cudaMalloc(&new_data, new_capacity * sizeof(T)));
 
     // Zero out new buffer
-    cudaLog(cudaMemset(new_data, 0,  new_capacity * sizeof(T)));
+    cudaLog(cudaMemset(new_data, 0, new_capacity * sizeof(T)));
 
     // Copy old data if it exists
     if (data_ != nullptr && size_ > 0) {
@@ -53,8 +53,8 @@ __host__ __device__ void staticGPUVector<T>::reallocateDevice(size_t new_capacit
     capacity_ = new_capacity;
 }
 
-template<typename T>
-void staticGPUVector<T>::destroy() {
+template <typename T>
+void StaticGPUVector<T>::destroy() {
     if (data_ != nullptr) {
         cudaLog(cudaFree(data_));
         data_ = nullptr;
@@ -63,17 +63,17 @@ void staticGPUVector<T>::destroy() {
     }
 }
 
-template<typename T>
-__host__ __device__ staticGPUVector<T> staticGPUVector<T>::copy() const {
-    staticGPUVector copy(size_);
+template <typename T>
+__host__ __device__ StaticGPUVector<T> StaticGPUVector<T>::copy() const {
+    StaticGPUVector copy(size_);
     if (size_ > 0) {
         cudaLog(cudaMemcpy(copy.data_, data_, size_ * sizeof(T), cudaMemcpyDeviceToDevice));
     }
     return copy;
 }
 
-template<typename T>
-std::vector<T> staticGPUVector<T>::toHost() const {
+template <typename T>
+std::vector<T> StaticGPUVector<T>::toHost() const {
     std::vector<T> host_data(size_);
     if (size_ > 0) {
         cudaLog(cudaMemcpy(host_data.data(), data_, size_ * sizeof(T), cudaMemcpyDeviceToHost));
@@ -81,8 +81,8 @@ std::vector<T> staticGPUVector<T>::toHost() const {
     return host_data;
 }
 
-template<typename T>
-T staticGPUVector<T>::itemToHost(size_t index) const {
+template <typename T>
+T StaticGPUVector<T>::itemToHost(size_t index) const {
     T host_data;
     if (index < size_) {
         cudaLog(cudaMemcpy(&host_data, data_ + index, sizeof(T), cudaMemcpyDeviceToHost));
@@ -90,24 +90,24 @@ T staticGPUVector<T>::itemToHost(size_t index) const {
     return host_data;
 }
 
-template<typename T>
-__host__ __device__ T& staticGPUVector<T>::operator[](size_t index) {
+template <typename T>
+__host__ __device__ T& StaticGPUVector<T>::operator[](size_t index) {
     if (data_ == nullptr) {
         printf("Warning: Accessing null data pointer\n");
     }
     return data_[index];
 }
 
-template<typename T>
-__host__ __device__ T& staticGPUVector<T>::operator[](size_t index) const {
+template <typename T>
+__host__ __device__ T& StaticGPUVector<T>::operator[](size_t index) const {
     if (data_ == nullptr) {
         printf("Warning: Accessing null data pointer\n");
     }
     return data_[index];
 }
 
-template<typename T>
-__host__ __device__ void staticGPUVector<T>::resize(size_t new_size) {
+template <typename T>
+__host__ __device__ void StaticGPUVector<T>::resize(size_t new_size) {
     if (new_size > capacity_) {
         reallocateDevice(new_size);
     }

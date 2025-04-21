@@ -6,8 +6,8 @@ __global__ void updateCell(GPUVector<Cell> cells, GPUVector<Point> points, size_
 
     if (index >= cells.size()) return;
 
-    Cell &cell = cells[index];
-    Point &point = points[cell.pointIdx];
+    Cell& cell = cells[index];
+    Point& point = points[cell.pointIdx];
 
     // - Base metabolic rate (proportional to area)
     cell.energy -= 0.00000001f * M_PI * point.radius * point.radius;
@@ -46,16 +46,17 @@ __global__ void updateCell(GPUVector<Cell> cells, GPUVector<Point> points, size_
     }
 }
 
-__global__ void updateCellCellInteractions(GPUVector<Cell> cells, GPUVector<CellLink> cellLinks, GPUVector<Point> points, size_t step, cellGrowthData output) {
+__global__ void updateCellCellInteractions(GPUVector<Cell> cells, GPUVector<CellLink> cellLinks,
+                                           GPUVector<Point> points, size_t step, cellGrowthData output) {
     size_t indexA = blockIdx.x * blockDim.x + threadIdx.x;
     size_t indexB = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (indexA >= cells.size() || indexB >= cells.size() || indexA >= indexB) return;
 
-    Cell &cellA = cells[indexA];
-    Cell &cellB = cells[indexB];
-    Point &pointA = points[cellA.pointIdx];
-    Point &pointB = points[cellB.pointIdx];
+    Cell& cellA = cells[indexA];
+    Cell& cellB = cells[indexB];
+    Point& pointA = points[cellA.pointIdx];
+    Point& pointB = points[cellB.pointIdx];
 
     if (cellA.lifeFormIdx == cellB.lifeFormIdx) {
         if (cellA.lastDivideTime <= 100 || cellB.lastDivideTime <= 100) {
@@ -90,7 +91,7 @@ void updateCells(dynamicStableVector<LifeForm>& lifeForms,
 
     dim3 cellThreadsPerBlock(32, 32);
     dim3 numCellCellBlocks((cells.size() + cellThreadsPerBlock.x - 1) / cellThreadsPerBlock.x,
-                       (cells.size() + cellThreadsPerBlock.y - 1) / cellThreadsPerBlock.y);
+                           (cells.size() + cellThreadsPerBlock.y - 1) / cellThreadsPerBlock.y);
     //updateCellCellInteractions<<<numCellBlocks, threadsPerBlock>>>(cells, points);
 
     int numDivisions = cellDivisionData.getNumDivisions();
@@ -103,9 +104,7 @@ void updateCells(dynamicStableVector<LifeForm>& lifeForms,
         for (int i = 0; i < eventsToProcess; i++) {
             size_t motherIdx = hostDividingIndices[i];
             Cell mother = cells.itemToHost(motherIdx);
-            Point p = points.itemToHost(mother.pointIdx);
-
-            lifeForms[mother.lifeFormIdx].addCell(motherIdx, mother, p);
+            lifeForms[mother.lifeFormIdx].addCell(motherIdx, mother);
         }
 
         delete[] hostDividingIndices;

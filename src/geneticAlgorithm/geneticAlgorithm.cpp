@@ -10,7 +10,8 @@ void GeneticAlgorithm::simulate() {
     }
 }
 
-void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Cell>& cells, GPUVector<CellLink>& cellLinks, GPUVector<Point>& points) {
+void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Cell>& cells, GPUVector<CellLink>& cellLinks,
+                              GPUVector<Point>& points) {
     auto hostCells = vector<Cell>(cells.size());
     auto hostCellLinks = vector<CellLink>(cellLinks.size());
     auto hostPoints = vector<Point>(points.size());
@@ -26,7 +27,7 @@ void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Cell>& cel
 
 void GeneticAlgorithm::mutate(Genome& genome) {
     // Clone genes
-    for (auto& [key, value]: genome.getGenes()) {
+    for (auto& [key, value] : genome.getGenes()) {
         if (Random::random() < cloneGeneChance) {
             genome.addHoxGene(nextGeneID(),
                               value,
@@ -38,7 +39,7 @@ void GeneticAlgorithm::mutate(Genome& genome) {
     float insertRandom = Random::random();
     if (insertRandom < insertGeneChance) {
         string newGene;
-        for(int i = 0; i < Genome::HOX_SIZE; i++) {
+        for (int i = 0; i < Genome::HOX_SIZE; i++) {
             newGene += Random::randomBase();
         }
         genome.addHoxGene(nextGeneID(),
@@ -47,7 +48,7 @@ void GeneticAlgorithm::mutate(Genome& genome) {
     }
 
     // Delete genes
-    for (auto& [key, value]: genome.getGenes()) {
+    for (auto& [key, value] : genome.getGenes()) {
         if (Random::random() < deleteGeneChance) {
             genome.removeGene(key);
         }
@@ -94,7 +95,6 @@ void GeneticAlgorithm::createRandomLifeForm() {
         population.push(lifeForm);
     }
 }
-
 
 
 void GeneticAlgorithm::reset() {

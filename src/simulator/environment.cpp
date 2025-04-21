@@ -60,7 +60,8 @@ std::pair<bool, int> Environment::handleEvent(const sf::Event& event, const sf::
                     int newSelectedEntityId = movePoint(points, heldPoint, mousePos);
                     return {true, newSelectedEntityId};
                 }
-            } else {
+            }
+            else {
                 heldPoint = -1;
                 return {true, -1};
             }
@@ -79,12 +80,15 @@ void Environment::update(const sf::Vector2f& worldCoords, float zoom, bool UIHov
         sf::FloatRect deltaBounds = dragHandler.update(worldCoords, tempBounds, 15.0f / zoom);
         if (deltaBounds.left != 0 || deltaBounds.top != 0 || deltaBounds.width != 0 || deltaBounds.height != 0) {
             tempBounds += deltaBounds;
-            bounds = {round(tempBounds.left / 20) * 20, round(tempBounds.top / 20) * 20,
-                      round(tempBounds.width / 20) * 20, round(tempBounds.height / 20) * 20};
+            bounds = {
+                round(tempBounds.left / 20) * 20, round(tempBounds.top / 20) * 20,
+                round(tempBounds.width / 20) * 20, round(tempBounds.height / 20) * 20
+            };
 
             planet->setBounds(bounds.hostData());
         }
-    } else {
+    }
+    else {
         dragHandler.reset();
     }
 }
@@ -133,7 +137,7 @@ void Environment::removePoint(int index) {
     points.remove(index);
 }
 
-size_t Environment::addCellLink(const CellLink &cellLink) {
+size_t Environment::addCellLink(const CellLink& cellLink) {
     return cellLinks.push(cellLink);
 }
 
@@ -159,8 +163,10 @@ sf::FloatRect* Environment::getBounds() {
 }
 
 float2 Environment::randomPos() {
-    return {Random::random(bounds.hostData().left, bounds.hostData().left + bounds.hostData().width),
-            Random::random(bounds.hostData().top, bounds.hostData().top + bounds.hostData().height)};
+    return {
+        Random::random(bounds.hostData().left, bounds.hostData().left + bounds.hostData().width),
+        Random::random(bounds.hostData().top, bounds.hostData().top + bounds.hostData().height)
+    };
 }
 
 void Environment::toggleGridLinesVisible() {
@@ -174,6 +180,7 @@ bool Environment::getGridLineVisibility() const {
 Planet& Environment::getPlanet() {
     return *planet;
 }
+
 void Environment::setPlanet(Planet* newPlanet) {
     planet = newPlanet;
     planet->setBounds(bounds.hostData());

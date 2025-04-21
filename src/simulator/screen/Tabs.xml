@@ -2,7 +2,7 @@
 <View class="UIPanel" style="flex-direction: row; align-row: start; align-col: start; gap: 10px;">
     <View class="tab" style="width: 60px; align-row: center;">
         <Button class="miniBtn" onClick="hideUI">
-            <Image style="flex: 1; image: noEye; width: 30px, height: 30px"  styleOnHover="image: noEyeHighlighted"/>
+            <Image style="flex: 1; image: noEye; width: 30px, height: 30px" styleOnHover="image: noEyeHighlighted"/>
         </Button>
     </View>
     <View class="tab" style="width: 0px; align-row: center;">
@@ -16,13 +16,13 @@
         <Text key="cells" style="font-size: 16px; font-size: 16px; margin: 0px 0px 10px 0px;"/>
     </View>
     <View key="genomeTab" class="tab tabHover" style="width: 0px; align-row: center; visible: false;"
-        onClick="toggleGenomeTab">
+          onClick="toggleGenomeTab">
         <Image style="width: 30px; height: 30px; image: dna;"/>
         <Text style="font-size: 12px;">
             Genome
         </Text>
         <View key="genomePanel" class="panel" style="position: absolute;
-                visible: false; top: 50px; width: 200px; height: 250px; flex-direction: column; padding: 10px; background: rgba(0,0,0,100)">
+                visible: false; top: 50px; width: 250px; height: 250px; flex-direction: column; padding: 10px; background: rgba(0,0,0,100)">
             <Viewport key="genomePanelViewport" style="width: 100%; flex: 1; background: transparent;"
                       camera="locked" bounds="0px 0px 400px 400px"/>
             <View style="flex-direction: row; width: 100%; height: 20px; align-row: start; align-col: start; gap: 10px;">

@@ -5,7 +5,7 @@
     <View key="showUIView" class="full" style="position: absolute; allow-click: false; visible: false;
     align-row: start; align-col: end; margin: 20px;">
         <Button class="miniBtn" onClick="showUI">
-            <Image style="flex: 1; image: eye;"  styleOnHover="image: eyeHighlighted"/>
+            <Image style="flex: 1; image: eye;" styleOnHover="image: eyeHighlighted"/>
         </Button>
     </View>
     <View key="UI" class="container" style="position: absolute; flex-direction: column; allow-click: false;

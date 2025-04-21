@@ -5,7 +5,7 @@
 #include <cuda_runtime.h>
 
 template<typename T>
-class staticGPUVector {
+class StaticGPUVector {
 protected:
     T* data_ = nullptr;        // Device data
     size_t size_ = 0;     // Current size
@@ -14,9 +14,9 @@ protected:
     __host__ __device__ void reallocateDevice(size_t new_capacity);
 public:
     // Constructors
-    __host__ staticGPUVector() = default;
-    __host__ explicit staticGPUVector(size_t initial_capacity);
-    __host__ explicit staticGPUVector(const std::vector<T>& host_vector);
+    __host__ StaticGPUVector() = default;
+    __host__ explicit StaticGPUVector(size_t initial_capacity);
+    __host__ explicit StaticGPUVector(const std::vector<T>& host_vector);
 
     __host__ __device__ T& operator[](size_t index);
     __host__ __device__ T& operator[](size_t index) const;
@@ -25,7 +25,7 @@ public:
 
     __host__ __device__ size_t size() const { return size_; }
     __host__ __device__ size_t capacity() const { return capacity_; }
-    __host__ __device__ staticGPUVector copy() const;
+    __host__ __device__ StaticGPUVector copy() const;
     __host__ std::vector<T> toHost() const;
     __host__ T itemToHost(size_t index) const;
     __host__ __device__ void resize(size_t new_size);

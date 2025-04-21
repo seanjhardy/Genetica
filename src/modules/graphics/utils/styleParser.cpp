@@ -22,9 +22,12 @@ unordered_map<string, string> parseStyleString(const string& styleString) {
         if (regex_search(token, match, keyValuePattern)) {
             if (result.contains(match[1].str())) {
                 result[match[1].str()] = trim(match[2].str());
-            } else {
-                result.insert({trim(match[1].str()),
-                               trim(match[2].str())});
+            }
+            else {
+                result.insert({
+                    trim(match[1].str()),
+                    trim(match[2].str())
+                });
             }
         }
     }
@@ -34,7 +37,8 @@ unordered_map<string, string> parseStyleString(const string& styleString) {
 Size parseSize(const string& value) {
     if (value.find("px") != string::npos) {
         return Size::Pixel(stof(value.substr(0, value.find("px"))));
-    } else if (value.find('%') != string::npos) {
+    }
+    else if (value.find('%') != string::npos) {
         return Size::Percent(stof(value.substr(0, value.find('%'))));
     }
     return Size::Pixel(0); // Default
@@ -60,27 +64,27 @@ void parseMultiValue(const string& value, Size (&result)[4]) {
     }
 
     switch (values.size()) {
-        case 1:
-            result[0] = result[1] = result[2] = result[3] = values[0];
-            break;
-        case 2:
-            result[0] = result[2] = values[0];
-            result[1] = result[3] = values[1];
-            break;
-        case 3:
-            result[0] = values[0];
-            result[1] = result[3] = values[1];
-            result[2] = values[2];
-            break;
-        case 4:
-            result[0] = values[0];
-            result[1] = values[1];
-            result[2] = values[2];
-            result[3] = values[3];
-            break;
-        default:
-            result[0] = result[1] = result[2] = result[3] = Size::Pixel(0);
-            break;
+    case 1:
+        result[0] = result[1] = result[2] = result[3] = values[0];
+        break;
+    case 2:
+        result[0] = result[2] = values[0];
+        result[1] = result[3] = values[1];
+        break;
+    case 3:
+        result[0] = values[0];
+        result[1] = result[3] = values[1];
+        result[2] = values[2];
+        break;
+    case 4:
+        result[0] = values[0];
+        result[1] = values[1];
+        result[2] = values[2];
+        result[3] = values[3];
+        break;
+    default:
+        result[0] = result[1] = result[2] = result[3] = Size::Pixel(0);
+        break;
     }
 }
 
@@ -95,13 +99,15 @@ sf::Color parseColor(const string& value) {
             return sf::Color(stoi(match[1].str()), stoi(match[2].str()),
                              stoi(match[3].str()), stoi(match[4].str()));
         }
-    } else if (value.find("rgb") != string::npos) {
+    }
+    else if (value.find("rgb") != string::npos) {
         regex rgbPattern(R"(rgb\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+))?\))");
         smatch match;
         if (regex_search(value, match, rgbPattern)) {
             return sf::Color(stoi(match[1].str()), stoi(match[2].str()), stoi(match[3].str()));
         }
-    } else if (value.find("#") != string::npos) {
+    }
+    else if (value.find("#") != string::npos) {
         string hex = value.substr(1);
         if (hex.size() == 6) {
             return sf::Color(stoi(hex.substr(0, 2), nullptr, 16),
@@ -130,10 +136,12 @@ Border parseBorder(const string& borderStr) {
             int value = stoi(t.substr(0, t.find("px")));
             if (stroke == -1) {
                 stroke = value;
-            } else {
+            }
+            else {
                 radii.push_back(value);
             }
-        } else {
+        }
+        else {
             color = parseColor(t);
         }
     }
@@ -169,10 +177,12 @@ Shadow parseShadow(const string& shadowStr) {
             int value = stoi(t.substr(0, t.find("px")));
             if (blur == -1) {
                 blur = value;
-            } else {
+            }
+            else {
                 offset.push_back(value);
             }
-        } else {
+        }
+        else {
             color = parseColor(t);
         }
     }
@@ -187,7 +197,8 @@ Shadow parseShadow(const string& shadowStr) {
 Direction parseDirection(const string& value) {
     if (value == "row") {
         return Direction::Row;
-    } else if (value == "column") {
+    }
+    else if (value == "column") {
         return Direction::Column;
     }
     return Direction::Row; // Default
@@ -196,13 +207,17 @@ Direction parseDirection(const string& value) {
 Alignment parseAlignment(const string& value) {
     if (value == "start") {
         return Alignment::Start;
-    } else if (value == "center") {
+    }
+    else if (value == "center") {
         return Alignment::Center;
-    } else if (value == "end") {
+    }
+    else if (value == "end") {
         return Alignment::End;
-    } else if (value == "space-between") {
+    }
+    else if (value == "space-between") {
         return Alignment::SpaceBetween;
-    } else if (value == "space-around") {
+    }
+    else if (value == "space-around") {
         return Alignment::SpaceAround;
     }
     return Alignment::Start; // Default
@@ -212,9 +227,11 @@ Alignment parseAlignment(const string& value) {
 TextAlignment parseTextAlignment(const string& value) {
     if (value == "left") {
         return TextAlignment::Left;
-    } else if (value == "center") {
+    }
+    else if (value == "center") {
         return TextAlignment::Center;
-    } else if (value == "right") {
+    }
+    else if (value == "right") {
         return TextAlignment::Right;
     }
     return TextAlignment::Left; // Default
@@ -234,7 +251,8 @@ UITransform parseTransform(const std::string& value) {
     for (const auto& t : tokens) {
         if (t.find("scale") != string::npos) {
             scale = stof(t.substr(t.find('(') + 1, t.find(')') - t.find('(') - 1));
-        } else if (t.find('s') != string::npos) {
+        }
+        else if (t.find('s') != string::npos) {
             duration = stof(t.substr(0, t.find('s')));
         }
     }

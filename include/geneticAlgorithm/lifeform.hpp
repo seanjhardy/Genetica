@@ -4,7 +4,7 @@
 #include <geneticAlgorithm/species.hpp>
 #include <geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp>
 #include "genome.hpp"
-#include "modules/cuda/structures/CGPUVector.hpp"
+#include "modules/cuda/structures/staticGPUVector.hpp"
 #include "cellParts/cellLink.hpp"
 #include <modules/utils/structures/AdjacencyMatrix.hpp>
 
@@ -25,6 +25,7 @@ public:
     int lastGrnUpdate = 0;
     vector<size_t> cellIdxs = vector<size_t>(0);
     vector<size_t> linkIdxs = vector<size_t>(0);
+    GPUVector<Point> blueprintPoints = GPUVector<Point>();
     AdjacencyMatrix<size_t> cellLinksMatrix = AdjacencyMatrix<size_t>();
 
     int numChildren = 0;
@@ -41,7 +42,7 @@ public:
     void clone(bool mutate);
     void kill();
 
-    void addCell(size_t motherIdx, const Cell& mother, const Point& point);
+    void addCell(size_t motherIdx, const Cell& mother);
 
     [[nodiscard]] Species* getSpecies() const;
 };

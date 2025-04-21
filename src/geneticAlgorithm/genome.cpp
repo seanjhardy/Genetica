@@ -32,7 +32,7 @@ void Genome::removeGene(size_t key) {
 
 string Genome::toString() const {
     string genomeString;
-    for (auto& [key, value]: hoxGenes) {
+    for (auto& [key, value] : hoxGenes) {
         genomeString += value;
     }
     return genomeString;
@@ -60,7 +60,7 @@ void Genome::render(VertexManager& vertexManager) {
 
     // Draw DNA data
     sf::RectangleShape dna(sf::Vector2f(2, 2));
-    float width = 400.0f;
+    float width = 100.0f;
     float height = 400.0f;
     int numBases = 0;
     for (auto& geneID : hoxGeneOrder) {
@@ -73,21 +73,23 @@ void Genome::render(VertexManager& vertexManager) {
     sf::Color backboneColour = sf::Color(255, 0, 0, 200);
     for (auto& geneID : hoxGeneOrder) {
         auto& gene = hoxGenes.at(geneID);
-        for (char c: gene) {
+        for (char c : gene) {
             int base = int(c - '0');
             sf::Color color = sf::Color(0, 60, 0, 200);
             if (base == 1) {
                 color = sf::Color(0, 120, 0, 200);
-            } else if (base == 2) {
+            }
+            else if (base == 2) {
                 color = sf::Color(0, 180, 0, 200);
-            } else if (base == 3) {
+            }
+            else if (base == 3) {
                 color = sf::Color(0, 255, 0, 200);
             }
             float x = float(baseIndex % int(basesPerRow)) * baseSize;
             if (baseIndex % int(basesPerRow) == 0) {
                 yPos += baseSize;
             }
-            vertexManager.addFloatRect({x, yPos+1, baseSize, baseSize}, color);
+            vertexManager.addFloatRect({x, yPos + 1, baseSize, baseSize}, color);
             baseIndex += 1;
         }
     }
@@ -95,7 +97,7 @@ void Genome::render(VertexManager& vertexManager) {
 
 void Genome::init(Template templateType) {
     if (templateType == Template::RANDOM) {
-        int numHoxGenes = (int) Random::random(20, 100);
+        int numHoxGenes = (int)Random::random(20, 100);
         int geneLength = 100;
         for (int i = 0; i < numHoxGenes; i++) {
             string randomGene;
@@ -108,5 +110,3 @@ void Genome::init(Template templateType) {
         }
     }
 }
-
-

@@ -1,8 +1,7 @@
 #include <SFML/Graphics.hpp>
 #include <modules/graphics/UIManager.hpp>
 
-UIManager::UIManager(sf::RenderWindow* w) : window(w) {
-}
+UIManager::UIManager(sf::RenderWindow* w) : window(w) {}
 
 void UIManager::addScreen(const std::string& name, Screen* screen) {
     screens.insert({name, screen});

@@ -5,14 +5,14 @@
 #include "staticGPUVector.hpp"
 
 template<typename T>
-class GPUVector : public staticGPUVector<T> {
+class GPUVector : public StaticGPUVector<T> {
     size_t* free_list_ = nullptr;
     size_t free_size_ = 0;
     size_t free_capacity_ = 0;
 
 public:
     __host__  GPUVector() = default;
-    __host__  explicit GPUVector(const int capacity) : staticGPUVector<T>(capacity) {}
+    __host__  explicit GPUVector(const int capacity) : StaticGPUVector<T>(capacity) {}
     __host__  explicit GPUVector(const std::vector<T>& hostData);
     __host__  void destroy();
 

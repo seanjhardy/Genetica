@@ -37,7 +37,8 @@ vector<UIElement*> parseHTMLString(const string& html) {
             size_t innerContentEnd = closingTagStart - (tag.length() + 3); // Offset for "</>"
             innerContent = trim(content.substr(tagEnd + 1, innerContentEnd - tagEnd));
             pos = closingTagStart + 1; // Skip past the closing tag
-        } else {
+        }
+        else {
             pos = tagEnd + 1;
         }
 
@@ -52,16 +53,21 @@ UIElement* createElement(string& tag, unordered_map<string, string>& properties,
     if (tag == "Button" || tag == "View") {
         vector<UIElement*> children = parseHTMLString(innerContent);
         return new View(properties, children);
-    } else if (tag == "Text") {
+    }
+    else if (tag == "Text") {
         return new Text(properties, innerContent);
-    } else if (tag == "Image") {
+    }
+    else if (tag == "Image") {
         return new ImageElement(properties);
-    } else if (tag == "Viewport") {
+    }
+    else if (tag == "Viewport") {
         return new Viewport(properties);
-    } else {
+    }
+    else {
         if (ComponentManager::contains(tag)) {
             return ComponentManager::get(tag)[0];
-        } else {
+        }
+        else {
             throw runtime_error("Invalid tag: " + tag);
         }
     }
@@ -82,7 +88,8 @@ size_t findMatchingClosingTag(const string& html, const string& tag, size_t pos)
 
         bool isClosingTag = (html[nextTagStart + 1] == '/');
         size_t nextTagEnd = html.find('>', nextTagStart);
-        string nextTagContent = html.substr(nextTagStart + (isClosingTag ? 2 : 1), nextTagEnd - nextTagStart - (isClosingTag ? 2 : 1));
+        string nextTagContent = html.substr(nextTagStart + (isClosingTag ? 2 : 1),
+                                            nextTagEnd - nextTagStart - (isClosingTag ? 2 : 1));
         string nextTag = getTagName(nextTagContent);
         bool isSelfClosing = isSelfClosingTag(nextTagContent);
 
@@ -90,7 +97,8 @@ size_t findMatchingClosingTag(const string& html, const string& tag, size_t pos)
             if (nextTag == tag) {
                 depth--;
             }
-        } else if (!isSelfClosing && nextTag == tag) {
+        }
+        else if (!isSelfClosing && nextTag == tag) {
             depth++;
         }
         closingTagStart = nextTagEnd + 1;

@@ -40,7 +40,8 @@ void CursorManager::init() {
     cursors["pointer"].loadFromSystem(sf::Cursor::Hand);
 }
 
-void CursorManager::loadFromFile(const std::string &name, const std::string &path, const sf::Vector2u& size, const sf::Vector2u &hotspot) {
+void CursorManager::loadFromFile(const std::string& name, const std::string& path, const sf::Vector2u& size,
+                                 const sf::Vector2u& hotspot) {
     sf::Image image;
 
     // Load the image from the file
@@ -51,11 +52,11 @@ void CursorManager::loadFromFile(const std::string &name, const std::string &pat
     cursors[name].loadFromPixels(image.getPixelsPtr(), size, hotspot);
 }
 
-sf::Cursor& CursorManager::get(const std::string &value) {
+sf::Cursor& CursorManager::get(const std::string& value) {
     return cursors[value];
 }
 
-void CursorManager::set(sf::Cursor& cursor, const std::string &name) {
+void CursorManager::set(sf::Cursor& cursor, const std::string& name) {
     //cursor.loadFromSystem(cursor[name]);
 }
 

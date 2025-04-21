@@ -9,7 +9,7 @@
 #include <modules/graphics/components/viewport.hpp>
 #include <simulator/planet.hpp>
 
-inline Screen *getSimulationScreen(Simulator *simulator) {
+inline Screen* getSimulationScreen(Simulator* simulator) {
     auto screen = new Screen();
 
     FunctionManager::add("slowDown", [simulator]() { simulator->slowDown(); });
@@ -23,7 +23,8 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
             simulator->setState(Simulator::State::Playing);
             screen->getElement("playBtnIcon")->overrideProperty("style", "image: pause");
             screen->getElement("playBtnIcon")->overrideProperty("styleOnHover", "image: pause");
-        } else {
+        }
+        else {
             simulator->setState(Simulator::State::Paused);
             screen->getElement("playBtnIcon")->overrideProperty("style", "image: play");
             screen->getElement("playBtnIcon")->overrideProperty("styleOnHover", "image: playHighlighted");
@@ -36,7 +37,8 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
             simulator->getEnv().toggleGridLinesVisible();
             screen->getElement("quadtreeBtnIcon")->overrideProperty("style", "image: quadtree");
             screen->getElement("quadtreeBtnIcon")->overrideProperty("styleOnHover", "image: quadtreeHighlighted");
-        } else {
+        }
+        else {
             simulator->getEnv().toggleGridLinesVisible();
             screen->getElement("quadtreeBtnIcon")->overrideProperty("style", "image: map");
             screen->getElement("quadtreeBtnIcon")->overrideProperty("styleOnHover", "image: mapHighlighted");
@@ -58,7 +60,8 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
     FunctionManager::add("toggleGenomeTab", [screen]() {
         if (screen->getElement("genomePanel")->visible) {
             screen->getElement("genomePanel")->overrideProperty("style", "visible: false; ");
-        } else {
+        }
+        else {
             screen->getElement("genomePanel")->overrideProperty("style", "visible: true; ");
         }
         screen->getElement("root")->onLayout();
@@ -71,7 +74,8 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
     FunctionManager::add("toggleGRNTab", [screen]() {
         if (screen->getElement("grnPanel")->visible) {
             screen->getElement("grnPanel")->overrideProperty("style", "visible: false; ");
-        } else {
+        }
+        else {
             screen->getElement("grnPanel")->overrideProperty("style", "visible: true; ");
         }
         screen->getElement("root")->onLayout();
@@ -95,12 +99,13 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         Planet* planet;
         do {
             planet = Planet::getRandom();
-        } while (simulator->getEnv().getPlanet().name == planet->thumbnail);
+        }
+        while (simulator->getEnv().getPlanet().name == planet->thumbnail);
 
         simulator->getEnv().setPlanet(planet);
 
         ((ImageElement*)screen->getElement("planetBtnIcon"))
-        ->overrideProperty("style", "image: " + planet->thumbnail);
+            ->overrideProperty("style", "image: " + planet->thumbnail);
         ((Text*)screen->getElement("planetBtnName"))->setText(planet->name);
     });
 
@@ -109,9 +114,12 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         dynamic_cast<Text*>(screen->getElement("step"))->setText(std::to_string(simulator->getStep()));
         dynamic_cast<Text*>(screen->getElement("speed"))->setText("x" + roundToDecimalPlaces(simulator->getSpeed(), 2));
 
-        dynamic_cast<Text*>(screen->getElement("species"))->setText(std::to_string(simulator->getEnv().getGA().getSpecies().size()));
-        dynamic_cast<Text*>(screen->getElement("lifeforms"))->setText(std::to_string(simulator->getEnv().getGA().getPopulation().size()));
-        dynamic_cast<Text*>(screen->getElement("cells"))->setText(std::to_string(simulator->getEnv().getPoints().size()));
+        dynamic_cast<Text*>(screen->getElement("species"))->setText(
+            std::to_string(simulator->getEnv().getGA().getSpecies().size()));
+        dynamic_cast<Text*>(screen->getElement("lifeforms"))->setText(
+            std::to_string(simulator->getEnv().getGA().getPopulation().size()));
+        dynamic_cast<Text*>(screen->getElement("cells"))->setText(
+            std::to_string(simulator->getEnv().getPoints().size()));
 
         float temperature = simulator->getEnv().getPlanet().temperature;
         float octave1 = sin(0.1f * simulator->getRealTime());
@@ -122,19 +130,20 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
         sf::Color thermometerColor;
         if (temperature <= 10) {
             thermometerColor = interpolate(sf::Color(50, 50, 255), sf::Color(200, 200, 255),
-                                                     (thermometerTemperature + 20)/30);
-        } else {
+                                           (thermometerTemperature + 20) / 30);
+        }
+        else {
             thermometerColor = interpolate(sf::Color(255, 200, 100), sf::Color(255, 100, 0),
-                                                     (thermometerTemperature)/50);
+                                           (thermometerTemperature) / 50);
         }
         std::string thermometerColorString = "rgb("
-          + std::to_string(thermometerColor.r) + ","
-          + std::to_string(thermometerColor.g) + ","
-          + std::to_string(thermometerColor.b) + ")";
+            + std::to_string(thermometerColor.r) + ","
+            + std::to_string(thermometerColor.g) + ","
+            + std::to_string(thermometerColor.b) + ")";
         dynamic_cast<Text*>(screen->getElement("temperature"))
-        ->setText(roundToDecimalPlaces(temperature, 2) + "C");
+            ->setText(roundToDecimalPlaces(temperature, 2) + "C");
         dynamic_cast<ImageElement*>(screen->getElement("thermometer"))
-        ->overrideProperty("style", "tint: " + thermometerColorString);
+            ->overrideProperty("style", "tint: " + thermometerColorString);
 
         if (simulator->getSelectedEntityId() != -1) {
             auto& env = Simulator::get().getEnv();
@@ -142,15 +151,15 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
             //string text = "Energy: " + //std::to_string(selectedLifeform.energy);
 
             if (screen->getElement("genomePanel")->visible) {
-                auto vertexManager = ((Viewport *) screen->getElement("simulation"))->getVertexManager();
+                auto& vertexManager = ((Viewport*)screen->getElement("genomePanelViewport"))->getVertexManager();
                 selectedLifeform.genome.render(vertexManager);
                 vector<Cell> cells = env.getCells().toHost();
                 vector<CellLink> cellLinks = env.getCellLinks().toHost();
-                //selectedLifeform.renderBlueprint(vertexManager, cells, cellLinks);
+                selectedLifeform.renderBlueprint(vertexManager, cells, cellLinks);
             }
 
             if (screen->getElement("grnPanel")->visible) {
-                auto* grn = (Viewport *) screen->getElement("geneRegulatoryNetwork");
+                auto* grn = (Viewport*)screen->getElement("geneRegulatoryNetwork");
                 /*if (grn != nullptr) {
                     selectedLifeform->grn.render(
                       (grn)->getVertexManager());
@@ -160,7 +169,7 @@ inline Screen *getSimulationScreen(Simulator *simulator) {
                     ((Viewport *) screen->getElement("geneRegulatoryNetwork"))->getCamera()->setPosition({0.5, 0.5});
                 }*/
             }
-       }
+        }
     });
 
     vector<UIElement*> elements = ComponentManager::get("SimulationScreen");

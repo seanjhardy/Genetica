@@ -6,9 +6,9 @@
 #include <modules/utils/GPU/atomicOps.hpp>
 #include "cuda_runtime.h"
 
- __device__ inline void constrainDistance(Point& pointA, Point& pointB, double distance) {
+__device__ inline void constrainDistance(Point& pointA, Point& pointB, double distance) {
     double currentDistance = pointA.distanceTo(pointB);
-    double deltaDistance = 0.5 * (distance - currentDistance);
+    double deltaDistance = distance - currentDistance;
 
     if (currentDistance == 0) {
         currentDistance += 1e-6f; // Avoid division by zero
@@ -18,20 +18,52 @@
         return; // No significant change needed
     }
 
-    double2 delta = (pointB.pos - pointA.pos) * deltaDistance / currentDistance;
+    double2 delta = 0.5 * deltaDistance * (pointB.pos - pointA.pos) / currentDistance;
 
     double pointAMass = pointA.radius * pointA.radius;
     double pointBMass = pointB.radius * pointB.radius;
     double massRatio = pointAMass / (pointAMass + pointBMass);
-    atomicAddDouble(&pointA.deltaPos.x, - delta.x * (1 - massRatio));
-    atomicAddDouble(&pointA.deltaPos.y, - delta.y * (1 - massRatio));
-    atomicAddDouble(&pointB.deltaPos.x, delta.x * massRatio);
-    atomicAddDouble(&pointB.deltaPos.y, delta.y * massRatio);
-    atomicAdd(&pointA.connections, 1);
-    atomicAdd(&pointB.connections, 1);
+    double2 forceA = delta * (massRatio - 1);
+    double2 forceB = delta * massRatio;
+
+    atomicAddDouble(&pointA.force.x, forceA.x);
+    atomicAddDouble(&pointA.force.y, forceA.y);
+    atomicAddDouble(&pointB.force.x, forceB.x);
+    atomicAddDouble(&pointB.force.y, forceB.y);
 }
 
-__device__ inline void constrainAngle(Point& pointA, Point& pointB, float angleFromA, float angleFromB, float stiffness) {
+__device__ inline void constrainMinDistance(Point& pointA, Point& pointB, float minDistance) {
+    double2 posA = pointA.pos;
+    double2 posB = pointB.pos;
+    float distance = distanceBetween(posA, posB);
+
+    if (distance >= minDistance) return;
+
+    // Calculate overlap and resistive force
+    float overlap = minDistance - distance;
+    float resistiveForceMagnitude = overlap * overlap * 0.01;
+
+    double2 direction = posA - posB;
+    float length = magnitude(direction);
+
+    if (length < 1e-6f) return;
+
+    // Normalize direction
+    direction.x /= length;
+    direction.y /= length;
+
+    // Apply resistive force proportionally
+    double2 forceA = direction * resistiveForceMagnitude;
+    double2 forceB = direction * -resistiveForceMagnitude;
+
+    atomicAddDouble(&pointA.force.x, forceA.x);
+    atomicAddDouble(&pointA.force.y, forceA.y);
+    atomicAddDouble(&pointB.force.x, forceB.x);
+    atomicAddDouble(&pointB.force.y, forceB.y);
+}
+
+__device__ inline void constrainAngle(Point& pointA, Point& pointB, float angleFromA, float angleFromB,
+                                      float stiffness) {
     // 1. Compute the current angle of the AB link.
     float theta_AB = dir(pointA.getPos(), pointB.getPos());
 
@@ -76,10 +108,12 @@ __device__ inline void constrainAngle(Point& pointA, Point& pointB, float angleF
 
 __host__ __device__ inline float constrainPosition(Point& point, sf::FloatRect bounds) {
     float updateDist = 0.0f;
-    float minMax[4] = {bounds.left + (float)point.radius,
-                       bounds.width - (float)point.radius,
-                       bounds.top + (float)point.radius,
-                       bounds.height - (float)point.radius};
+    float minMax[4] = {
+        bounds.left + (float)point.radius,
+        bounds.width - (float)point.radius,
+        bounds.top + (float)point.radius,
+        bounds.height - (float)point.radius
+    };
 
     if (point.pos.x < minMax[0]) {
         point.prevPos.x = point.pos.x;
@@ -123,9 +157,11 @@ __host__ __device__ inline void checkCollisionCircleRec(Point& circle, Point& re
     // Compute xOverlap
     if (pX < minX) {
         pX = minX;
-    } else if (pX >= maxX) {
+    }
+    else if (pX >= maxX) {
         pX = maxX;
-    } else {
+    }
+    else {
         float recCenterX = (minX + maxX) / 2.0f;
         xOverlap = (pX < recCenterX) ? (minX - pX) : (maxX - pX);
     }
@@ -133,9 +169,11 @@ __host__ __device__ inline void checkCollisionCircleRec(Point& circle, Point& re
     // Compute yOverlap
     if (pY < minY) {
         pY = minY;
-    } else if (pY >= maxY) {
+    }
+    else if (pY >= maxY) {
         pY = maxY;
-    } else {
+    }
+    else {
         float recCenterY = (minY + maxY) / 2.0f;
         yOverlap = (pY < recCenterY) ? (minY - pY) : (maxY - pY);
     }
@@ -147,7 +185,8 @@ __host__ __device__ inline void checkCollisionCircleRec(Point& circle, Point& re
 
         if (fabsf(xOverlap) < fabsf(yOverlap)) {
             contactX += xOverlap;
-        } else if (fabsf(yOverlap) < fabsf(xOverlap)) {
+        }
+        else if (fabsf(yOverlap) < fabsf(xOverlap)) {
             contactY += yOverlap;
         }
 

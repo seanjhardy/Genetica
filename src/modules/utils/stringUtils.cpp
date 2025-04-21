@@ -38,7 +38,8 @@ string stripHTML(const string& str) {
         size_t endPos = newString.find(endTag, startPos + startTag.length());
         if (endPos != std::string::npos) {
             newString.erase(startPos, endPos + endTag.length() - startPos);
-        } else {
+        }
+        else {
             break; // Malformed comment; stop processing
         }
         startPos = newString.find(startTag);
@@ -79,7 +80,7 @@ string roundToDecimalPlaces(float number, int decimalPlaces) {
     return str;
 }
 
-string formatNumber(float number, int precision=3) {
+string formatNumber(float number, int precision = 3) {
     if (abs(round(number)) < 100) return to_string((int)round(number));
 
     int digits = log10(number) + 1; // Find the number of digits

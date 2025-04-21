@@ -32,7 +32,7 @@ void UIElement::setStyle(unordered_map<string, string> styleProps) {
     }
 }
 
-bool UIElement::update(const float dt, const sf::Vector2f &position) {
+bool UIElement::update(const float dt, const sf::Vector2f& position) {
     if (!hovered && contains(position)) {
         hovered = true;
         //Simulator::get().setMouseCursor(depth, CursorManager::getDefault());
@@ -61,7 +61,8 @@ void UIElement::restyle() {
             animation->toValue = 1;
             animation->reset();
         }
-    } else {
+    }
+    else {
         if (animation) {
             animation->fromValue = 1;
             animation->toValue = 0;

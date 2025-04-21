@@ -27,19 +27,19 @@
 #include <modules/utils/print.hpp>
 
 namespace sf {
-    RoundedRectangleShape::RoundedRectangleShape(const Vector2f &size, float radius, unsigned int cornerPointCount) {
+    RoundedRectangleShape::RoundedRectangleShape(const Vector2f& size, float radius, unsigned int cornerPointCount) {
         mySize = size;
         myRadius = {radius, radius, radius, radius};
         myCornerPointCount = cornerPointCount;
         update();
     }
 
-    void RoundedRectangleShape::setSize(const Vector2f &size) {
+    void RoundedRectangleShape::setSize(const Vector2f& size) {
         mySize = size;
         update();
     }
 
-    const Vector2f &RoundedRectangleShape::getSize() const {
+    const Vector2f& RoundedRectangleShape::getSize() const {
         return mySize;
     }
 
@@ -78,34 +78,39 @@ namespace sf {
         float radius;
         if (index < myCornerPointCount) {
             radius = myRadius.left;
-        } else if (index < myCornerPointCount * 2) {
+        }
+        else if (index < myCornerPointCount * 2) {
             radius = myRadius.top;
-        } else if (index < myCornerPointCount * 3) {
+        }
+        else if (index < myCornerPointCount * 3) {
             radius = myRadius.width;
-        } else {
+        }
+        else {
             radius = myRadius.height;
         }
 
         switch (centerIndex) {
-            case 0:
-                center.x = mySize.x - radius;
-                center.y = radius;
-                break;
-            case 1:
-                center.x = radius;
-                center.y = radius;
-                break;
-            case 2:
-                center.x = radius;
-                center.y = mySize.y - radius;
-                break;
-            case 3:
-                center.x = mySize.x - radius;
-                center.y = mySize.y - radius;
-                break;
+        case 0:
+            center.x = mySize.x - radius;
+            center.y = radius;
+            break;
+        case 1:
+            center.x = radius;
+            center.y = radius;
+            break;
+        case 2:
+            center.x = radius;
+            center.y = mySize.y - radius;
+            break;
+        case 3:
+            center.x = mySize.x - radius;
+            center.y = mySize.y - radius;
+            break;
         }
 
-        return {radius * cosf(deltaAngle * (index - centerIndex) * pi / 180) + center.x,
-                -radius * sinf(deltaAngle * (index - centerIndex) * pi / 180) + center.y};
+        return {
+            radius * cosf(deltaAngle * (index - centerIndex) * pi / 180) + center.x,
+            -radius * sinf(deltaAngle * (index - centerIndex) * pi / 180) + center.y
+        };
     }
 } // namespace sf

@@ -6,7 +6,7 @@ using namespace std;
 
 
 Text::Text(const unordered_map<string, string>& properties, const string& value)
-             : UIElement(properties, {}){
+    : UIElement(properties, {}) {
     text = value;
 
     styleSetters["font-size"] = [this](const string& v) {
@@ -40,14 +40,16 @@ void Text::onLayout() {
     labelElement.setFillColor(sf::Color::White);
     labelElement.setOutlineThickness(outlineThickness);
     labelElement.setOutlineColor(sf::Color::Black);
-    labelElement.setOrigin(labelElement.getGlobalBounds().getSize() / 2.f + labelElement.getLocalBounds().getPosition());
+    labelElement.
+        setOrigin(labelElement.getGlobalBounds().getSize() / 2.f + labelElement.getLocalBounds().getPosition());
     labelElement.setPosition(layout.getPosition() + (layout.getSize() / 2.f));
 }
 
 void Text::setText(const string& value) {
     text = value;
     labelElement.setString(text);
-    labelElement.setOrigin(labelElement.getGlobalBounds().getSize() / 2.f + labelElement.getLocalBounds().getPosition());
+    labelElement.
+        setOrigin(labelElement.getGlobalBounds().getSize() / 2.f + labelElement.getLocalBounds().getPosition());
     labelElement.setPosition(layout.getPosition() + (layout.getSize() / 2.f));
 }
 

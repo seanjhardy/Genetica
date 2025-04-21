@@ -3,15 +3,15 @@
 #include <geneticAlgorithm/cellParts/cell.hpp>
 #include <modules/cuda/logging.hpp>
 
-template<typename T>
-GPUVector<T>::GPUVector(const std::vector<T>& hostData): staticGPUVector<T>(hostData) {
+template <typename T>
+GPUVector<T>::GPUVector(const std::vector<T>& hostData): StaticGPUVector<T>(hostData) {
     free_size_ = 0;
     free_capacity_ = 0;
 }
 
-template<typename T>
+template <typename T>
 void GPUVector<T>::destroy() {
-    staticGPUVector<T>::destroy();
+    StaticGPUVector<T>::destroy();
     if (free_list_ != nullptr) {
         cudaLog(cudaFree(free_list_));
         free_list_ = nullptr;
@@ -21,7 +21,7 @@ void GPUVector<T>::destroy() {
 }
 
 
-template<typename T>
+template <typename T>
 __host__ __device__ size_t GPUVector<T>::push(const T& value) {
     // If we have empty spaces in the middle of the vector, add the value there
     if (free_size_ > 0) {
@@ -41,8 +41,8 @@ __host__ __device__ size_t GPUVector<T>::push(const T& value) {
     return this->size_ - 1;
 }
 
-template<typename T>
-__host__ __device__ size_t GPUVector<T>::getNextIndex(){
+template <typename T>
+__host__ __device__ size_t GPUVector<T>::getNextIndex() {
     if (free_size_ > 0) {
         int hostIndex;
         cudaLog(cudaMemcpy(&hostIndex, free_list_ + free_size_ - 1, sizeof(int), cudaMemcpyDeviceToHost));
@@ -52,7 +52,7 @@ __host__ __device__ size_t GPUVector<T>::getNextIndex(){
 }
 
 
-template<typename T>
+template <typename T>
 __host__ __device__ void GPUVector<T>::remove(size_t index) {
     if (free_size_ == free_capacity_) {
         size_t new_overflow_capacity_ = free_capacity_ == 0 ? 1 : free_capacity_ * 2;
@@ -69,7 +69,7 @@ __host__ __device__ void GPUVector<T>::remove(size_t index) {
     free_size_++;
 }
 
-template<typename T>
+template <typename T>
 __host__ __device__ void GPUVector<T>::update(size_t i, T value) {
     cudaLog(cudaMemcpy(this->data_ + i, &value, sizeof(T), cudaMemcpyDeviceToDevice));
 }

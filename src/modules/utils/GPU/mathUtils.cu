@@ -3,7 +3,7 @@
 #include "modules/utils/operations.hpp"
 #include "modules/utils/GPU/mathUtils.hpp"
 
- __host__ __device__ float2 vec(float direction) {
+__host__ __device__ float2 vec(float direction) {
     return {cosf(direction), sinf(direction)};
 }
 
@@ -41,6 +41,7 @@ __host__ __device__ float diff(float2 p1, float2 p2) {
 __host__ __device__ float sum(float2 p1) {
     return p1.x + p1.y;
 }
+
 __host__ __device__ float sum(double2 p1) {
     return p1.x + p1.y;
 }
@@ -51,16 +52,22 @@ __host__ __device__ float sum(float3 p1) {
 
 __host__ __device__ float distanceBetween(float2 p1, float2 p2) {
     float2 d = p1 - p2;
-    return sqrt(sum(d*d));
+    return sqrt(sum(d * d));
 }
+
 __host__ __device__ float distanceBetween(double2 p1, double2 p2) {
     double2 d = p1 - p2;
-    return sqrt(sum(d*d));
+    return sqrt(sum(d * d));
 }
 
 __host__ __device__ float distanceBetween(float3 p1, float3 p2) {
     float3 d = p1 - p2;
-    return sqrt(sum(d*d));
+    return sqrt(sum(d * d));
+}
+
+__host__ __device__ float angleBetween(float2 p1, float2 p2) {
+    float2 d = p2 - p1;
+    return atan2f(d.y, d.x);
 }
 
 __host__ __device__ float magnitude(float2 p1) {
@@ -88,10 +95,12 @@ std::vector<float2> findPerpendicularPoints(const Point& point1, const Point& po
     float anglePlus90 = angle + M_PI / 2;
     float angleMinus90 = angle - M_PI / 2;
 
-    return {point1.getPos() + vec(anglePlus90) * r1,
-            point1.getPos() + vec(angleMinus90) * r1,
-            point2.getPos() + vec(angleMinus90) * r2,
-            point2.getPos() + vec(anglePlus90) * r2};
+    return {
+        point1.getPos() + vec(anglePlus90) * r1,
+        point1.getPos() + vec(angleMinus90) * r1,
+        point2.getPos() + vec(angleMinus90) * r2,
+        point2.getPos() + vec(anglePlus90) * r2
+    };
 }
 
 
@@ -124,7 +133,7 @@ float angleDiff(float angle1, float angle2, bool norm) {
 
 std::vector<std::pair<int, int>> bezier(int x0, int y0, int x1, int y1, int x2, int y2, int num_points) {
     auto bezierInterpolation = [](float t, int p0, int p1, int p2) {
-        float x = (1 - t)* (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
+        float x = (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
         return static_cast<int>(x);
     };
 
@@ -145,7 +154,8 @@ float smoothAngle(float angle1, float angle2, float tolerance) {
     if (std::abs(diff) < tolerance) {
         if (diff > 0) {
             return normAngle(angle2 - tolerance);
-        } else {
+        }
+        else {
             return normAngle(angle2 + tolerance);
         }
     }
@@ -182,7 +192,8 @@ float2 getPointOnSegment(float length, float r1, float r2, float angle) {
         i = (angle - bl) / (br - bl);
         start_r = -r1;
         end_r = -r2;
-    } else {
+    }
+    else {
         i = (angle - tr) / (tl - tr);
         start_r = r2;
         end_r = r1;

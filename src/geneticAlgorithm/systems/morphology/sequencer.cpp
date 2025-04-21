@@ -36,12 +36,12 @@ void sequenceGRN(LifeForm& lifeForm) {
             // External factors (inputs to grn)
             if (type == 0) {
                 Gene::FactorType externalFactorTypes[] = {
-                  Gene::FactorType::MaternalFactor,
-                  Gene::FactorType::Crowding,
-                  Gene::FactorType::Constant,
-                  Gene::FactorType::Generation,
-                  Gene::FactorType::Energy,
-                  Gene::FactorType::Time,
+                    Gene::FactorType::MaternalFactor,
+                    Gene::FactorType::Crowding,
+                    Gene::FactorType::Constant,
+                    Gene::FactorType::Generation,
+                    Gene::FactorType::Energy,
+                    Gene::FactorType::Time,
                 };
                 int subType = (int)(readUniqueBaseRange(rna, 3) * 64) % 6;
                 Gene::FactorType externalFactorType = externalFactorTypes[subType];
@@ -55,7 +55,7 @@ void sequenceGRN(LifeForm& lifeForm) {
             // Gene effectors (outputs of grn)
             if (type == 1) {
                 Effector::EffectorType subType = static_cast<Effector::EffectorType>(
-                  (int)(readUniqueBaseRange(rna, 4) * 256) % (int)Effector::EffectorType::EFFECTOR_LENGTH);
+                    (int)(readUniqueBaseRange(rna, 4) * 256) % (int)Effector::EffectorType::EFFECTOR_LENGTH);
 
                 // If this grn already contains a special node
                 // (e.g. maternal factor, crowding, etc.) of this type, skip
@@ -76,13 +76,13 @@ void sequenceGRN(LifeForm& lifeForm) {
             if (type == 2) {
                 int additive = readBase(rna) >= 1;
                 Promoter::PromoterType promoterType = additive
-                                                      ? Promoter::PromoterType::Additive
-                                                      : Promoter::PromoterType::Multiplicative;
+                                                          ? Promoter::PromoterType::Additive
+                                                          : Promoter::PromoterType::Multiplicative;
                 auto promoter = Promoter(promoterType, sign, modifier, embedding);
 
                 if (!readingPromoters) {
-                    regulatoryUnit.promoters = staticGPUVector(regulatoryPromoters);
-                    regulatoryUnit.factors = staticGPUVector(regulatoryFactors);
+                    regulatoryUnit.promoters = StaticGPUVector(regulatoryPromoters);
+                    regulatoryUnit.factors = StaticGPUVector(regulatoryFactors);
                     regulatoryUnits.push_back(regulatoryUnit);
                     regulatoryUnit = RegulatoryUnit();
                     readingPromoters = true;
@@ -95,9 +95,10 @@ void sequenceGRN(LifeForm& lifeForm) {
             // Genes - internal product, external product, receptor
             if (type == 3 || type == 4 || type == 5) {
                 Gene::FactorType geneTypes[] = {
-                  Gene::FactorType::ExternalProduct,
-                 Gene::FactorType::InternalProduct,
-                 Gene::FactorType::Receptor,};
+                    Gene::FactorType::ExternalProduct,
+                    Gene::FactorType::InternalProduct,
+                    Gene::FactorType::Receptor,
+                };
 
                 Gene gene = Gene(geneTypes[type - 3], sign, modifier, embedding);
 
@@ -106,15 +107,16 @@ void sequenceGRN(LifeForm& lifeForm) {
                 regulatoryFactors.push_back((int)factors.size());
                 factors.push_back(gene);
             }
-        } catch (RNAExhaustedException& e) {
+        }
+        catch (RNAExhaustedException& e) {
             // "RNA exhausted"
         }
     }
 
-    lifeForm.grn.factors = staticGPUVector(factors);
-    lifeForm.grn.promoters = staticGPUVector(promoters);
-    lifeForm.grn.effectors = staticGPUVector(effectors);
+    lifeForm.grn.factors = StaticGPUVector(factors);
+    lifeForm.grn.promoters = StaticGPUVector(promoters);
+    lifeForm.grn.effectors = StaticGPUVector(effectors);
 
-    lifeForm.grn.regulatoryUnits = staticGPUVector(regulatoryUnits);
+    lifeForm.grn.regulatoryUnits = StaticGPUVector(regulatoryUnits);
     calculateAffinities(lifeForm.grn);
 }

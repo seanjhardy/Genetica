@@ -35,9 +35,9 @@ int readBase(string& rna) {
 float readBaseRange(string& rna, int length) {
     float result = 0.0f;
     for (int i = 0; i < length; i++) {
-        result += (float) readBase(rna);
+        result += (float)readBase(rna);
     }
-    return result / (3.0f * (float) length);
+    return result / (3.0f * (float)length);
 }
 
 /**
@@ -47,7 +47,7 @@ float readBaseRange(string& rna, int length) {
  */
 float readUniqueBaseRange(string& rna, int length) {
     float result = 0;
-    for(int i = 0; i < length; i++){
+    for (int i = 0; i < length; i++) {
         result += float(readBase(rna) * pow(0.25f, i + 1));
     }
     return result;
@@ -91,12 +91,13 @@ float getCompatibility(const Genome& a, const Genome& b,
     for (auto& [key, value] : a.getGenes()) {
         if (!b.getGenes().contains(key)) {
             geneDifference += 1;
-        } else {
+        }
+        else {
             baseDifference += compareGeneBases(value, b.at(key));
         }
     }
 
-    for (auto& [key, value]: b.getGenes()) {
+    for (auto& [key, value] : b.getGenes()) {
         if (!a.getGenes().contains(key)) {
             geneDifference += 1;
         }
@@ -110,7 +111,7 @@ float getCompatibility(const Genome& a, const Genome& b,
 // =====================================
 
 Genome& crossover(const Genome& parent1,
-                 const Genome& parent2, float crossoverChance) {
+                  const Genome& parent2, float crossoverChance) {
     Genome* childGenome = new Genome();
 
     // Add each gene in order of the earliest index in the parents
@@ -130,18 +131,19 @@ Genome& crossover(const Genome& parent1,
     }
 
     // Crossover genes from both parents
-    for (auto& [key, value]: parent1.getGenes()) {
+    for (auto& [key, value] : parent1.getGenes()) {
         if (parent2.contains(key)) {
             childGenome->addHoxGene(key, crossoverGene(value,
-                                          parent2.at(key),
-                                          crossoverChance));
-        } else {
+                                                       parent2.at(key),
+                                                       crossoverChance));
+        }
+        else {
             // Add all genes from parent 1 not in parent 2
             childGenome->addHoxGene(key, value);
         }
     }
 
-    for (auto& [key, value]: parent2.getGenes()) {
+    for (auto& [key, value] : parent2.getGenes()) {
         if (!parent1.contains(key)) {
             // Add all genes from parent 2 not in parent 1
             childGenome->addHoxGene(key, value);
@@ -167,9 +169,11 @@ string crossoverGene(string gene1, string gene2, float crossoverChance) {
 
         if (i < gene1.size() && i < gene2.size()) {
             childGene += parent ? gene1[i] : gene2[i];
-        } else if (i < gene1.size()) {
+        }
+        else if (i < gene1.size()) {
             childGene += gene1[i];
-        } else {
+        }
+        else {
             childGene += gene2[i];
         }
     }

@@ -27,9 +27,9 @@ mainBtn {
     flex: 1;
     font-size: 18px;
     padding: 5px;
-    background: rgba(255,255,255,70);
+    background: rgba(255, 255, 255, 70);
     border: 0px 20px;
-    shadow: 5px rgba(0,0,0,50) 0px 3px;
+    shadow: 5px rgba(0, 0, 0, 50) 0px 3px;
     align-row: center;
     align-col: center;
 }
@@ -52,9 +52,9 @@ panel {
     align-col: center;
     padding: 10px;
     gap: 5px;
-    background: rgba(0,0,0,200);
-    border: 2px rgba(255,255,255,50) 20px;
-    shadow: 10px rgba(0,0,0,80) 0px 5px;
+    background: rgba(0, 0, 0, 200);
+    border: 2px rgba(255, 255, 255, 50) 20px;
+    shadow: 10px rgba(0, 0, 0, 80) 0px 5px;
 }
 
 tab {
@@ -65,8 +65,8 @@ tab {
     border: 2px #5E5E5E 20px;
     margin: 0px -20px 0px 0px;
     padding: 15px 17px 15px 0px;
-    background: rgba(0,0,0,204);
-    shadow: 10px rgba(0,0,0,80) 0px 5px;
+    background: rgba(0, 0, 0, 204);
+    shadow: 10px rgba(0, 0, 0, 80) 0px 5px;
 }
 
 

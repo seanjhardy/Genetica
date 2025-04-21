@@ -22,10 +22,11 @@ void sequence(LifeForm& lifeForm, const float2& pos) {
         products[i] = 0.0f;
     }
     //Random cuda function to log errors
-    cell.products = staticGPUVector(products);
+    cell.products = StaticGPUVector(products);
     cell.idx = Simulator::get().getEnv().nextCellIdx();
     Simulator::get().getEnv().addCell(cell);
 
     lifeForm.cellIdxs.push_back(cell.idx);
-    lifeForm.grn.cellDistances = staticGPUVector<float>((lifeForm.cellIdxs.size() * (lifeForm.cellIdxs.size() - 1)) / 2);
+    lifeForm.grn.cellDistances = StaticGPUVector<
+        float>((lifeForm.cellIdxs.size() * (lifeForm.cellIdxs.size() - 1)) / 2);
 }

@@ -13,21 +13,16 @@ public:
     double2 pos{};
     double2 prevPos{};
     double2 force{};
-    double2 deltaPos{};
     float angle;
-    float deltaAngle;
-    int connections = 0;
     double radius = 1.0f;
 
-    Point() : pos{0,0}, prevPos{0,0}, force{0,0}, deltaPos{0, 0} {}
+    Point() : pos{0,0}, prevPos{0,0}, force{0,0} {}
     Point(const size_t id, const float x, const float y, const float r = 1.0f, float a = 0.0f) {
         entityID = id;
         pos.x = x;
         pos.y = y;
         prevPos.x = x;
         prevPos.y = y;
-        deltaPos.x = 0;
-        deltaPos.y = 0;
         radius = r;
         angle = a;
     }

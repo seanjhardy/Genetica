@@ -16,7 +16,7 @@ void Styles::init() {
     std::string basePath = "./assets/styles/";
 
     // Traverse all files in the directory and its subdirectories
-    for (const auto &entry: fs::recursive_directory_iterator(basePath)) {
+    for (const auto& entry : fs::recursive_directory_iterator(basePath)) {
         if (entry.is_regular_file() && entry.path().extension() == ".css") {
             std::ifstream file(entry.path());
             if (!file.is_open()) {
@@ -34,7 +34,7 @@ void Styles::init() {
                 line.erase(line.find_last_not_of(" \t\r\n") + 1);
 
                 if (line.empty()) {
-                    continue;  // Skip empty lines
+                    continue; // Skip empty lines
                 }
 
                 std::istringstream iss(line);
@@ -45,12 +45,14 @@ void Styles::init() {
                     styleName = trim(line.substr(0, line.find("{")));
                     styleContent.clear();
                     insideStyle = true;
-                } else if (insideStyle) {
+                }
+                else if (insideStyle) {
                     if (line.contains("}")) {
                         // End of the style block
                         styles[styleName] = styleContent;
                         insideStyle = false;
-                    } else {
+                    }
+                    else {
                         // Append line to style content
                         styleContent += line + "\n";
                     }

@@ -6,7 +6,7 @@
 
 QuadtreeNode::QuadtreeNode(float2 center, float2 halfDimension, int depth)
     : center(center), halfDimension(halfDimension), depth(depth) {
-    for (auto & i : children) {
+    for (auto& i : children) {
         i = nullptr;
     }
 }
@@ -82,9 +82,9 @@ std::vector<Point*> QuadtreeNode::queryCircle(float2 queryCenter, float radius) 
 
 bool QuadtreeNode::inBoundary(float2 position) const {
     return position.x >= center.x - (halfDimension.x + looseBoundary) &&
-           position.x <= center.x + (halfDimension.x + looseBoundary) &&
-           position.y >= center.y - (halfDimension.y + looseBoundary) &&
-           position.y <= center.y + (halfDimension.y + looseBoundary);
+        position.x <= center.x + (halfDimension.x + looseBoundary) &&
+        position.y >= center.y - (halfDimension.y + looseBoundary) &&
+        position.y <= center.y + (halfDimension.y + looseBoundary);
 }
 
 bool QuadtreeNode::isSubdivided() {
@@ -94,10 +94,14 @@ bool QuadtreeNode::isSubdivided() {
 void QuadtreeNode::subdivide() {
     float2 quarterDimension = make_float2(halfDimension.x / 2, halfDimension.y / 2);
 
-    children[0] = std::make_unique<QuadtreeNode>(make_float2(center.x - quarterDimension.x, center.y - quarterDimension.y), quarterDimension, depth + 1);
-    children[1] = std::make_unique<QuadtreeNode>(make_float2(center.x + quarterDimension.x, center.y - quarterDimension.y), quarterDimension, depth + 1);
-    children[2] = std::make_unique<QuadtreeNode>(make_float2(center.x - quarterDimension.x, center.y + quarterDimension.y), quarterDimension, depth + 1);
-    children[3] = std::make_unique<QuadtreeNode>(make_float2(center.x + quarterDimension.x, center.y + quarterDimension.y), quarterDimension, depth + 1);
+    children[0] = std::make_unique<QuadtreeNode>(
+        make_float2(center.x - quarterDimension.x, center.y - quarterDimension.y), quarterDimension, depth + 1);
+    children[1] = std::make_unique<QuadtreeNode>(
+        make_float2(center.x + quarterDimension.x, center.y - quarterDimension.y), quarterDimension, depth + 1);
+    children[2] = std::make_unique<QuadtreeNode>(
+        make_float2(center.x - quarterDimension.x, center.y + quarterDimension.y), quarterDimension, depth + 1);
+    children[3] = std::make_unique<QuadtreeNode>(
+        make_float2(center.x + quarterDimension.x, center.y + quarterDimension.y), quarterDimension, depth + 1);
 
     // Store existing points temporarily
     std::vector<Point*> tempPoints = std::move(points);
@@ -113,19 +117,19 @@ void QuadtreeNode::subdivide() {
 
 bool QuadtreeNode::intersects(float2 rangeMin, float2 rangeMax) const {
     return !(rangeMax.x < center.x - halfDimension.x ||
-             rangeMin.x > center.x + halfDimension.x ||
-             rangeMax.y < center.y - halfDimension.y ||
-             rangeMin.y > center.y + halfDimension.y);
+        rangeMin.x > center.x + halfDimension.x ||
+        rangeMax.y < center.y - halfDimension.y ||
+        rangeMin.y > center.y + halfDimension.y);
 }
 
 bool QuadtreeNode::inRange(float2 position, float2 rangeMin, float2 rangeMax) {
     return position.x >= rangeMin.x && position.x <= rangeMax.x &&
-           position.y >= rangeMin.y && position.y <= rangeMax.y;
+        position.y >= rangeMin.y && position.y <= rangeMax.y;
 }
 
 void QuadtreeNode::update(Quadtree* quadtree) {
     if (isSubdivided()) {
-        for (auto &child: children) {
+        for (auto& child : children) {
             child->update(quadtree);
         }
         return;
@@ -137,10 +141,12 @@ void QuadtreeNode::update(Quadtree* quadtree) {
             if (!inBoundary(point->getPos())) {
                 it = points.erase(it);
                 quadtree->insert(point);
-            } else {
+            }
+            else {
                 ++it;
             }
-        } else {
+        }
+        else {
             ++it;
         }
     }
@@ -157,7 +163,7 @@ bool QuadtreeNode::overlapsSearch(float2 position, float distanceSquared) {
     if (dy <= halfDimension.y) return true;
 
     float cornerDistanceSquared = (dx - halfDimension.x) * (dx - halfDimension.x) +
-                                  (dy - halfDimension.y) * (dy - halfDimension.y);
+        (dy - halfDimension.y) * (dy - halfDimension.y);
 
     return cornerDistanceSquared <= distanceSquared;
 }
@@ -175,7 +181,7 @@ void QuadtreeNode::findNearestPoint(float2 position, Point*& nearestPoint, float
     // Check points in this node
     for (const auto& point : points) {
         float2 d = position - point->getPos();
-        float distSquared = sum(d*d);
+        float distSquared = sum(d * d);
         if (distSquared < nearestDistanceSquared) {
             nearestDistanceSquared = distSquared;
             nearestPoint = point;
@@ -185,21 +191,24 @@ void QuadtreeNode::findNearestPoint(float2 position, Point*& nearestPoint, float
     // Recursively search children
     if (isSubdivided()) {
         for (const auto& child : children) {
-            child->findNearestPoint(position,nearestPoint, nearestDistanceSquared);
+            child->findNearestPoint(position, nearestPoint, nearestDistanceSquared);
         }
     }
 }
 
 void QuadtreeNode::render(VertexManager& vertexManager) {
-    vertexManager.addFloatRectOutline({center.x - halfDimension.x, center.y - halfDimension.y,
-                                 halfDimension.x * 2, halfDimension.y * 2},
-                               sf::Color(0, 255, 0, 100), 1);
+    vertexManager.addFloatRectOutline({
+                                          center.x - halfDimension.x, center.y - halfDimension.y,
+                                          halfDimension.x * 2, halfDimension.y * 2
+                                      },
+                                      sf::Color(0, 255, 0, 100), 1);
 
     if (isSubdivided()) {
-        for (auto &child: children) {
+        for (auto& child : children) {
             child->render(vertexManager);
         }
-    } else {
+    }
+    else {
         vertexManager.addText(std::to_string(points.size()), {center.x, center.y}, 16, sf::Color(0, 255, 0));
     }
 }

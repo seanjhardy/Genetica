@@ -6,13 +6,15 @@
 Camera::Camera(sf::RenderTarget* target,
                sf::FloatRect* targetLayout,
                sf::FloatRect* bounds)
-        : target(target),
-          targetLayout(targetLayout){
+    : target(target),
+      targetLayout(targetLayout) {
     view = target->getDefaultView();
 
     if (bounds != nullptr) {
-        position = {bounds->left + bounds->width/2,
-                 bounds->top + bounds->height/2};
+        position = {
+            bounds->left + bounds->width / 2,
+            bounds->top + bounds->height / 2
+        };
         zoomLevel = std::min(targetLayout->width / bounds->width,
                              targetLayout->height / bounds->height);
         sceneBounds = bounds;
@@ -55,14 +57,17 @@ void Camera::handleEvent(const sf::Event& event) {
 
     if (event.type == sf::Event::KeyPressed) {
         keyStates[event.key.code] = true;
-    } else if (event.type == sf::Event::KeyReleased) {
+    }
+    else if (event.type == sf::Event::KeyReleased) {
         keyStates[event.key.code] = false;
-    } else if (event.type == sf::Event::MouseWheelScrolled) {
+    }
+    else if (event.type == sf::Event::MouseWheelScrolled) {
         sf::Vector2i mousePosition = sf::Mouse::getPosition(Simulator::get().getWindow());
         mousePosition -= sf::Vector2i(targetLayout->left, targetLayout->top);
         zoom(event.mouseWheelScroll.delta, mousePosition);
         updateView();
-    } else if (event.type == sf::Event::Resized) {
+    }
+    else if (event.type == sf::Event::Resized) {
         updateView();
     }
 }
@@ -138,7 +143,7 @@ bool Camera::isCircleVisible(const float2& point, float r) {
 
     // Check if the point is within these bounds
     return (point.x >= left && point.x <= right &&
-            point.y >= top && point.y <= bottom);
+        point.y >= top && point.y <= bottom);
 }
 
 sf::Vector2f Camera::mapPixelToCoords(const sf::Vector2f& screenPos) {
@@ -161,8 +166,10 @@ sf::View Camera::getView() {
 
 void Camera::setBounds(sf::FloatRect* bounds) {
     if (sceneBounds == nullptr) {
-        position = {bounds->left + bounds->width/2,
-                    bounds->top + bounds->height/2};
+        position = {
+            bounds->left + bounds->width / 2,
+            bounds->top + bounds->height / 2
+        };
     }
     sceneBounds = bounds;
 }

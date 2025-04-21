@@ -4,17 +4,17 @@
 #include <sstream>
 #include <iomanip>
 
-Simulator& Simulator::get(){
+Simulator& Simulator::get() {
     static Simulator simulator;
     return simulator;
 };
 
 // Instantiate simulator
 Simulator::Simulator()
-      : env(sf::FloatRect(0, 0, 500, 500)),
-        window(sf::VideoMode(800, 600), "Genetica"),
-        state(State::Playing),
-        uiManager(&window){
+    : env(sf::FloatRect(0, 0, 500, 500)),
+      window(sf::VideoMode(800, 600), "Genetica"),
+      state(State::Playing),
+      uiManager(&window) {
     window.setMouseCursor(CursorManager::getDefault());
 }
 

@@ -37,7 +37,8 @@ float __host__ __device__ FastMath::atan2f(float y, float x) {
     if (x >= 0) {
         r = (x - abs_y) / (x + abs_y);
         angle = 0.1963f * r * r * r - 0.9817f * r + M_PI_4;
-    } else {
+    }
+    else {
         r = (x + abs_y) / (abs_y - x);
         angle = 0.1963f * r * r * r - 0.9817f * r + 3.0f * M_PI_4;
     }

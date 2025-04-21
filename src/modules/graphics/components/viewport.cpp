@@ -1,18 +1,20 @@
 #include <modules/graphics/components/viewport.hpp>
 #include <simulator/simulator.hpp>
 
-Viewport::Viewport(const unordered_map<string, string> &properties) : UIElement(properties) {
-    styleSetters["background"] = [this](const string &value) {
+Viewport::Viewport(const unordered_map<string, string>& properties) : UIElement(properties) {
+    styleSetters["background"] = [this](const string& value) {
         backgroundColor = parseColor(value);
     };
-    propertySetters["camera"] = [this](const string &value) {
+    propertySetters["camera"] = [this](const string& value) {
         camera.setLocked(value == "locked");
     };
-    propertySetters["bounds"] = [this](const string &value) {
+    propertySetters["bounds"] = [this](const string& value) {
         Size boundArray[4] = {Size::Pixel(0), Size::Pixel(0), Size::Pixel(0), Size::Pixel(0)};
         parseMultiValue(value, boundArray);
-        bounds = {boundArray[0].getValue(), boundArray[1].getValue(),
-                boundArray[2].getValue(), boundArray[3].getValue()};
+        bounds = {
+            boundArray[0].getValue(), boundArray[1].getValue(),
+            boundArray[2].getValue(), boundArray[3].getValue()
+        };
         camera.setBounds(&bounds);
     };
 
@@ -23,24 +25,24 @@ Viewport::Viewport(const unordered_map<string, string> &properties) : UIElement(
     restyle();
 }
 
-void Viewport::setCameraBounds(sf::FloatRect *b) {
+void Viewport::setCameraBounds(sf::FloatRect* b) {
     camera.setBounds(b);
     camera.updateView();
 }
 
-void Viewport::draw(sf::RenderTarget &target) {
+void Viewport::draw(sf::RenderTarget& target) {
     viewport.clear(backgroundColor);
     vertexManager.draw(viewport);
     viewport.display();
     target.draw(viewportSprite);
 }
 
-bool Viewport::handleEvent(const sf::Event &event) {
+bool Viewport::handleEvent(const sf::Event& event) {
     camera.handleEvent(event);
     return false;
 }
 
-bool Viewport::update(float dt, const sf::Vector2f &position) {
+bool Viewport::update(float dt, const sf::Vector2f& position) {
     UIElement::update(dt, position);
     camera.update(dt);
     return false;
@@ -57,7 +59,7 @@ void Viewport::onLayout() {
     if (layout.width <= 0 || layout.height <= 0) return;
 
     if (layout.width != initialLayout.width || layout.height != initialLayout.height) {
-        viewport.create((int) layout.width, (int) layout.height);
+        viewport.create((int)layout.width, (int)layout.height);
     }
     camera.setTargetLayout(&layout);
     if (bounds.width != 0 && bounds.height != 0) {

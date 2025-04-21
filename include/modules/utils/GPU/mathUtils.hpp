@@ -33,6 +33,7 @@ __host__ __device__ float sum(float3 p1);
 __host__ __device__ float distanceBetween(float2 p1, float2 p2);
 __host__ __device__ float distanceBetween(double2 p1, double2 p2);
 __host__ __device__ float distanceBetween(float3 p1, float3 p2);
+__host__ __device__ float angleBetween(float2 p1, float2 p2);
 __host__ __device__ float magnitude(float2 p1);
 __host__ __device__ double magnitude(double2 p1);
 __host__ __device__ float magnitude(float3 p1) ;
