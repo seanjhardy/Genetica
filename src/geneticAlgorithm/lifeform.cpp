@@ -22,40 +22,28 @@ void LifeForm::update() {
     }
 }
 
-void LifeForm::render(VertexManager& vertexManager, vector<Cell>& hostCells, vector<CellLink>& cellLinks,
-                      vector<Point>& points) {
+void LifeForm::render(VertexManager& vertexManager, vector<Segment>& hostSegments, vector<Point>& points) {
     // Render outline first
-    for (int cell : cellIdxs) {
-        hostCells[cell].renderCellWalls(vertexManager, points);
+    for (int segment : segmentIdxs) {
+        hostSegments[segment].renderCellWall(vertexManager, points);
     }
-    for (int link : linkIdxs) {
-        cellLinks[link].renderCellWalls(vertexManager, hostCells, points);
-    }
-
     // Render body next
-    for (int cell : cellIdxs) {
-        hostCells[cell].renderBody(vertexManager, points);
+    for (int segment : segmentIdxs) {
+        hostSegments[segment].renderBody(vertexManager, points);
     }
-    for (int link : linkIdxs) {
-        cellLinks[link].renderBody(vertexManager, hostCells, points);
-    }
-
-    // Render details
-    for (int link : linkIdxs) {
-        cellLinks[link].renderDetails(vertexManager, hostCells, points);
-    }
-    for (int cell : cellIdxs) {
-        hostCells[cell].renderDetails(vertexManager, points);
+    // Render detail next
+    for (int segment : segmentIdxs) {
+        hostSegments[segment].renderBody(vertexManager, points);
     }
 }
 
-void LifeForm::renderBlueprint(VertexManager& vertexManager, vector<Cell>& hostCells, vector<CellLink>& hostCellLinks) {
+void LifeForm::renderBlueprint(VertexManager& vertexManager, vector<Segment>& hostSegments) {
     float width = 400.0f;
     float height = 400.0f;
     float minX = INFINITY, minY = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
-    for (int cell : cellIdxs) {
-        const Cell& hostCell = hostCells[cell];
-        const Point& blueprintPos = blueprintPoints.itemToHost(hostCell.blueprintPointIdx);
+    for (int segment : segmentIdxs) {
+        const Segment& hostSegment = hostSegments[segment];
+        const Point& blueprintPos = blueprintPoints.itemToHost(hostSegment.blueprintPointIdx);
         minX = min(minX, blueprintPos.getPos().x);
         minY = min(minY, blueprintPos.getPos().y);
         maxX = max(maxX, blueprintPos.getPos().x);
@@ -66,7 +54,7 @@ void LifeForm::renderBlueprint(VertexManager& vertexManager, vector<Cell>& hostC
     float scale = min(scaleX, scaleY);
     float offsetX = (width - (maxX - minX) * scale) / 2;
     float offsetY = (height - (maxY - minY) * scale) / 2;
-    for (int cell : cellIdxs) {
+    for (int cell : segmentIdxs) {
         const Cell& hostCell = hostCells[cell];
         const Point& blueprintPoint = blueprintPoints.itemToHost(hostCell.blueprintPointIdx);
         float2 pos = blueprintPoint.getPos() * scale + make_float2(offsetX, offsetY);
@@ -114,7 +102,7 @@ void LifeForm::kill() {
 }
 
 void LifeForm::addCell(size_t motherIdx, const Cell& mother) {
-    if (cellIdxs.size() >= MAX_CELLS) return;
+    if (segmentIdxs.size() >= MAX_CELLS) return;
 
     // Set position and velocity relative to mother
     Point motherPoint = Simulator::get().getEnv().getPoints().itemToHost(mother.pointIdx);
@@ -147,10 +135,10 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother) {
     daughter.idx = Simulator::get().getEnv().nextCellIdx();
     Simulator::get().getEnv().addCell(daughter);
     blueprintPoints.push(daughterBlueprintPoint);
-    cellIdxs.push_back(daughter.idx);
+    segmentIdxs.push_back(daughter.idx);
 
     grn.cellDistances.destroy();
-    grn.cellDistances = StaticGPUVector<float>((cellIdxs.size() * (cellIdxs.size() - 1)) / 2);
+    grn.cellDistances = StaticGPUVector<float>((segmentIdxs.size() * (segmentIdxs.size() - 1)) / 2);
 
     // Create a link to the mother cell
     auto cellLink = CellLink(daughter.idx,
@@ -169,7 +157,7 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother) {
     cellLinksMatrix.addEdge(daughter.idx, motherIdx);
 
     // Add links to all cells within the binding distance
-    for (size_t otherCellIdx : cellIdxs) {
+    for (size_t otherCellIdx : segmentIdxs) {
         if (otherCellIdx == daughter.idx || otherCellIdx == mother.idx) continue;
         if (cellLinksMatrix.isConnected(daughter.idx, otherCellIdx)) continue;
 

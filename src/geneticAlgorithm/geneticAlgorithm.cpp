@@ -1,7 +1,6 @@
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include "modules/utils/random.hpp"
 #include "modules/utils/genomeUtils.hpp"
-#include "geneticAlgorithm/sequencer.hpp"
 #include <simulator/simulator.hpp>
 
 void GeneticAlgorithm::simulate() {
@@ -10,18 +9,15 @@ void GeneticAlgorithm::simulate() {
     }
 }
 
-void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Cell>& cells, GPUVector<CellLink>& cellLinks,
-                              GPUVector<Point>& points) {
-    auto hostCells = vector<Cell>(cells.size());
-    auto hostCellLinks = vector<CellLink>(cellLinks.size());
+void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Segment>& segments, GPUVector<Point>& points) {
+    auto hostSegments = vector<Cell>(segments.size());
     auto hostPoints = vector<Point>(points.size());
 
-    cudaMemcpy(hostCells.data(), cells.data(), cells.size() * sizeof(Cell), cudaMemcpyDeviceToHost);
-    cudaMemcpy(hostCellLinks.data(), cellLinks.data(), cellLinks.size() * sizeof(CellLink), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hostSegments.data(), segments.data(), segments.size() * sizeof(Segment), cudaMemcpyDeviceToHost);
     cudaMemcpy(hostPoints.data(), points.data(), points.size() * sizeof(Point), cudaMemcpyDeviceToHost);
 
     for (LifeForm& lifeForm : population) {
-        lifeForm.render(vertexManager, hostCells, hostCellLinks, hostPoints);
+        lifeForm.render(vertexManager, hostSegments, hostPoints);
     }
 }
 

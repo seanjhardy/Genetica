@@ -6,8 +6,7 @@
 #include <map>
 #include <geneticAlgorithm/genome.hpp>
 #include <modules/cuda/structures/GPUVector.hpp>
-#include <geneticAlgorithm/cellParts/cell.hpp>
-#include <geneticAlgorithm/cellParts/cellLink.hpp>
+#include <geneticAlgorithm/cellParts/segment.hpp>
 #include <geneticAlgorithm/lifeform.hpp>
 #include <modules/utils/structures/dynamicStableVector.hpp>
 
@@ -35,7 +34,7 @@ class GeneticAlgorithm {
     float mutateBaseChance = 0.0005f;
     float insertBaseChance = 0.00003f;
     float deleteBaseChance = 0.00005f;
-    float crossoverCellDataChance = 0.2f;// probability of switching from one parent to another
+    float crossoverCellDataChance = 0.2f; // probability of switching from one parent to another
 
     dynamicStableVector<LifeForm> population{};
     vector<Species> species{};
@@ -47,7 +46,7 @@ class GeneticAlgorithm {
 public:
     void simulate();
     void reset();
-    void render(VertexManager& vertexManager, GPUVector<Cell>& cells, GPUVector<CellLink>& cellLinks, GPUVector<Point>& points);
+    void render(VertexManager& vertexManager, GPUVector<Segment>& segments, GPUVector<Point>& points);
 
     void mutate(Genome& genome);
     void mutateGene(string& gene) const;

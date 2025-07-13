@@ -8,6 +8,8 @@
 #include "cellParts/cellLink.hpp"
 #include <modules/utils/structures/AdjacencyMatrix.hpp>
 
+#include "cellParts/segment.hpp"
+
 #define MAX_CELLS 32
 #define GRN_INTERVAL 5000
 
@@ -23,8 +25,7 @@ public:
 
     GeneRegulatoryNetwork grn;
     int lastGrnUpdate = 0;
-    vector<size_t> cellIdxs = vector<size_t>(0);
-    vector<size_t> linkIdxs = vector<size_t>(0);
+    vector<size_t> segmentIdxs = vector<size_t>(0);
     GPUVector<Point> blueprintPoints = GPUVector<Point>();
     AdjacencyMatrix<size_t> cellLinksMatrix = AdjacencyMatrix<size_t>();
 
@@ -35,10 +36,10 @@ public:
     LifeForm(size_t idx, Genome& genome, float2 pos);
 
     void update();
-    void render(VertexManager& vertexManager, vector<Cell>& cells, vector<CellLink>& cellLinks, vector<Point>& points);
-    void renderBlueprint(VertexManager& vertexManager, vector<Cell>& cells, vector<CellLink>& cellLinks);
+    void render(VertexManager& vertexManager, vector<Segment>& segments, vector<Point>& points);
+    void renderBlueprint(VertexManager& vertexManager, vector<Segment>& segments);
 
-    void combine(LifeForm *partner);
+    void combine(LifeForm* partner);
     void clone(bool mutate);
     void kill();
 
