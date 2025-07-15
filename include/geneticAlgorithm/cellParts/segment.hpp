@@ -45,7 +45,7 @@ public:
 
     Segment() = default;
     Segment(size_t startPointIdx, size_t endPointIdx, size_t startPointAttachedIdx, size_t endPointAttachedIdx,
-             float startLength, float targetLength);
+        float startLength, float targetLength);
 
     __host__ void renderCellWall(VertexManager& vertexManager, vector<Point>& points);
     __host__ void renderBody(VertexManager& vertexManager, vector<Point>& points);
@@ -58,8 +58,8 @@ public:
 
     __host__ __device__ void updateHue(PIGMENT pigment, float amount) {
         float target_hue = pigment == Red ? 0.0f :
-                           pigment == Green ? 120.0f :
-                           pigment == Blue ? 240.0f : 360.0f;
+            pigment == Green ? 120.0f :
+            pigment == Blue ? 240.0f : 360.0f;
         float delta_hue = int(target_hue - hue) % 360;
 
         if (delta_hue > 180) {
