@@ -1,6 +1,6 @@
-#include <modules/utils/GPU/fastMath.hpp>
+#include <modules/utils/gpu/fastMath.hpp>
 #include <cmath>
-#include "modules/utils/GPU/mathUtils.hpp"
+#include "modules/utils/gpu/mathUtils.hpp"
 
 float FastMath::cosTable[FastMath::TABLE_SIZE];
 float FastMath::sinTable[FastMath::TABLE_SIZE];

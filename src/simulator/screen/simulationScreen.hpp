@@ -29,7 +29,7 @@ inline Screen* getSimulationScreen(Simulator* simulator) {
             screen->getElement("playBtnIcon")->overrideProperty("style", "image: play");
             screen->getElement("playBtnIcon")->overrideProperty("styleOnHover", "image: playHighlighted");
         }
-    });
+        });
 
     //Settings buttons
     FunctionManager::add("toggleQuadTree", [simulator, screen]() {
@@ -43,19 +43,19 @@ inline Screen* getSimulationScreen(Simulator* simulator) {
             screen->getElement("quadtreeBtnIcon")->overrideProperty("style", "image: map");
             screen->getElement("quadtreeBtnIcon")->overrideProperty("styleOnHover", "image: mapHighlighted");
         }
-    });
+        });
 
     FunctionManager::add("showUI", [screen]() {
         screen->getElement("UI")->overrideProperty("style", "visible: true");
         screen->getElement("showUIView")->overrideProperty("style", "visible: false");
         screen->getElement("root")->onLayout();
-    });
+        });
 
     FunctionManager::add("hideUI", [screen]() {
         screen->getElement("UI")->overrideProperty("style", "visible: false");
         screen->getElement("showUIView")->overrideProperty("style", "visible: true");
         screen->getElement("root")->onLayout();
-    });
+        });
 
     FunctionManager::add("toggleGenomeTab", [screen]() {
         if (screen->getElement("genomePanel")->visible) {
@@ -65,11 +65,11 @@ inline Screen* getSimulationScreen(Simulator* simulator) {
             screen->getElement("genomePanel")->overrideProperty("style", "visible: true; ");
         }
         screen->getElement("root")->onLayout();
-    });
+        });
 
     FunctionManager::add("copyGenome", [simulator]() {
         //dynamic_cast<LifeForm*>(simulator->getSelectedEntity())->genome;
-    });
+        });
 
     FunctionManager::add("toggleGRNTab", [screen]() {
         if (screen->getElement("grnPanel")->visible) {
@@ -79,35 +79,34 @@ inline Screen* getSimulationScreen(Simulator* simulator) {
             screen->getElement("grnPanel")->overrideProperty("style", "visible: true; ");
         }
         screen->getElement("root")->onLayout();
-    });
+        });
 
     FunctionManager::add("clone", [simulator]() {
         simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].clone(false);
-    });
+        });
     FunctionManager::add("mutate", [simulator]() {
         //simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].mutate();
-    });
+        });
     FunctionManager::add("energy", [simulator]() {
         //simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].energy = 100;
-    });
+        });
     FunctionManager::add("delete", [simulator]() {
         simulator->getEnv().getGA().getPopulation()[simulator->getSelectedEntityId()].kill();
-    });
+        });
 
 
     FunctionManager::add("randomPlanet", [screen, simulator]() {
         Planet* planet;
         do {
             planet = Planet::getRandom();
-        }
-        while (simulator->getEnv().getPlanet().name == planet->thumbnail);
+        } while (simulator->getEnv().getPlanet().name == planet->thumbnail);
 
         simulator->getEnv().setPlanet(planet);
 
         ((ImageElement*)screen->getElement("planetBtnIcon"))
             ->overrideProperty("style", "image: " + planet->thumbnail);
         ((Text*)screen->getElement("planetBtnName"))->setText(planet->name);
-    });
+        });
 
     screen->addFunction([simulator, screen]() {
         dynamic_cast<Text*>(screen->getElement("time"))->setText(simulator->getTimeString());
@@ -130,11 +129,11 @@ inline Screen* getSimulationScreen(Simulator* simulator) {
         sf::Color thermometerColor;
         if (temperature <= 10) {
             thermometerColor = interpolate(sf::Color(50, 50, 255), sf::Color(200, 200, 255),
-                                           (thermometerTemperature + 20) / 30);
+                (thermometerTemperature + 20) / 30);
         }
         else {
             thermometerColor = interpolate(sf::Color(255, 200, 100), sf::Color(255, 100, 0),
-                                           (thermometerTemperature) / 50);
+                (thermometerTemperature) / 50);
         }
         std::string thermometerColorString = "rgb("
             + std::to_string(thermometerColor.r) + ","
@@ -155,7 +154,7 @@ inline Screen* getSimulationScreen(Simulator* simulator) {
                 selectedLifeform.genome.render(vertexManager);
                 vector<Cell> cells = env.getCells().toHost();
                 vector<CellLink> cellLinks = env.getCellLinks().toHost();
-                selectedLifeform.renderBlueprint(vertexManager, cells, cellLinks);
+                //selectedLifeform.renderBlueprint(vertexManager, cells, cellLinks);
             }
 
             if (screen->getElement("grnPanel")->visible) {
@@ -170,7 +169,7 @@ inline Screen* getSimulationScreen(Simulator* simulator) {
                 }*/
             }
         }
-    });
+        });
 
     vector<UIElement*> elements = ComponentManager::get("SimulationScreen");
     for (const auto& child : elements) {

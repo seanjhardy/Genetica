@@ -9,35 +9,35 @@ View::View(const unordered_map<string, string>& properties, vector<UIElement*> c
     UIElement(properties, children) {
     styleSetters["background"] = [this](const string& v) {
         backgroundColor = parseColor(v);
-    };
+        };
     styleSetters["flex-direction"] = [this](const string& v) {
         flexDirection = parseDirection(v);
-    };
+        };
     styleSetters["align-row"] = [this](const string& v) {
         rowAlignment = parseAlignment(v);
-    };
+        };
     styleSetters["align-col"] = [this](const string& v) {
         columnAlignment = parseAlignment(v);
-    };
+        };
     styleSetters["gap"] = [this](const string& v) {
         gap = parseValue(v);
-    };
+        };
     styleSetters["shadow"] = [this](const string& v) {
         shadow = parseShadow(v);
-    };
+        };
 
     CursorManager::set(cursor, "pointer");
 
     propertySetters["onClick"] = [this](const string& v) {
         onClick = *FunctionManager::get(v);
-    };
+        };
 
     children = std::move(children);
 
     std::vector<UIElement*> baseLayer;
-    for (auto child : children) {
+    for (auto child : this->children) {
         if (child->absolute) {
-            layers.push_back({child});
+            layers.push_back({ child });
         }
         else {
             baseLayer.push_back(child);
@@ -65,7 +65,7 @@ void View::onLayout() {
         shadowShape.setRadius(clampedBorder);
         shadowShape.setPosition(layout.getPosition() +
             sf::Vector2f(shadow.getOffset()[0] - shadow.getSize() / 2,
-                         shadow.getOffset()[1] - shadow.getSize() / 2));
+                shadow.getOffset()[1] - shadow.getSize() / 2));
     }
     shape.setFillColor(backgroundColor);
     shape.setOutlineColor(border.getColor());
@@ -99,7 +99,7 @@ bool View::handleEvent(const sf::Event& event) {
     }
     if (event.type == sf::Event::MouseButtonPressed &&
         event.mouseButton.button == sf::Mouse::Left) {
-        if (contains({(float)event.mouseButton.x, (float)event.mouseButton.y})
+        if (contains({ (float)event.mouseButton.x, (float)event.mouseButton.y })
             && visible && allowClick) {
             if (animation) {
                 animation->reset();
@@ -132,7 +132,7 @@ void View::updateLayout() {
         // Get all visible children
         int numChildren = std::count_if(layer.begin(), layer.end(), [](UIElement* child) {
             return child->visible;
-        });
+            });
         if (numChildren == 0) continue;
 
         sf::Vector2f containerSize = layout.getSize();
@@ -174,8 +174,8 @@ void View::updateLayout() {
 
         // Second pass: set sizes and positions
         float currentMainPos = (flexDirection == Direction::Row)
-                                   ? layout.left + padding[0].getValue()
-                                   : layout.top + padding[1].getValue();
+            ? layout.left + padding[0].getValue()
+            : layout.top + padding[1].getValue();
 
         for (const auto& child : layer) {
             UIElement* element = child;
@@ -216,16 +216,16 @@ void View::updateLayout() {
 
             // Set element size
             sf::Vector2f elementSize = (flexDirection == Direction::Row)
-                                           ? sf::Vector2f(itemMainSize, itemCrossSize)
-                                           : sf::Vector2f(itemCrossSize, itemMainSize);
+                ? sf::Vector2f(itemMainSize, itemCrossSize)
+                : sf::Vector2f(itemCrossSize, itemMainSize);
             element->base_layout.width = elementSize.x;
             element->base_layout.height = elementSize.y;
 
             // Set element position
             Alignment& alignment = (flexDirection == Direction::Row) ? columnAlignment : rowAlignment;
             float crossPos = (flexDirection == Direction::Row)
-                                 ? layout.top + padding[1].getValue()
-                                 : layout.left + padding[0].getValue();
+                ? layout.top + padding[1].getValue()
+                : layout.left + padding[0].getValue();
 
             switch (alignment) {
             case Alignment::Center:
@@ -240,8 +240,8 @@ void View::updateLayout() {
             }
 
             sf::Vector2f elementPos = (flexDirection == Direction::Row)
-                                          ? sf::Vector2f(currentMainPos, crossPos)
-                                          : sf::Vector2f(crossPos, currentMainPos);
+                ? sf::Vector2f(currentMainPos, crossPos)
+                : sf::Vector2f(crossPos, currentMainPos);
             element->base_layout.left = elementPos.x;
             element->base_layout.top = elementPos.y;
             currentMainPos += itemMainSize + gap;
@@ -285,7 +285,7 @@ void View::applyOffset(const std::vector<UIElement*>& elements, float offset) {
 }
 
 void View::distributeSpace(const std::vector<UIElement*>& elements, float space, bool includeEnds,
-                           int numVisibleChildren) {
+    int numVisibleChildren) {
     int divisions = includeEnds ? numVisibleChildren + 1 : numVisibleChildren - 1;
     if (divisions <= 0) return;
 

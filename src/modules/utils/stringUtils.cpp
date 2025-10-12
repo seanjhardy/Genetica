@@ -3,6 +3,7 @@
 #include <regex>
 #include <fstream>
 #include <iomanip>
+#include <algorithm>
 
 using namespace std;
 
@@ -23,7 +24,7 @@ string trim(const string& str) {
     auto end = find_if_not(str.rbegin(), str.rend(), isSpace).base();
 
     // Create a new string with trimmed spaces
-    return {start, end};
+    return { start, end };
 }
 
 string stripHTML(const string& str) {

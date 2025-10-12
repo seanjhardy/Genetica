@@ -5,7 +5,7 @@
 #include <cublas_v2.h>
 #include <iostream>
 #include <vector>
-#include <modules/cuda/logging.hpp>
+#include <modules/gpu/logging.hpp>
 
 // cuBLAS error checking macro
 #define CUBLAS_CHECK(call) do { \

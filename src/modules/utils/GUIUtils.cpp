@@ -1,6 +1,6 @@
 #include <SFML/Graphics.hpp>
 #include <modules/utils/GUIUtils.hpp>
-#include <vector_types.h>
+#include <modules/utils/vector_types.hpp>
 
 sf::Color brightness(sf::Color color, float brightness) {
     return {
@@ -26,7 +26,7 @@ sf::FloatRect computeBoundingBox(std::vector<float2> points) {
         if (p.y > maxY) maxY = p.y;
     }
 
-    return {minX, minY, maxX - minX, maxY - minY};
+    return { minX, minY, maxX - minX, maxY - minY };
 }
 
 sf::Color HSVtoRGB(float H, float S, float V) {

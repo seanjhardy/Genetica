@@ -1,13 +1,13 @@
 #include <modules/graphics/utils/camera.hpp>
 #include <cmath>
-#include <vector_types.h>
+#include <modules/utils/vector_types.hpp>
 #include <simulator/simulator.hpp>
 
 Camera::Camera(sf::RenderTarget* target,
-               sf::FloatRect* targetLayout,
-               sf::FloatRect* bounds)
+    sf::FloatRect* targetLayout,
+    sf::FloatRect* bounds)
     : target(target),
-      targetLayout(targetLayout) {
+    targetLayout(targetLayout) {
     view = target->getDefaultView();
 
     if (bounds != nullptr) {
@@ -16,7 +16,7 @@ Camera::Camera(sf::RenderTarget* target,
             bounds->top + bounds->height / 2
         };
         zoomLevel = std::min(targetLayout->width / bounds->width,
-                             targetLayout->height / bounds->height);
+            targetLayout->height / bounds->height);
         sceneBounds = bounds;
     }
     updateView();
@@ -81,17 +81,17 @@ void Camera::constrainToBounds() {
 
     // Constrain the camera position
     position.x = std::clamp(position.x,
-                            sceneBounds->left - maxDistance.x,
-                            sceneBounds->left + sceneBounds->width + maxDistance.x);
+        sceneBounds->left - maxDistance.x,
+        sceneBounds->left + sceneBounds->width + maxDistance.x);
     position.y = std::clamp(position.y,
-                            sceneBounds->top - maxDistance.y,
-                            sceneBounds->top + sceneBounds->height + maxDistance.y);
+        sceneBounds->top - maxDistance.y,
+        sceneBounds->top + sceneBounds->height + maxDistance.y);
 }
 
 void Camera::zoom(float delta, const sf::Vector2i& mousePos) {
     // The minimum zoom level is the ratio of the screen dimension to twice the box dimension
     float minZoomLevel = std::min(target->getSize().x / (2.0f * sceneBounds->width),
-                                  target->getSize().y / (2.0f * sceneBounds->height));
+        target->getSize().y / (2.0f * sceneBounds->height));
 
     // Convert mouse position from screen to world coordinates
     sf::Vector2f mouseWorldBeforeZoom = target->mapPixelToCoords(mousePos, view);
@@ -147,7 +147,7 @@ bool Camera::isCircleVisible(const float2& point, float r) {
 }
 
 sf::Vector2f Camera::mapPixelToCoords(const sf::Vector2f& screenPos) {
-    sf::Vector2f mouseRelativeToTarget = {screenPos.x - targetLayout->left, screenPos.y - targetLayout->top};
+    sf::Vector2f mouseRelativeToTarget = { screenPos.x - targetLayout->left, screenPos.y - targetLayout->top };
     return target->mapPixelToCoords(sf::Vector2i(mouseRelativeToTarget), view);
 }
 

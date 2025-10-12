@@ -4,7 +4,7 @@
 #include "./geneticUnit.hpp"
 #include "./gene.hpp"
 #include <modules/utils/print.hpp>
-#include "modules/cuda/structures/GPUVector.hpp"
+#include "modules/gpu/structures/GPUVector.hpp"
 
 /**
  * An element that promotes the level of other elements
@@ -15,12 +15,14 @@ struct Promoter : GeneticUnit {
         Multiplicative
     } promoterType;
 
+    Promoter() : promoterType(PromoterType::Additive) {}
     Promoter(PromoterType promoterType, bool sign, float modifier, float3 embedding)
-        : GeneticUnit(sign, modifier, embedding), promoterType(promoterType) {}
+        : GeneticUnit(sign, modifier, embedding), promoterType(promoterType) {
+    }
 
-    __device__ static float calculateActivity(int index,
-                                              StaticGPUVector<float>& levels,
-                                              StaticGPUVector<float>& promoterFactorAffinities) {
+    static float calculateActivity(int index,
+        StaticGPUVector<float>& levels,
+        StaticGPUVector<float>& promoterFactorAffinities) {
         float activity = 0.0f;
         for (int i = 0; i < levels.size(); i++) {
             int promoterFactorIndex = index * levels.size() + i;

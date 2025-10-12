@@ -4,7 +4,7 @@
 #include <vector>
 #include <modules/graphics/vertexManager.hpp>
 #include <modules/utils/stringUtils.hpp>
-#include "modules/cuda/structures/GPUVector.hpp"
+#include "modules/gpu/structures/GPUVector.hpp"
 
 struct RegulatoryUnit {
     static constexpr float W = 10.0f;
@@ -12,13 +12,13 @@ struct RegulatoryUnit {
     StaticGPUVector<int> promoters;
     StaticGPUVector<int> factors;
 
-    __host__ __device__ RegulatoryUnit() = default;
+    RegulatoryUnit() = default;
 
-    __device__ void calculateActivation(
-      StaticGPUVector<Promoter>& grnPromoters,
-      StaticGPUVector<Gene>& grnFactors,
-      StaticGPUVector<float>& factorLevels,
-      StaticGPUVector<float>& promoterFactorAffinities) {
+    void calculateActivation(
+        StaticGPUVector<Promoter>& grnPromoters,
+        StaticGPUVector<Gene>& grnFactors,
+        StaticGPUVector<float>& factorLevels,
+        StaticGPUVector<float>& promoterFactorAffinities) {
 
         // Calculate activity of promoters based on input factors
         // and combine those activities into one overall regulatory unit activity
@@ -26,12 +26,13 @@ struct RegulatoryUnit {
         float multiplicativePromoterValue = 1;
         for (size_t i = 0; i < promoters.size(); i++) {
             size_t promoterIndex = promoters[i];
-            Promoter* promoter = &grnPromoters[promoterIndex];
-            float promoterActivity = promoter->calculateActivity(promoterIndex, factorLevels, promoterFactorAffinities);
+            Promoter promoter = grnPromoters[promoterIndex];
+            float promoterActivity = promoter.calculateActivity(promoterIndex, factorLevels, promoterFactorAffinities);
 
-            if (promoter->promoterType == Promoter::PromoterType::Additive) {
+            if (promoter.promoterType == Promoter::PromoterType::Additive) {
                 additivePromoterValue += promoterActivity;
-            } else if (promoter->promoterType == Promoter::PromoterType::Multiplicative) {
+            }
+            else if (promoter.promoterType == Promoter::PromoterType::Multiplicative) {
                 multiplicativePromoterValue *= promoterActivity;
             }
         }
@@ -46,13 +47,14 @@ struct RegulatoryUnit {
         // Calculate the amount of each factor produced based on the unit's activity
         for (int i = 0; i < factors.size(); i++) {
             int geneIndex = factors[i];
-            auto* gene = &grnFactors[geneIndex];
+            auto gene = grnFactors[geneIndex];
             // Only update internal and external products
-            if (gene->factorType != Gene::FactorType::InternalProduct &&
-                gene->factorType != Gene::FactorType::ExternalProduct) {
+            if (gene.factorType != Gene::FactorType::InternalProduct &&
+                gene.factorType != Gene::FactorType::ExternalProduct) {
                 continue;
             }
-            factorLevels[geneIndex] += transformedValue;
+            float currentLevel = factorLevels[geneIndex];
+            factorLevels.setItem(geneIndex, currentLevel + transformedValue);
         }
     }
 

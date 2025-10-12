@@ -2,7 +2,6 @@
 #define GENE
 
 #include "./geneticUnit.hpp"
-#include <vector_types.h>
 #include <modules/utils/operations.hpp>
 
 /**
@@ -26,10 +25,13 @@ struct Gene : GeneticUnit {
 
     float2 extra;
 
+    Gene() : factorType(FactorType::Constant) {}
     Gene(FactorType factorType, bool sign, float modifier, float3 embedding)
-        : GeneticUnit(sign, modifier, embedding), factorType(factorType) {}
+        : GeneticUnit(sign, modifier, embedding), factorType(factorType) {
+    }
     Gene(FactorType factorType, bool sign, float modifier, float3 embedding, float2 extra)
-        : GeneticUnit(sign, modifier, embedding), factorType(factorType), extra(extra) {}
+        : GeneticUnit(sign, modifier, embedding), factorType(factorType), extra(extra) {
+    }
 };
 
 #endif

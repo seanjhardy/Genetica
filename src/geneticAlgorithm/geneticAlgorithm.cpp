@@ -13,12 +13,12 @@ void GeneticAlgorithm::render(VertexManager& vertexManager, GPUVector<Segment>& 
     auto hostSegments = vector<Cell>(segments.size());
     auto hostPoints = vector<Point>(points.size());
 
-    cudaMemcpy(hostSegments.data(), segments.data(), segments.size() * sizeof(Segment), cudaMemcpyDeviceToHost);
+    /*cudaMemcpy(hostSegments.data(), segments.data(), segments.size() * sizeof(Segment), cudaMemcpyDeviceToHost);
     cudaMemcpy(hostPoints.data(), points.data(), points.size() * sizeof(Point), cudaMemcpyDeviceToHost);
 
     for (LifeForm& lifeForm : population) {
         lifeForm.render(vertexManager, hostSegments, hostPoints);
-    }
+    }*/
 }
 
 void GeneticAlgorithm::mutate(Genome& genome) {
@@ -26,8 +26,8 @@ void GeneticAlgorithm::mutate(Genome& genome) {
     for (auto& [key, value] : genome.getGenes()) {
         if (Random::random() < cloneGeneChance) {
             genome.addHoxGene(nextGeneID(),
-                              value,
-                              Random::random(genome.hoxGeneOrder.size()));
+                value,
+                Random::random(genome.hoxGeneOrder.size()));
         }
     }
 
@@ -39,8 +39,8 @@ void GeneticAlgorithm::mutate(Genome& genome) {
             newGene += Random::randomBase();
         }
         genome.addHoxGene(nextGeneID(),
-                          newGene,
-                          Random::random(genome.hoxGeneOrder.size()));
+            newGene,
+            Random::random(genome.hoxGeneOrder.size()));
     }
 
     // Delete genes

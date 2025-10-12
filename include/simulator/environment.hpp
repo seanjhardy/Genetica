@@ -3,15 +3,15 @@
 #define ENVIRONMENT
 
 #include <modules/physics/point.hpp>
-#include "modules/cuda/structures/GPUVector.hpp"
-#include "modules/cuda/structures/CGPUValue.hpp"
+#include "modules/gpu/structures/GPUVector.hpp"
+#include "modules/gpu/structures/CGPUValue.hpp"
 #include <modules/graphics/vertexManager.hpp>
 #include <modules/graphics/dragHandler.hpp>
 #include <simulator/planet.hpp>
 #include <geneticAlgorithm/cellParts/cell.hpp>
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
-#include <modules/cuda/structures/cellGrowthData.hpp>
+#include <modules/gpu/structures/cellGrowthData.hpp>
 /**
  * The environment contains information about all physics objects in the scene, as well as various
  * environmental variables such as the background map, an optional fluid simulator, grid lines,

@@ -2,7 +2,7 @@
 #define GUIUtils
 
 #include <SFML/Graphics.hpp>
-#include <vector_types.h>
+#include "modules/utils/vector_types.hpp"
 
 enum PIGMENT {
     Red,

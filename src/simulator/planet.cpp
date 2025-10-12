@@ -21,6 +21,10 @@ void Planet::update() {
 }
 
 void Planet::render(VertexManager& vertexManager) {
+    if (mapSprite.getTexture() == nullptr) {
+        consoleLog("WARNING: Planet render called but mapSprite has no texture!");
+        return;
+    }
     vertexManager.addSprite(mapSprite);
 }
 
@@ -56,7 +60,10 @@ void Planet::updateMap() {
     sf::Texture map;
     int x_size = clamp(1, round(mapBounds.width / MAP_SCALE), 100000);
     int y_size = clamp(1, round(mapBounds.height / MAP_SCALE), 100000);
-    texture.create(x_size, y_size);
+    if (!texture.create(x_size, y_size)) {
+        consoleLog("ERROR: Failed to create render texture!");
+        return;
+    }
     texture.clear(sf::Color::Black);
 
     // Seed for randomness
@@ -72,7 +79,7 @@ void Planet::updateMap() {
 
     texture.display();
     mapSprite = sf::Sprite(texture.getTexture());
-    mapSprite.setPosition({mapBounds.left, mapBounds.top});
+    mapSprite.setPosition({ mapBounds.left, mapBounds.top });
     mapSprite.setScale(MAP_SCALE, MAP_SCALE);
 }
 
@@ -98,7 +105,7 @@ void Planet::init() {
                       },
                       5.0f, 0.7f, 0.7f, true)),
     };
-    planets.insert({mars.name, mars});
+    planets.insert({ mars.name, mars });
     planetNames.push_back(mars.name);
 
     Planet cyrus("Cyrus");
@@ -139,7 +146,7 @@ void Planet::init() {
             10.0f, 0.1f, 0.7f, true, true)),
 
     };
-    planets.insert({cyrus.name, cyrus});
+    planets.insert({ cyrus.name, cyrus });
     planetNames.push_back(cyrus.name);
 
     Planet syth("Syth");
@@ -154,7 +161,7 @@ void Planet::init() {
             },
             8.0f, 0.1f, 0.0f, true)),
     };
-    planets.insert({syth.name, syth});
+    planets.insert({ syth.name, syth });
     planetNames.push_back(syth.name);
 
     Planet xeria("Xeria");
@@ -170,7 +177,7 @@ void Planet::init() {
             10.0f, 0.1f, 0.0f, true)),
     };
     planetNames.push_back(xeria.name);
-    planets.insert({xeria.name, xeria});
+    planets.insert({ xeria.name, xeria });
 
     Planet xeriab("Xeria-b");
     xeriab.temperature = 20.0f;
@@ -185,7 +192,7 @@ void Planet::init() {
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(xeriab.name);
-    planets.insert({xeriab.name, xeriab});
+    planets.insert({ xeriab.name, xeriab });
 
     Planet ichigo("Ichigo");
     ichigo.temperature = -30.0f;
@@ -198,7 +205,7 @@ void Planet::init() {
             6.0f, 0.05f, 8.0f, true)),
     };
     planetNames.push_back(ichigo.name);
-    planets.insert({ichigo.name, ichigo});
+    planets.insert({ ichigo.name, ichigo });
 
     Planet b12axo("B12-Axo");
     b12axo.temperature = -10.0f;
@@ -212,7 +219,7 @@ void Planet::init() {
             10.0f, 0.2f, 0.0f, true)),
     };
     planetNames.push_back(b12axo.name);
-    planets.insert({b12axo.name, b12axo});
+    planets.insert({ b12axo.name, b12axo });
 
     Planet aridium("Aridium");
     aridium.temperature = 30.0f;
@@ -228,7 +235,7 @@ void Planet::init() {
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(aridium.name);
-    planets.insert({aridium.name, aridium});
+    planets.insert({ aridium.name, aridium });
 
     Planet ocea("Ocea");
     ocea.temperature = 30.0f;
@@ -244,7 +251,7 @@ void Planet::init() {
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(ocea.name);
-    planets.insert({ocea.name, ocea});
+    planets.insert({ ocea.name, ocea });
 
     Planet gundam("Gundam");
     gundam.temperature = 15.0f;
@@ -269,7 +276,7 @@ void Planet::init() {
         ))
     };
     planetNames.push_back(gundam.name);
-    planets.insert({gundam.name, gundam});
+    planets.insert({ gundam.name, gundam });
 
     Planet roche("Roche");
     roche.temperature = 70.0f;
@@ -282,7 +289,7 @@ void Planet::init() {
             10.0f, 0.4f, 0.0f, true)),
     };
     planetNames.push_back(roche.name);
-    planets.insert({roche.name, roche});
+    planets.insert({ roche.name, roche });
 
     Planet xia("Xia");
     xia.temperature = -10.0f;
@@ -299,7 +306,7 @@ void Planet::init() {
             8.0f, 0.2f, 0.0f, true)),
     };
     planetNames.push_back(xia.name);
-    planets.insert({xia.name, xia});
+    planets.insert({ xia.name, xia });
 
     Planet glau("Glau");
     glau.temperature = 5.0f;
@@ -313,7 +320,7 @@ void Planet::init() {
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(glau.name);
-    planets.insert({glau.name, glau});
+    planets.insert({ glau.name, glau });
 
     Planet eden("Eden");
     eden.temperature = 25.0f;
@@ -326,7 +333,7 @@ void Planet::init() {
             6.0f, 0.3f, 3.0f, true)),
     };
     planetNames.push_back(eden.name);
-    planets.insert({eden.name, eden});
+    planets.insert({ eden.name, eden });
 
     Planet zolo("Zolo");
     zolo.temperature = 5.0f;
@@ -349,7 +356,7 @@ void Planet::init() {
             8.0f, 0.2f, 0.1f, true)),
     };
     planetNames.push_back(zolo.name);
-    planets.insert({zolo.name, zolo});
+    planets.insert({ zolo.name, zolo });
 
     Planet riula("Riula");
     riula.temperature = 10.0f;
@@ -380,7 +387,7 @@ void Planet::init() {
             10.0f, 0.1f, 0.7f, true, true)),
     };
     planetNames.push_back(riula.name);
-    planets.insert({riula.name, riula});
+    planets.insert({ riula.name, riula });
 
     Planet flax("Flax");
     flax.temperature = -10.0f;
@@ -394,7 +401,7 @@ void Planet::init() {
             6.0f, 0.2f, 0.0f, true)),
     };
     planetNames.push_back(flax.name);
-    planets.insert({flax.name, flax});
+    planets.insert({ flax.name, flax });
 
     Planet romea("Romea");
     romea.temperature = 20.0f;
@@ -437,7 +444,7 @@ void Planet::init() {
                      10.0f, 0.2f, 2.0f, true)),
     };
     planetNames.push_back(romea.name);
-    planets.insert({romea.name, romea});
+    planets.insert({ romea.name, romea });
 
     Planet emulo("Emulo");
     emulo.temperature = 10.0f;
@@ -459,7 +466,7 @@ void Planet::init() {
             6.0f, 1.0f, 0.1f, true)),
     };
     planetNames.push_back(emulo.name);
-    planets.insert({emulo.name, emulo});
+    planets.insert({ emulo.name, emulo });
 
     Planet azeuros("Azeuros");
     azeuros.temperature = -20.0f;
@@ -472,7 +479,7 @@ void Planet::init() {
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(azeuros.name);
-    planets.insert({azeuros.name, azeuros});
+    planets.insert({ azeuros.name, azeuros });
 
     Planet iridium("Iridium");
     iridium.temperature = 30.0f;
@@ -485,7 +492,7 @@ void Planet::init() {
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(iridium.name);
-    planets.insert({iridium.name, iridium});
+    planets.insert({ iridium.name, iridium });
 
     Planet nauca("Nauca");
     nauca.temperature = 20.0f;
@@ -499,7 +506,7 @@ void Planet::init() {
             6.0f, 0.4f, 0.0f, true)),
     };
     planetNames.push_back(nauca.name);
-    planets.insert({nauca.name, nauca});
+    planets.insert({ nauca.name, nauca });
 
     Planet abogee("Abogee");
     abogee.temperature = 60.0f;
@@ -512,7 +519,7 @@ void Planet::init() {
             6.0f, 1.0f, 0.0f, true)),
     };
     planetNames.push_back(abogee.name);
-    planets.insert({abogee.name, abogee});
+    planets.insert({ abogee.name, abogee });
 
     Planet delune("Delune");
     delune.temperature = 10.0f;
@@ -526,7 +533,7 @@ void Planet::init() {
             6.0f, 0.1f, 0.0f, true)),
     };
     planetNames.push_back(delune.name);
-    planets.insert({delune.name, delune});
+    planets.insert({ delune.name, delune });
 
     Planet cerebrus("Cerebrus");
     cerebrus.temperature = 0.0f;
@@ -539,5 +546,5 @@ void Planet::init() {
             6.0f, 0.1f, 0.0f, true)),
     };
     planetNames.push_back(cerebrus.name);
-    planets.insert({cerebrus.name, cerebrus});
+    planets.insert({ cerebrus.name, cerebrus });
 }

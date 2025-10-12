@@ -1,7 +1,7 @@
 #ifndef UI_ELEMENT
 #define UI_ELEMENT
 
-#include <vector_types.h>
+#include <modules/utils/vector_types.hpp>
 #include "SFML/Graphics.hpp"
 #include "size.hpp"
 #include "modules/graphics/styleManager.hpp"

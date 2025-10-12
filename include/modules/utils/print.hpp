@@ -2,7 +2,6 @@
 #define PRINT
 
 #include <iostream>
-#include <vector_types.h>
 #include <tuple>
 #include <vector>
 #include <unordered_map>
@@ -13,8 +12,8 @@
 
 inline void printElement(const Size c) {
     std::cout <<
-              (c.getMode() == Size::Mode::Pixel ? "Pixel(" :
-               (c.getMode() == Size::Mode::Percent ? "Percent(" :
+        (c.getMode() == Size::Mode::Pixel ? "Pixel(" :
+            (c.getMode() == Size::Mode::Percent ? "Percent(" :
                 (c.getMode() == Size::Mode::Flex ? "Flex(" : ""))) << c.getValue() << ")";
 }
 
@@ -66,17 +65,17 @@ inline void printElement(const sf::Color& c) {
 
 inline void printElement(const Alignment& c) {
     std::cout << "Alignment(" <<
-              (c == Alignment::Start ? "Start" :
-               (c == Alignment::Center ? "Center" :
+        (c == Alignment::Start ? "Start" :
+            (c == Alignment::Center ? "Center" :
                 (c == Alignment::End ? "End" :
-                 (c == Alignment::SpaceBetween ? "SpaceBetween" :
-                  (c == Alignment::SpaceAround ? "SpaceAround" : ""))))) << ")";
+                    (c == Alignment::SpaceBetween ? "SpaceBetween" :
+                        (c == Alignment::SpaceAround ? "SpaceAround" : ""))))) << ")";
 }
 
 inline void printElement(const Direction& c) {
     std::cout << "Direction(" <<
-              (c == Direction::Row ? "Row" :
-               (c == Direction::Column ? "Column" : "")) << ")";
+        (c == Direction::Row ? "Row" :
+            (c == Direction::Column ? "Column" : "")) << ")";
 }
 
 inline void printElement(const std::string& str) {
@@ -118,12 +117,13 @@ inline void printElement(const T& item) {
 
 // Variadic template to handle multiple arguments
 template <typename T, typename... Args>
-inline void print(const T& first, const Args&... args) {
+inline void consoleLog(const T& first, const Args&... args) {
     printElement(first);
     if constexpr (sizeof...(args) > 0) {
         std::cout << " ";
-        print(args...);
-    } else {
+        consoleLog(args...);
+    }
+    else {
         std::cout << std::endl;
     }
 }

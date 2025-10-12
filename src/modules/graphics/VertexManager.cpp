@@ -1,7 +1,7 @@
 #include <SFML/Graphics.hpp>
 #include <vector>
 #include <array>
-#include <vector_types.h>
+#include <modules/utils/vector_types.hpp>
 #include <modules/graphics/vertexManager.hpp>
 #include <modules/utils/print.hpp>
 #include <modules/graphics/fontManager.hpp>
@@ -19,14 +19,14 @@ VertexManager::VertexManager()
 }
 
 void VertexManager::addTriangle(const float2& p1, const float2& p2, const float2& p3,
-                                const sf::Color& color) {
-    vertices.append(sf::Vertex({p1.x, p1.y}, color));
-    vertices.append(sf::Vertex({p2.x, p2.y}, color));
-    vertices.append(sf::Vertex({p3.x, p3.y}, color));
+    const sf::Color& color) {
+    vertices.append(sf::Vertex({ p1.x, p1.y }, color));
+    vertices.append(sf::Vertex({ p2.x, p2.y }, color));
+    vertices.append(sf::Vertex({ p3.x, p3.y }, color));
 }
 
 void VertexManager::addTexturedTriangle(const float2& p1, const float2& p2, const float2& p3,
-                                        const sf::Color& color, const sf::FloatRect& bbox, float angle) {
+    const sf::Color& color, const sf::FloatRect& bbox, float angle) {
     float textureWidth = 50;
     float textureHeight = 50;
     float textureAspect = textureWidth / textureHeight;
@@ -34,19 +34,19 @@ void VertexManager::addTexturedTriangle(const float2& p1, const float2& p2, cons
     // Adjust the scale factors to maintain aspect ratio
     float scaleX = textureAspect / textureWidth;
     float scaleY = (1.0f / textureAspect) / textureWidth;
-    float2 scale = {scaleX, scaleY};
+    float2 scale = { scaleX, scaleY };
 
     float centerX = (bbox.left + bbox.width / 2);
     float centerY = (bbox.top + bbox.height / 2);
-    float2 center = {centerX, centerY};
+    float2 center = { centerX, centerY };
 
     float2 texCoord1 = rotate(scale * (p1 - center), -angle);
     float2 texCoord2 = rotate(scale * (p2 - center), -angle);
     float2 texCoord3 = rotate(scale * (p3 - center), -angle);
 
-    texturedVertices.append(sf::Vertex({p1.x, p1.y}, color, {texCoord1.x, texCoord1.y}));
-    texturedVertices.append(sf::Vertex({p2.x, p2.y}, color, {texCoord2.x, texCoord2.y}));
-    texturedVertices.append(sf::Vertex({p3.x, p3.y}, color, {texCoord3.x, texCoord3.y}));
+    texturedVertices.append(sf::Vertex({ p1.x, p1.y }, color, { texCoord1.x, texCoord1.y }));
+    texturedVertices.append(sf::Vertex({ p2.x, p2.y }, color, { texCoord2.x, texCoord2.y }));
+    texturedVertices.append(sf::Vertex({ p3.x, p3.y }, color, { texCoord3.x, texCoord3.y }));
 }
 
 void VertexManager::addCircle(const float2& center, float radius, const sf::Color& color, int maxPoints) {
@@ -61,26 +61,26 @@ void VertexManager::addCircle(const float2& center, float radius, const sf::Colo
 }
 
 void VertexManager::addRectangle(const float2& p1, const float2& p2, const float2& p3, const float2& p4,
-                                 const sf::Color& color) {
+    const sf::Color& color) {
     addTriangle(p1, p2, p3, color);
     addTriangle(p3, p4, p1, color);
 }
 
 void VertexManager::addFloatRect(const sf::FloatRect& rect, const sf::Color& color) {
-    addTriangle({rect.left, rect.top},
-                {rect.left + rect.width, rect.top},
-                {rect.left, rect.top + rect.height}, color);
+    addTriangle({ rect.left, rect.top },
+        { rect.left + rect.width, rect.top },
+        { rect.left, rect.top + rect.height }, color);
 
-    addTriangle({rect.left + rect.width, rect.top},
-                {rect.left, rect.top + rect.height},
-                {rect.left + rect.width, rect.top + rect.height}, color);
+    addTriangle({ rect.left + rect.width, rect.top },
+        { rect.left, rect.top + rect.height },
+        { rect.left + rect.width, rect.top + rect.height }, color);
 }
 
 void VertexManager::addFloatRectOutline(const sf::FloatRect& rect, const sf::Color& color, float thickness) {
-    addLine({rect.left, rect.top}, {rect.left + rect.width, rect.top}, color, thickness);
-    addLine({rect.left + rect.width, rect.top}, {rect.left + rect.width, rect.top + rect.height}, color, thickness);
-    addLine({rect.left + rect.width, rect.top + rect.height}, {rect.left, rect.top + rect.height}, color, thickness);
-    addLine({rect.left, rect.top + rect.height}, {rect.left, rect.top}, color, thickness);
+    addLine({ rect.left, rect.top }, { rect.left + rect.width, rect.top }, color, thickness);
+    addLine({ rect.left + rect.width, rect.top }, { rect.left + rect.width, rect.top + rect.height }, color, thickness);
+    addLine({ rect.left + rect.width, rect.top + rect.height }, { rect.left, rect.top + rect.height }, color, thickness);
+    addLine({ rect.left, rect.top + rect.height }, { rect.left, rect.top }, color, thickness);
 }
 
 void VertexManager::addPolygon(const std::vector<float2>& points, const sf::Color& color) {
@@ -93,15 +93,15 @@ void VertexManager::addPolygon(const std::vector<float2>& points, const sf::Colo
 void VertexManager::addPolygon(const std::vector<Vertex>& points) {
     if (points.size() % 3 != 0) return;
     for (int i = 0; i < points.size() - 2; i += 3) {
-        vertices.append(sf::Vertex({points[i].pos.x, points[i].pos.y}, points[i].color));
-        vertices.append(sf::Vertex({points[i + 1].pos.x, points[i + 1].pos.y}, points[i + 1].color));
-        vertices.append(sf::Vertex({points[i + 2].pos.x, points[i + 2].pos.y}, points[i + 2].color));
+        vertices.append(sf::Vertex({ points[i].pos.x, points[i].pos.y }, points[i].color));
+        vertices.append(sf::Vertex({ points[i + 1].pos.x, points[i + 1].pos.y }, points[i + 1].color));
+        vertices.append(sf::Vertex({ points[i + 2].pos.x, points[i + 2].pos.y }, points[i + 2].color));
     }
 }
 
 void VertexManager::addSegment(float2 p1, float2 p2, float r1, float r2, float angle, const sf::Color& color) {
     // Keep track of body polygon points
-    std::array<float2, 4> polygon = {0, 0, 0, 0};
+    std::array<float2, 4> polygon = { 0, 0, 0, 0 };
     int LOD1 = getCircleLOD(r1) / 2;
     int LOD2 = getCircleLOD(r2) / 2;
 
@@ -141,7 +141,7 @@ void VertexManager::addSegment(float2 p1, float2 p2, float r1, float r2, float a
 }
 
 void VertexManager::addLine(const float2 start, const float2 end, const sf::Color& color, const float thickness) {
-    float angle = FastMath::atan2f(end.y - start.y, end.x - start.x);
+    float angle = atan2f(end.y - start.y, end.x - start.x);
     float2 d = vec(angle + M_PI / 2) * thickness * 0.5f;
 
     addTriangle(start + d, end + d, end - d, color);
@@ -149,7 +149,7 @@ void VertexManager::addLine(const float2 start, const float2 end, const sf::Colo
 }
 
 void VertexManager::addText(const std::string& text, const float2& pos,
-                            float size, const sf::Color& color, const TextAlignment alignment, const float outline) {
+    float size, const sf::Color& color, const TextAlignment alignment, const float outline) {
     sf::Text label;
     label.setFont(*FontManager::get("russo"));
     label.setString(text);

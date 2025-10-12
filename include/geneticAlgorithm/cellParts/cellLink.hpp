@@ -20,13 +20,13 @@ public:
 
     CellLink() = default;
     CellLink(size_t cellAIdx, size_t cellBIdx, size_t pointAIdx, size_t pointBIdx,
-             float startLength, float targetLength, float angleFromA, float angleFromB, float stiffness);
+        float startLength, float targetLength, float angleFromA, float angleFromB, float stiffness);
 
-    __host__ void renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
-    __host__ void renderBody(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
-    __host__ void renderDetails(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
+    void renderCellWalls(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
+    void renderBody(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
+    void renderDetails(VertexManager& vertexManager, vector<Cell>& cells, vector<Point>& points);
 
-    __host__ __device__ void adjustSize(float distance) {
+    void adjustSize(float distance) {
         length += distance;
     }
 };

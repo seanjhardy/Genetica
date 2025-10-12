@@ -2,7 +2,7 @@
 #define QUAD_TREE_NODE
 
 #include <vector>
-#include <vector_types.h>
+#include <modules/utils/vector_types.hpp>
 #include <modules/physics/point.hpp>
 
 class Quadtree;

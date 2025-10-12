@@ -3,15 +3,15 @@
 
 #include "SFML/Graphics.hpp"
 #include <array>
-#include "modules/utils/GPU/mathUtils.hpp"
+#include "modules/utils/gpu/mathUtils.hpp"
 
 class Border {
 public:
     explicit Border(float value, sf::Color color = sf::Color::Black,
-                        float topLeftRadius = 0.0f, float topRightRadius = 0.0f,
-                        float bottomRightRadius = 0.0f, float bottomLeftRadius = 0.0f)
-                        : m_value(value), m_color(color) {
-        m_radii = {topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius};
+        float topLeftRadius = 0.0f, float topRightRadius = 0.0f,
+        float bottomRightRadius = 0.0f, float bottomLeftRadius = 0.0f)
+        : m_value(value), m_color(color) {
+        m_radii = { topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius };
     }
 
     [[nodiscard]] sf::Color getColor() const { return m_color; }

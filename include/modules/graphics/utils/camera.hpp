@@ -1,7 +1,7 @@
 #ifndef CAMERA
 #define CAMERA
 
-#include <vector_types.h>
+#include <modules/utils/vector_types.hpp>
 #include "SFML/Graphics.hpp"
 #include "unordered_map"
 
@@ -13,7 +13,7 @@ public:
     void update(float deltaTime);
     void handleEvent(const sf::Event& event);
     float getZoom() const;
-    bool isCircleVisible(const float2 &point, float r);
+    bool isCircleVisible(const float2& point, float r);
     sf::Vector2f mapPixelToCoords(const sf::Vector2f& screenPos);
     void setBounds(sf::FloatRect* bounds);
     void setView(const sf::View& view);

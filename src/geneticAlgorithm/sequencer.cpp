@@ -26,7 +26,7 @@ void sequence(LifeForm& lifeForm, const float2& pos) {
     cell.idx = Simulator::get().getEnv().nextCellIdx();
     Simulator::get().getEnv().addCell(cell);
 
-    lifeForm.cellIdxs.push_back(cell.idx);
+    /*lifeForm.cellIdxs.push_back(cell.idx);
     lifeForm.grn.cellDistances = StaticGPUVector<
-        float>((lifeForm.cellIdxs.size() * (lifeForm.cellIdxs.size() - 1)) / 2);
+        float>((lifeForm.cellIdxs.size() * (lifeForm.cellIdxs.size() - 1)) / 2);*/
 }

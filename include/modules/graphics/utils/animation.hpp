@@ -1,12 +1,13 @@
 #include <functional>
-#include "modules/utils/GPU/mathUtils.hpp"
+#include "modules/utils/gpu/mathUtils.hpp"
 
 class Animation {
 public:
     Animation() = default;
     Animation(std::function<void(float)> setter, float fromValue = 0.0, float toValue = 1.0, float duration = 0.1, float delay = 0.0)
-            : fromValue(fromValue), toValue(toValue), duration(duration),
-            delay(delay), currentDelay(delay), setter(std::move(setter)) {}
+        : fromValue(fromValue), toValue(toValue), duration(duration),
+        delay(delay), currentDelay(delay), setter(std::move(setter)) {
+    }
 
     void update(float dt) {
         if (currentDelay > 0) {
@@ -17,7 +18,8 @@ public:
             progress += dt / duration;
             float value = clamp(fromValue, fromValue * (1 - progress) + toValue * progress, toValue);
             setter(value);
-        } else {
+        }
+        else {
             completed = true;
         }
     }

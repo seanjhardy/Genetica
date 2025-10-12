@@ -1,11 +1,12 @@
 #include <simulator/environment.hpp>
 #include "geneticAlgorithm/lifeform.hpp"
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
-#include <modules/cuda/updatePoints.hpp>
+#include <modules/gpu/updatePoints.hpp>
 #include <simulator/simulator.hpp>
-#include <modules/cuda/findNearest.hpp>
-#include <modules/cuda/updateCells.hpp>
-#include <modules/cuda/updateCellLinks.hpp>
+#include <modules/gpu/findNearest.hpp>
+// COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
+// #include <modules/gpu/updateCells.hpp>
+// #include <modules/gpu/updateCellLinks.hpp>
 
 Environment::Environment(sf::FloatRect bounds) :
     initialBounds(bounds),
@@ -15,12 +16,14 @@ Environment::Environment(sf::FloatRect bounds) :
 
 void Environment::simulate() {
     planet->update();
-    geneticAlgorithm.simulate();
+    // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
+    // geneticAlgorithm.simulate();
 
     // Physics simulation of life forms
     updatePoints(points, bounds);
-    updateCells(getGA().getPopulation(), cells, points, cellDivisionData);
-    updateCellLinks(points, cells, cellLinks);
+    // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
+    // updateCells(getGA().getPopulation(), cells, points, cellDivisionData);
+    // updateCellLinks(points, cells, cellLinks);
 };
 
 void Environment::render(VertexManager& vertexManager) {
@@ -29,8 +32,9 @@ void Environment::render(VertexManager& vertexManager) {
     // Draw a grid of columns and rows inside of bounds
     drawGrid(vertexManager);
 
+    // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
     //draw life forms
-    geneticAlgorithm.render(vertexManager, cells, cellLinks, points);
+    // geneticAlgorithm.render(vertexManager, cells, cellLinks, points);
 
     // Render draggable environment bounds
     dragHandler.render(vertexManager, bounds.hostData());
@@ -39,42 +43,44 @@ void Environment::render(VertexManager& vertexManager) {
 std::pair<bool, int> Environment::handleEvent(const sf::Event& event, const sf::Vector2f mousePos) {
     dragHandler.handleEvent(event);
 
-    /*if (!dragHandler.isDragging() && planet->getBounds() != bounds.hostData()) {
+    if (!dragHandler.isDragging() && planet->getBounds() != bounds.hostData()) {
         planet->setBounds(bounds.hostData());
-    }*/
+    }
 
     if (event.type == sf::Event::MouseButtonReleased &&
         event.mouseButton.button == sf::Mouse::Left) {
         heldPoint = -1;
-        return {false, -1};
+        return { false, -1 };
     }
 
     if (event.type == sf::Event::MouseButtonPressed) {
         if (event.mouseButton.button == sf::Mouse::Left) {
+            // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
             // Find the nearest point in the quadtree (within a radius of 20)
-            std::pair<int, float> nearestPoint = findNearest(points, mousePos.x, mousePos.y, 20);
+            // std::pair<int, float> nearestPoint = findNearest(points, mousePos.x, mousePos.y, 20);
 
-            if (nearestPoint.first != -1) {
-                if (points.size() > nearestPoint.first) {
-                    heldPoint = nearestPoint.first;
-                    int newSelectedEntityId = movePoint(points, heldPoint, mousePos);
-                    return {true, newSelectedEntityId};
-                }
-            }
-            else {
-                heldPoint = -1;
-                return {true, -1};
-            }
+            // if (nearestPoint.first != -1) {
+            //     if (points.size() > nearestPoint.first) {
+            //         heldPoint = nearestPoint.first;
+            //         int newSelectedEntityId = movePoint(points, heldPoint, mousePos);
+            //         return { true, newSelectedEntityId };
+            //     }
+            // }
+            // else {
+            heldPoint = -1;
+            return { true, -1 };
+            // }
         }
     }
 
-    return {false, -1};
+    return { false, -1 };
 };
 
 void Environment::update(const sf::Vector2f& worldCoords, float zoom, bool UIHovered) {
-    if (heldPoint != -1) {
-        movePoint(points, heldPoint, worldCoords);
-    }
+    // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
+    // if (heldPoint != -1) {
+    //     movePoint(points, heldPoint, worldCoords);
+    // }
 
     if (!UIHovered) {
         sf::FloatRect deltaBounds = dragHandler.update(worldCoords, tempBounds, 15.0f / zoom);
@@ -100,22 +106,23 @@ void Environment::drawGrid(VertexManager& vertexManager) {
     const float thickness = clamp(1.0f, 1.0f / vertexManager.camera->getZoom(), 5.0f);
     const auto gridColor = sf::Color(0, 0, 0, opacity);
     for (int i = 0; i < bounds.hostData().width + 1; i += 20) {
-        vertexManager.addLine({bounds.hostData().left + i, bounds.hostData().top},
-                              {bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height}, gridColor,
-                              thickness);
+        vertexManager.addLine({ bounds.hostData().left + i, bounds.hostData().top },
+            { bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height }, gridColor,
+            thickness);
     }
     for (int i = 0; i < bounds.hostData().height + 1; i += 20) {
-        vertexManager.addLine({bounds.hostData().left, bounds.hostData().top + i},
-                              {bounds.hostData().left + bounds.hostData().width, bounds.hostData().top + i}, gridColor,
-                              thickness);
+        vertexManager.addLine({ bounds.hostData().left, bounds.hostData().top + i },
+            { bounds.hostData().left + bounds.hostData().width, bounds.hostData().top + i }, gridColor,
+            thickness);
     }
 }
 
 void Environment::reset() {
     points.destroy();
-    cells.destroy();
-    cellLinks.destroy();
-    geneticAlgorithm.reset();
+    // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
+    // cells.destroy();
+    // cellLinks.destroy();
+    // geneticAlgorithm.reset();
     bounds = initialBounds;
     tempBounds = initialBounds;
     planet->reset();
@@ -124,9 +131,10 @@ void Environment::reset() {
 
 void Environment::cleanup() {
     points.destroy();
-    cells.destroy();
-    cellLinks.destroy();
-    geneticAlgorithm.reset();
+    // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
+    // cells.destroy();
+    // cellLinks.destroy();
+    // geneticAlgorithm.reset();
 }
 
 size_t Environment::addPoint(const Point& p) {

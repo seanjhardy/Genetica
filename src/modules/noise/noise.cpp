@@ -2,28 +2,38 @@
 #include <simulator/simulator.hpp>
 
 void Noise::applyToTexture(sf::RenderTexture* texture, sf::RenderStates states, sf::FloatRect bounds, float seed) {
-    ShaderManager::get("perlin")->setUniform("texture", sf::Shader::CurrentTexture);
-    ShaderManager::get("perlin")->setUniform("seed", (float)(seed) / 10000.0f);
+    auto* shader = ShaderManager::get("perlin");
+    if (!shader) {
+        consoleLog("ERROR: Perlin shader not loaded!");
+        return;
+    }
+
+    shader->setUniform("texture", sf::Shader::CurrentTexture);
+    shader->setUniform("seed", (float)(seed) / 10000.0f);
     auto* shaderMainColours = new sf::Glsl::Vec4[colours.size()];
     for (int i = 0; i < colours.size(); i++) {
         shaderMainColours[i] = sf::Glsl::Vec4((float)colours[i].r / 255.0f,
-                                              (float)colours[i].g / 255.0f,
-                                              (float)colours[i].b / 255.0f,
-                                              (float)colours[i].a / 255.0f);
+            (float)colours[i].g / 255.0f,
+            (float)colours[i].b / 255.0f,
+            (float)colours[i].a / 255.0f);
     }
-    ShaderManager::get("perlin")->setUniformArray("colours", shaderMainColours, colours.size());
-    ShaderManager::get("perlin")->setUniform("numColours", (int)colours.size());
-    ShaderManager::get("perlin")->setUniform("offset", sf::Glsl::Vec2(bounds.left, bounds.top));
-    ShaderManager::get("perlin")->setUniform("resolution",
-                                             sf::Glsl::Vec2((float)bounds.width, (float)bounds.height));
-    if (animated) {
-        ShaderManager::get("perlin")->setUniform("time", Simulator::get().getRealTime() / 30.0f);
-    }
-    ShaderManager::get("perlin")->setUniform("noiseFrequency", noiseFrequency);
-    ShaderManager::get("perlin")->setUniform("noiseOctaves", noiseOctaves);
-    ShaderManager::get("perlin")->setUniform("smoothNoise", smoothNoise);
-    ShaderManager::get("perlin")->setUniform("noiseWarp", noiseWarp);
-    texture->draw(sf::Sprite(texture->getTexture()), states);
+    shader->setUniformArray("colours", shaderMainColours, colours.size());
+    shader->setUniform("numColours", (int)colours.size());
+    shader->setUniform("offset", sf::Glsl::Vec2(bounds.left, bounds.top));
+    shader->setUniform("resolution",
+        sf::Glsl::Vec2((float)bounds.width, (float)bounds.height));
+    // Always set time, even for non-animated (use 0.0 as default)
+    shader->setUniform("time", animated ? Simulator::get().getRealTime() / 30.0f : 0.0f);
+    shader->setUniform("noiseFrequency", noiseFrequency);
+    shader->setUniform("noiseOctaves", noiseOctaves);
+    shader->setUniform("smoothNoise", smoothNoise);
+    shader->setUniform("noiseWarp", noiseWarp);
+
+    // Create a fullscreen rectangle to apply the shader to
+    sf::RectangleShape rect(sf::Vector2f(texture->getSize().x, texture->getSize().y));
+    rect.setTexture(&texture->getTexture());
+    texture->draw(rect, states);
+    delete[] shaderMainColours;
 }
 
 void Add::applyToTexture(sf::RenderTexture* texture, sf::FloatRect bounds, float seed) {

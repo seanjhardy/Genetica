@@ -12,9 +12,9 @@ Simulator& Simulator::get() {
 // Instantiate simulator
 Simulator::Simulator()
     : env(sf::FloatRect(0, 0, 500, 500)),
-      window(sf::VideoMode(800, 600), "Genetica"),
-      state(State::Playing),
-      uiManager(&window) {
+    window(sf::VideoMode(800, 600), "Genetica", sf::Style::Default, sf::ContextSettings(0, 0, 8)),
+    state(State::Playing),
+    uiManager(&window) {
     window.setMouseCursor(CursorManager::getDefault());
 }
 
@@ -112,7 +112,7 @@ void Simulator::updateWindowView() {
 
     // Set the view size and center
     windowView.setSize(viewSize);
-    windowView.setCenter({viewSize.x / 2, viewSize.y / 2});
+    windowView.setCenter({ viewSize.x / 2, viewSize.y / 2 });
 
     window.setView(windowView);
 }

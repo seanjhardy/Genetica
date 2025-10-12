@@ -5,7 +5,7 @@
 #include <string>
 #include <map>
 #include <geneticAlgorithm/genome.hpp>
-#include <modules/cuda/structures/GPUVector.hpp>
+#include <modules/gpu/structures/GPUVector.hpp>
 #include <geneticAlgorithm/cellParts/segment.hpp>
 #include <geneticAlgorithm/lifeform.hpp>
 #include <modules/utils/structures/dynamicStableVector.hpp>

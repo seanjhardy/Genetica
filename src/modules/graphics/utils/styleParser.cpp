@@ -27,7 +27,7 @@ unordered_map<string, string> parseStyleString(const string& styleString) {
                 result.insert({
                     trim(match[1].str()),
                     trim(match[2].str())
-                });
+                    });
             }
         }
     }
@@ -55,7 +55,7 @@ float parseValue(const string& value) {
 }
 
 //Takes in a string of format <value>px or <value>px <value>px <value>px <value>px
-void parseMultiValue(const string& value, Size (&result)[4]) {
+void parseMultiValue(const string& value, Size(&result)[4]) {
     std::istringstream ss(value);
     std::string token;
     std::vector<Size> values;
@@ -97,7 +97,7 @@ sf::Color parseColor(const string& value) {
         smatch match;
         if (regex_search(value, match, rgbaPattern)) {
             return sf::Color(stoi(match[1].str()), stoi(match[2].str()),
-                             stoi(match[3].str()), stoi(match[4].str()));
+                stoi(match[3].str()), stoi(match[4].str()));
         }
     }
     else if (value.find("rgb") != string::npos) {
@@ -111,11 +111,12 @@ sf::Color parseColor(const string& value) {
         string hex = value.substr(1);
         if (hex.size() == 6) {
             return sf::Color(stoi(hex.substr(0, 2), nullptr, 16),
-                             stoi(hex.substr(2, 2), nullptr, 16),
-                             stoi(hex.substr(4, 2), nullptr, 16));
+                stoi(hex.substr(2, 2), nullptr, 16),
+                stoi(hex.substr(4, 2), nullptr, 16));
         }
     }
-    return sf::Color::White; // Default
+    consoleLog("WARNING: parseColor: ", value, " is not a valid color");
+    return sf::Color::Transparent; // Default
 }
 
 Border parseBorder(const string& borderStr) {
@@ -129,6 +130,7 @@ Border parseBorder(const string& borderStr) {
 
     int stroke = -1;
     sf::Color color;
+    string colorStr = "";
     vector<int> radii;
 
     for (const auto& t : tokens) {
@@ -142,7 +144,15 @@ Border parseBorder(const string& borderStr) {
             }
         }
         else {
-            color = parseColor(t);
+            // Accumulate color string
+            if (t.contains("(") || !colorStr.empty()) {
+                colorStr += t;
+            }
+            // Parse it if we get a closing parenthesis or if the color string is empty
+            if (t.contains(")") || colorStr.empty()) {
+                color = parseColor(colorStr);
+                colorStr = "";
+            }
         }
     }
 
@@ -152,8 +162,8 @@ Border parseBorder(const string& borderStr) {
     }
 
     return Border(stroke, color,
-                  radii[0], radii[1],
-                  radii[2], radii[3]);
+        radii[0], radii[1],
+        radii[2], radii[3]);
 }
 
 Shadow parseShadow(const string& shadowStr) {
@@ -169,7 +179,8 @@ Shadow parseShadow(const string& shadowStr) {
     }
 
     int blur = -1;
-    sf::Color color;
+    sf::Color color = sf::Color(0, 0, 0, 128); // Default: semi-transparent black
+    string colorStr = "";
     vector<int> offset;
 
     for (const auto& t : tokens) {
@@ -183,7 +194,15 @@ Shadow parseShadow(const string& shadowStr) {
             }
         }
         else {
-            color = parseColor(t);
+            // Accumulate color string
+            if (t.contains("(") || !colorStr.empty()) {
+                colorStr += t;
+            }
+            // Parse it if we get a closing parenthesis or if the color string is empty
+            if (t.contains(")") || colorStr.empty()) {
+                color = parseColor(colorStr);
+                colorStr = "";
+            }
         }
     }
 

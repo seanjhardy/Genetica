@@ -2,7 +2,7 @@
 #include "modules/utils/genomeUtils.hpp"
 #include <string>
 #include <utility>
-#include "modules/cuda/calculateAffinities.hpp"
+#include "modules/gpu/calculateAffinities.hpp"
 
 void sequenceGRN(LifeForm& lifeForm) {
     // Temporary vars
@@ -46,9 +46,9 @@ void sequenceGRN(LifeForm& lifeForm) {
                 int subType = (int)(readUniqueBaseRange(rna, 3) * 64) % 6;
                 Gene::FactorType externalFactorType = externalFactorTypes[subType];
 
-                float2 extra = {readUniqueBaseRange(rna, 8), readUniqueBaseRange(rna, 8)};
+                float2 extra = { readUniqueBaseRange(rna, 8), readUniqueBaseRange(rna, 8) };
                 Gene externalFactor = Gene(externalFactorType,
-                                           sign, modifier, embedding, extra);
+                    sign, modifier, embedding, extra);
                 factors.push_back(externalFactor);
             }
 
@@ -60,14 +60,14 @@ void sequenceGRN(LifeForm& lifeForm) {
                 // If this grn already contains a special node
                 // (e.g. maternal factor, crowding, etc.) of this type, skip
                 if (std::any_of(effectors.begin(), effectors.end(),
-                                [subType](const Effector& effector) {
-                                    return effector.effectorType == subType;
-                                })) {
+                    [subType](const Effector& effector) {
+                        return effector.effectorType == subType;
+                    })) {
                     continue;
                 }
 
                 Effector effector = Effector(subType,
-                                             sign, modifier, embedding);
+                    sign, modifier, embedding);
                 effectors.push_back(effector);
             }
 
@@ -76,8 +76,8 @@ void sequenceGRN(LifeForm& lifeForm) {
             if (type == 2) {
                 int additive = readBase(rna) >= 1;
                 Promoter::PromoterType promoterType = additive
-                                                          ? Promoter::PromoterType::Additive
-                                                          : Promoter::PromoterType::Multiplicative;
+                    ? Promoter::PromoterType::Additive
+                    : Promoter::PromoterType::Multiplicative;
                 auto promoter = Promoter(promoterType, sign, modifier, embedding);
 
                 if (!readingPromoters) {
@@ -118,5 +118,5 @@ void sequenceGRN(LifeForm& lifeForm) {
     lifeForm.grn.effectors = StaticGPUVector(effectors);
 
     lifeForm.grn.regulatoryUnits = StaticGPUVector(regulatoryUnits);
-    calculateAffinities(lifeForm.grn);
+    //calculateAffinities(lifeForm.grn);
 }

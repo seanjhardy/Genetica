@@ -1,8 +1,8 @@
 #include "geneticAlgorithm/lifeform.hpp"
 #include "simulator/simulator.hpp"
-#include "modules/cuda/updateGRN.hpp"
+#include "modules/gpu/updateGRN.hpp"
 #include <geneticAlgorithm/sequencer.hpp>
-#include <modules/utils/GPU/mathUtils.hpp>
+#include <modules/utils/gpu/mathUtils.hpp>
 using namespace std;
 
 LifeForm::LifeForm(size_t idx, Genome& genome, float2 pos)
@@ -15,17 +15,17 @@ void LifeForm::update() {
     // Update the GRN every GROWTH_INTERVAL steps
     if (Simulator::get().getStep() - lastGrnUpdate > GRN_INTERVAL) {
         lastGrnUpdate = Simulator::get().getStep();
-        updateGRN(*this,
-                  Simulator::get().getEnv().getPoints(),
-                  Simulator::get().getEnv().getCells(),
-                  Simulator::get().getEnv().getCellLinks());
+        /*updateGRN(*this,
+            Simulator::get().getEnv().getPoints(),
+            Simulator::get().getEnv().getCells(),
+            Simulator::get().getEnv().getCellLinks());*/
     }
 }
 
 void LifeForm::render(VertexManager& vertexManager, vector<Segment>& hostSegments, vector<Point>& points) {
     // Render outline first
     for (int segment : segmentIdxs) {
-        hostSegments[segment].renderCellWall(vertexManager, points);
+        hostSegments[segment].renderCellWalls(vertexManager, points);
     }
     // Render body next
     for (int segment : segmentIdxs) {
@@ -38,7 +38,7 @@ void LifeForm::render(VertexManager& vertexManager, vector<Segment>& hostSegment
 }
 
 void LifeForm::renderBlueprint(VertexManager& vertexManager, vector<Segment>& hostSegments) {
-    float width = 400.0f;
+    /*float width = 400.0f;
     float height = 400.0f;
     float minX = INFINITY, minY = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
     for (int segment : segmentIdxs) {
@@ -58,7 +58,7 @@ void LifeForm::renderBlueprint(VertexManager& vertexManager, vector<Segment>& ho
         const Cell& hostCell = hostCells[cell];
         const Point& blueprintPoint = blueprintPoints.itemToHost(hostCell.blueprintPointIdx);
         float2 pos = blueprintPoint.getPos() * scale + make_float2(offsetX, offsetY);
-        print(pos, scale);
+        consoleLog(pos, scale);
         vertexManager.addCircle(pos, max(blueprintPoint.radius * scale, 1.0), hostCell.getColor());
     }
     for (int link : linkIdxs) {
@@ -88,8 +88,8 @@ void LifeForm::renderBlueprint(VertexManager& vertexManager, vector<Segment>& ho
             {v3, cell2Color},
             {v4, cell1Color},
             {v1, cell1Color}
-        }));
-    }
+            }));
+    }*/
 }
 
 
@@ -142,18 +142,18 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother) {
 
     // Create a link to the mother cell
     auto cellLink = CellLink(daughter.idx,
-                             motherIdx,
-                             mother.pointIdx,
-                             daughter.pointIdx,
-                             motherPoint.radius * 2,
-                             mother.targetRadius * 2,
-                             mother.divisionRotation,
-                             M_PI - mother.divisionRotation,
-                             0.01);
+        motherIdx,
+        mother.pointIdx,
+        daughter.pointIdx,
+        motherPoint.radius * 2,
+        mother.targetRadius * 2,
+        mother.divisionRotation,
+        M_PI - mother.divisionRotation,
+        0.01);
 
     const size_t linkIdx = Simulator::get().getEnv().nextCellLinkIdx();
     Simulator::get().getEnv().addCellLink(cellLink);
-    linkIdxs.push_back(linkIdx);
+    //linkIdxs.push_back(linkIdx);
     cellLinksMatrix.addEdge(daughter.idx, motherIdx);
 
     // Add links to all cells within the binding distance
@@ -172,16 +172,16 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother) {
             otherBlueprintPoint.angle;
 
         auto link = CellLink(daughter.idx,
-                             otherCellIdx,
-                             daughter.pointIdx,
-                             other.pointIdx,
-                             distance,
-                             distance * 2,
-                             angleFromDaughter,
-                             angleFromOther, 0.01);
+            otherCellIdx,
+            daughter.pointIdx,
+            other.pointIdx,
+            distance,
+            distance * 2,
+            angleFromDaughter,
+            angleFromOther, 0.01);
         const size_t newLinkIdx = Simulator::get().getEnv().nextCellLinkIdx();
         Simulator::get().getEnv().addCellLink(link);
-        linkIdxs.push_back(newLinkIdx);
+        //linkIdxs.push_back(newLinkIdx);
         cellLinksMatrix.addEdge(daughter.idx, otherCellIdx);
     }
 }

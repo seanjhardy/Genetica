@@ -5,8 +5,8 @@
 Segment::Segment(size_t startPointIdx, size_t endPointIdx, size_t startPointAttachedIdx, size_t endPointAttachedIdx,
   float startLength, float targetLength) : startPointIdx(startPointIdx), endPointIdx(endPointIdx),
   startPointAttachedIdx(startPointAttachedIdx), endPointAttachedIdx(endPointAttachedIdx),
-  startLength(startLength), targetLength(targetLength) {
-  products = 0;
+  targetLength(targetLength) {
+  //products = 0;
   startPointSize = 1.0f;
   endPointSize = 1.0f;
   length = startLength;
@@ -28,7 +28,7 @@ Segment::Segment(size_t startPointIdx, size_t endPointIdx, size_t startPointAtta
   numDivisions = 0;
 }
 
-void Segment::renderBody(VertexManager& vertexManager, vector<Point>& points) const {
+void Segment::renderBody(VertexManager& vertexManager, vector<Point>& points) {
   const Point point1 = points[startPointIdx];
   const Point point2 = points[endPointIdx];
   const sf::Color startPointColor = getColor();
@@ -56,10 +56,10 @@ void Segment::renderBody(VertexManager& vertexManager, vector<Point>& points) co
     }));
 }
 
-void Segment::renderDetails(VertexManager& vertexManager, vector<Point>& points) const {
+void Segment::renderDetails(VertexManager& vertexManager, vector<Point>& points) {
 }
 
-void Segment::renderCellWalls(VertexManager& vertexManager, vector<Point>& points) const {
+void Segment::renderCellWalls(VertexManager& vertexManager, vector<Point>& points) {
   const Point point1 = points[startPointIdx];
   const Point point2 = points[endPointIdx];
   const sf::Color startPointColor = brightness(getColor(), 0.6);

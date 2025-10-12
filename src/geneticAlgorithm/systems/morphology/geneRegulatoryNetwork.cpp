@@ -118,7 +118,7 @@ void GeneRegulatoryNetwork::updateProductConcentrations(float deltaTime) {
                         divisionVector += amount * affinity * otherAmount * normalisedVectorToCell;
                     }
                 }
-                print("Cell division rotation: ", cell->divisionRotation);
+                consoleLog("Cell division rotation: ", cell->divisionRotation);
                 cell->divisionRotation = std::atan2(divisionVector.y, divisionVector.x);
             }
         }

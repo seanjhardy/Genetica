@@ -16,19 +16,28 @@ void ShaderManager::init() {
 
 void ShaderManager::loadShader(const std::string& key, const std::string& vertexPath, const std::string& fragmentPath) {
     if (fragmentPath.empty()) {
-        shaders[key].loadFromFile(vertexPath, sf::Shader::Vertex);
+        if (!shaders[key].loadFromFile(vertexPath, sf::Shader::Vertex)) {
+            consoleLog("Failed to load vertex shader ", key, " from ", vertexPath);
+            return;
+        }
         shaders[key].setUniform("texture", SpriteManager::get("default"));
+        consoleLog("Loaded vertex shader: ", key);
         return;
     }
     if (vertexPath.empty()) {
-        shaders[key].loadFromFile(fragmentPath, sf::Shader::Fragment);
+        if (!shaders[key].loadFromFile(fragmentPath, sf::Shader::Fragment)) {
+            consoleLog("Failed to load fragment shader ", key, " from ", fragmentPath);
+            return;
+        }
         shaders[key].setUniform("texture", SpriteManager::get("default"));
+        consoleLog("Loaded fragment shader: ", key);
         return;
     }
     if (!shaders[key].loadFromFile(vertexPath, fragmentPath)) {
-        print("Failed to load shader ", key, " from ", vertexPath, " and ", fragmentPath);
+        consoleLog("Failed to load shader ", key, " from ", vertexPath, " and ", fragmentPath);
         return;
     }
+    consoleLog("Loaded shader: ", key);
 }
 
 sf::Shader* ShaderManager::get(const std::string& key) {

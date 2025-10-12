@@ -4,7 +4,7 @@
 #include "SFML/Graphics.hpp"
 #include "vector"
 #include "cmath"
-#include "vector_types.h"
+#include "modules/utils/vector_types.hpp"
 #include <modules/graphics/components/screen.hpp>
 #include "unordered_map"
 

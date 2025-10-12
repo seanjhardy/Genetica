@@ -4,9 +4,9 @@
 #include <geneticAlgorithm/species.hpp>
 #include <geneticAlgorithm/systems/morphology/geneRegulatoryNetwork.hpp>
 #include "genome.hpp"
-#include "modules/cuda/structures/staticGPUVector.hpp"
+#include "modules/gpu/structures/staticGPUVector.hpp"
 #include "cellParts/cellLink.hpp"
-#include <modules/utils/structures/AdjacencyMatrix.hpp>
+#include <modules/utils/structures/adjacencyMatrix.hpp>
 
 #include "cellParts/segment.hpp"
 
