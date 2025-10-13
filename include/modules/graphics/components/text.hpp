@@ -20,7 +20,6 @@ private:
     std::string text;
     sf::Font* font = FontManager::get("russo");
     TextAlignment textAlignment = TextAlignment::Left;
-    float fontSize = 20;
     float outlineThickness = 0.0f;
 };
 

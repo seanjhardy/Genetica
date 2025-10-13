@@ -35,6 +35,7 @@ private:
     sf::RenderWindow window{};
     UIManager uiManager;
     sf::View windowView;
+    sf::Vector2u lastWindowSize;
 
     // Simulation state
     State state;

@@ -4,19 +4,19 @@
 Viewport::Viewport(const unordered_map<string, string>& properties) : UIElement(properties) {
     styleSetters["background"] = [this](const string& value) {
         backgroundColor = parseColor(value);
-    };
+        };
     propertySetters["camera"] = [this](const string& value) {
         camera.setLocked(value == "locked");
-    };
+        };
     propertySetters["bounds"] = [this](const string& value) {
-        Size boundArray[4] = {Size::Pixel(0), Size::Pixel(0), Size::Pixel(0), Size::Pixel(0)};
+        Size boundArray[4] = { Size::Pixel(0), Size::Pixel(0), Size::Pixel(0), Size::Pixel(0) };
         parseMultiValue(value, boundArray);
         bounds = {
             boundArray[0].getValue(), boundArray[1].getValue(),
             boundArray[2].getValue(), boundArray[3].getValue()
         };
         camera.setBounds(&bounds);
-    };
+        };
 
     camera = Camera(&viewport, &layout);
     vertexManager.setCamera(&camera);

@@ -12,8 +12,8 @@ planetBtn:hover {
 }
 
 miniBtn {
-    width: 35px;
-    height: 35px;
+    width: 25px;
+    height: 25px;
     background: transparent;
     align-row: center;
     align-col: center;
@@ -25,17 +25,18 @@ miniBtn:hover {
 
 mainBtn {
     flex: 1;
-    font-size: 18px;
-    padding: 5px;
+    font-size: 15px;
+    padding: 3px;
     background: rgba(255, 255, 255, 70);
-    border: 0px 20px;
+    border: 0px 15px;
     shadow: 2px rgba(0, 0, 0, 50) 0px 3px;
     align-row: center;
     align-col: center;
 }
 
 mainBtn:hover {
-    background: #20868a;
+    background: rgba(59, 190, 255, 140);
+    shadow: 2px rgba(20, 31, 38, 60) 0px 3px;
 }
 
 container {
@@ -52,9 +53,9 @@ panel {
     align-col: center;
     padding: 10px;
     gap: 5px;
-    background: rgba(0, 0, 0, 200);
-    border: 2px rgba(255, 255, 255, 80) 20px;
-    shadow: 5px rgba(0, 0, 0, 80) 0px 5px;
+    background: rgba(0, 0, 0, 80);
+    border: 2px rgba(255, 255, 255, 40) 20px;
+    shadow: 5px rgba(0,0,0,120) 0px 5px;
 }
 
 tab {

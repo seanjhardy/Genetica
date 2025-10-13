@@ -17,7 +17,6 @@ public:
     bool update(float dt, const sf::Vector2f& position) override;
     void onLayout() override;
 
-
     Size calculateWidth() override;
     Size calculateHeight() override;
 

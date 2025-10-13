@@ -105,14 +105,17 @@ void Environment::drawGrid(VertexManager& vertexManager) {
     const int opacity = (int)clamp(10.0f, vertexManager.camera->getZoom() * 10.0f, 60.0f);
     const float thickness = clamp(1.0f, 1.0f / vertexManager.camera->getZoom(), 5.0f);
     const auto gridColor = sf::Color(0, 0, 0, opacity);
+    const auto borderColor = sf::Color(255, 255, 255, 255);
     for (int i = 0; i < bounds.hostData().width + 1; i += 20) {
+        const auto color = i == 0 ? borderColor : i == bounds.hostData().width ? borderColor : gridColor;
         vertexManager.addLine({ bounds.hostData().left + i, bounds.hostData().top },
-            { bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height }, gridColor,
+            { bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height }, color,
             thickness);
     }
     for (int i = 0; i < bounds.hostData().height + 1; i += 20) {
+        const auto color = i == 0 ? borderColor : i == bounds.hostData().height ? borderColor : gridColor;
         vertexManager.addLine({ bounds.hostData().left, bounds.hostData().top + i },
-            { bounds.hostData().left + bounds.hostData().width, bounds.hostData().top + i }, gridColor,
+            { bounds.hostData().left + bounds.hostData().width, bounds.hostData().top + i }, color,
             thickness);
     }
 }

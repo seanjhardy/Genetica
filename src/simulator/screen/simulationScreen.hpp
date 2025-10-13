@@ -22,7 +22,7 @@ inline Screen* getSimulationScreen(Simulator* simulator) {
         if (simulator->getState() == Simulator::State::Paused) {
             simulator->setState(Simulator::State::Playing);
             screen->getElement("playBtnIcon")->overrideProperty("style", "image: pause");
-            screen->getElement("playBtnIcon")->overrideProperty("styleOnHover", "image: pause");
+            screen->getElement("playBtnIcon")->overrideProperty("styleOnHover", "image: pauseHighlighted");
         }
         else {
             simulator->setState(Simulator::State::Paused);

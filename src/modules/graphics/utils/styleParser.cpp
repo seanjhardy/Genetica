@@ -148,8 +148,11 @@ Border parseBorder(const string& borderStr) {
             if (t.contains("(") || !colorStr.empty()) {
                 colorStr += t;
             }
+            if (colorStr.empty()) {
+                color = parseColor(t);
+            }
             // Parse it if we get a closing parenthesis or if the color string is empty
-            if (t.contains(")") || colorStr.empty()) {
+            if (t.contains(")")) {
                 color = parseColor(colorStr);
                 colorStr = "";
             }

@@ -6,6 +6,12 @@ set(CMAKE_CXX_STANDARD 26)
 file(GLOB_RECURSE SRCS "src/*.cpp")
 file(GLOB_RECURSE HEADERS "./*.hpp" "src/*.tpp")
 
+# Add Objective-C++ files on macOS
+if(APPLE)
+    file(GLOB_RECURSE OBJCPP_SRCS "src/*.mm")
+    set(SRCS ${SRCS} ${OBJCPP_SRCS})
+endif()
+
 file(GLOB_RECURSE XMLS "src/*.xml")
 file(GLOB_RECURSE CSSS "src/*.css")
 
@@ -44,6 +50,11 @@ elseif(APPLE)
     set(CMAKE_PREFIX_PATH "/opt/homebrew/opt/sfml@2")
     find_package(SFML 2.5 COMPONENTS graphics window audio network system REQUIRED)
     target_link_libraries(Genetica sfml-graphics sfml-window sfml-audio sfml-network sfml-system)
+    
+    # Link against Cocoa and OpenGL frameworks for native window access
+    find_library(COCOA_LIBRARY Cocoa)
+    find_library(OPENGL_LIBRARY OpenGL)
+    target_link_libraries(Genetica ${COCOA_LIBRARY} ${OPENGL_LIBRARY})
 else()
     # For Linux
     find_package(SFML 2.5 COMPONENTS graphics window audio network system REQUIRED)

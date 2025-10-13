@@ -1,8 +1,14 @@
 // simulator.cpp
 #include "simulator/simulator.hpp"
 #include "./screen/simulationScreen.hpp"
+#include "simulator/windowHelper.hpp"
 #include <sstream>
 #include <iomanip>
+#ifdef __APPLE__
+#include <OpenGL/gl.h>
+#else
+#include <GL/gl.h>
+#endif
 
 Simulator& Simulator::get() {
     static Simulator simulator;
@@ -14,7 +20,8 @@ Simulator::Simulator()
     : env(sf::FloatRect(0, 0, 500, 500)),
     window(sf::VideoMode(800, 600), "Genetica", sf::Style::Default, sf::ContextSettings(0, 0, 8)),
     state(State::Playing),
-    uiManager(&window) {
+    uiManager(&window),
+    lastWindowSize(800, 600) {
     window.setMouseCursor(CursorManager::getDefault());
 }
 
@@ -33,6 +40,28 @@ void Simulator::run() {
     while (window.isOpen()) {
         sf::Time elapsed = clock.restart();
         float deltaTime = elapsed.asSeconds();
+
+        // Check for window size changes (for external window managers like Rectangle)
+        // Rectangle and similar tools may not trigger Event::Resized, so we poll
+        // Use native window size on macOS since SFML doesn't detect Rectangle resizes
+        sf::Vector2u currentSize = getActualWindowSize(window);
+        sf::Vector2u sfmlSize = window.getSize();
+
+        // Only update if native size differs from SFML's internal size
+        if (currentSize != sfmlSize) {
+            lastWindowSize = currentSize;
+
+            // Force SFML to recognize the new size by calling setSize
+            // This updates SFML's internal state and triggers a proper resize
+            window.setSize(currentSize);
+
+            // Update OpenGL viewport and UI
+            window.setActive(true);
+            glViewport(0, 0, currentSize.x, currentSize.y);
+
+            updateWindowView();
+            uiManager.getScreen("simulation")->resize(currentSize);
+        }
 
         // Manage all UI and simulation events
         handleEvents(simulation);
@@ -80,7 +109,9 @@ void Simulator::handleEvents(Viewport* simulation) {
             window.close();
         }
         if (event.type == sf::Event::Resized) {
+            lastWindowSize = sf::Vector2u(event.size.width, event.size.height);
             updateWindowView();
+            uiManager.getScreen("simulation")->resize(lastWindowSize);
         }
         bool consumed = uiManager.handleEvent(event);
         if (consumed) continue;
@@ -108,12 +139,13 @@ sf::RenderWindow& Simulator::getWindow() {
 }
 
 void Simulator::updateWindowView() {
-    sf::Vector2f viewSize(window.getSize().x, window.getSize().y);
+    // Use lastWindowSize which is updated from the resize event or polling
+    sf::Vector2f viewSize(lastWindowSize.x, lastWindowSize.y);
 
-    // Set the view size and center
-    windowView.setSize(viewSize);
-    windowView.setCenter({ viewSize.x / 2, viewSize.y / 2 });
+    // Create a new view that maps 1:1 to pixels
+    windowView = sf::View(sf::FloatRect(0.f, 0.f, viewSize.x, viewSize.y));
 
+    // Apply the view to the window
     window.setView(windowView);
 }
 

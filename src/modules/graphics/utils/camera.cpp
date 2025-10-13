@@ -67,9 +67,7 @@ void Camera::handleEvent(const sf::Event& event) {
         zoom(event.mouseWheelScroll.delta, mousePosition);
         updateView();
     }
-    else if (event.type == sf::Event::Resized) {
-        updateView();
-    }
+    // Note: Resized event is handled by viewport's onLayout() which calls updateView()
 }
 
 void Camera::constrainToBounds() {
@@ -97,7 +95,7 @@ void Camera::zoom(float delta, const sf::Vector2i& mousePos) {
     sf::Vector2f mouseWorldBeforeZoom = target->mapPixelToCoords(mousePos, view);
 
     // Calculate new zoom level
-    float newZoomLevel = zoomLevel * std::pow(1.2f, delta);
+    float newZoomLevel = zoomLevel * std::pow(1.05f, delta);
     zoomLevel = std::max(newZoomLevel, minZoomLevel);
 
     // Update the view to apply the new zoom level
@@ -117,7 +115,9 @@ void Camera::zoom(float delta, const sf::Vector2i& mousePos) {
 }
 
 void Camera::updateView() {
-    sf::Vector2f targetSize(target->getSize().x, target->getSize().y);
+    // Use targetLayout size instead of target->getSize() to handle cases where
+    // the RenderTexture hasn't been recreated yet after a resize
+    sf::Vector2f targetSize(targetLayout->width, targetLayout->height);
 
     // Calculate the visible size considering the zoom level
     sf::Vector2f viewSize = targetSize / zoomLevel;

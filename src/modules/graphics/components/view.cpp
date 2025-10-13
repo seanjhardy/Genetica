@@ -74,6 +74,16 @@ void View::onLayout() {
     shape.setPosition(layout.getPosition());
     shape.setSize(layout.getSize());
     updateLayout();
+
+    // Pass fontSize down to children that don't have one explicitly set
+    if (fontSize > 0) {
+        for (auto& child : children) {
+            if (child->fontSize < 0) {
+                child->fontSize = fontSize;
+            }
+        }
+    }
+
     for (auto& child : children) {
         child->onLayout();
     }

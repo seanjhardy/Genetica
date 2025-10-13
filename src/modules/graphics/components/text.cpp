@@ -9,18 +9,15 @@ Text::Text(const unordered_map<string, string>& properties, const string& value)
     : UIElement(properties, {}) {
     text = value;
 
-    styleSetters["font-size"] = [this](const string& v) {
-        fontSize = parseValue(v);
-    };
     styleSetters["text-align"] = [this](const string& v) {
         textAlignment = parseTextAlignment(v);
-    };
+        };
     styleSetters["font"] = [this](const string& v) {
         font = FontManager::get(v);
-    };
+        };
     styleSetters["outline"] = [this](const string& v) {
         outlineThickness = parseValue(v);
-    };
+        };
 
     setProperties(properties);
     restyle();
@@ -36,7 +33,11 @@ void Text::onLayout() {
     labelElement.setFont(*font);
     labelElement.setCharacterSize(24);
     labelElement.setString(text);
-    labelElement.setCharacterSize((int)fontSize);
+
+    // Use fontSize if set, otherwise default to 20
+    float effectiveFontSize = (fontSize > 0) ? fontSize : 20.0f;
+
+    labelElement.setCharacterSize((int)effectiveFontSize);
     labelElement.setFillColor(sf::Color::White);
     labelElement.setOutlineThickness(outlineThickness);
     labelElement.setOutlineColor(sf::Color::Black);
