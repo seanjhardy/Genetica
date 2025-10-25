@@ -1,6 +1,7 @@
 #include <simulator/planet.hpp>
 #include <modules/utils/print.hpp>
 #include <simulator/simulator.hpp>
+#include <chrono>
 
 std::map<std::string, Planet> Planet::planets = {};
 std::vector<std::string> Planet::planetNames = {};
@@ -29,6 +30,13 @@ void Planet::render(VertexManager& vertexManager) {
 }
 
 void Planet::setBounds(sf::FloatRect bounds) {
+    consoleLog("Planet::setBounds called with bounds: ", bounds);
+    if (bounds.left == mapBounds.left && bounds.top == mapBounds.top &&
+        bounds.width == mapBounds.width && bounds.height == mapBounds.height) {
+        consoleLog("Planet bounds unchanged, skipping update");
+        return;
+    }
+
     mapBounds = bounds;
     for (auto& n : noise) {
         n->update = true;
@@ -55,11 +63,19 @@ void Planet::updateMap() {
             update = true;
         }
     }
-    if (!update) return;
+    if (!update) {
+        consoleLog("Planet::updateMap called but no update needed, skipping");
+        return;
+    }
+
+    consoleLog("Planet::updateMap starting expensive noise map recalculation for bounds: ", mapBounds);
+    auto startTime = std::chrono::high_resolution_clock::now();
 
     sf::Texture map;
     int x_size = clamp(1, round(mapBounds.width / MAP_SCALE), 100000);
     int y_size = clamp(1, round(mapBounds.height / MAP_SCALE), 100000);
+    consoleLog("Creating texture with size: ", x_size, "x", y_size);
+
     if (!texture.create(x_size, y_size)) {
         consoleLog("ERROR: Failed to create render texture!");
         return;
@@ -81,6 +97,10 @@ void Planet::updateMap() {
     mapSprite = sf::Sprite(texture.getTexture());
     mapSprite.setPosition({ mapBounds.left, mapBounds.top });
     mapSprite.setScale(MAP_SCALE, MAP_SCALE);
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    consoleLog("Planet::updateMap completed in ", duration.count(), "ms");
 }
 
 Planet* Planet::getRandom() {

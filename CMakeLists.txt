@@ -41,6 +41,16 @@ include_directories(./include
         ${CMAKE_SOURCE_DIR}/libs/GLEW/include
         )
 
+add_subdirectory(./libs/webgpu)
+target_link_libraries(Genetica webgpu)
+target_copy_webgpu_binaries(Genetica)
+
+# Add WebGPU example right after WebGPU setup
+add_executable(WebGPUExample webgpu_example.cpp)
+target_include_directories(WebGPUExample PRIVATE ./include ${CMAKE_SOURCE_DIR}/libs/GLEW/include)
+target_link_libraries(WebGPUExample webgpu)
+target_copy_webgpu_binaries(WebGPUExample)
+
 # Platform-specific library linking
 if(WIN32)
     file(GLOB_RECURSE LIBS "${CMAKE_SOURCE_DIR}/libs/*.lib")
@@ -55,11 +65,13 @@ elseif(APPLE)
     find_library(COCOA_LIBRARY Cocoa)
     find_library(OPENGL_LIBRARY OpenGL)
     target_link_libraries(Genetica ${COCOA_LIBRARY} ${OPENGL_LIBRARY})
+    target_link_libraries(WebGPUExample ${COCOA_LIBRARY} ${OPENGL_LIBRARY})
 else()
     # For Linux
     find_package(SFML 2.5 COMPONENTS graphics window audio network system REQUIRED)
     target_link_libraries(Genetica sfml-graphics sfml-window sfml-audio sfml-network sfml-system)
 endif()
+
 
 # Copy assets
 file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/assets/")
@@ -105,5 +117,8 @@ else()
     target_link_libraries(Genetica ${OpenCL_LIBRARIES})
 endif()
 
+
+# Copy shader file to build directory
+configure_file(webgpu_example_shader.wgsl ${CMAKE_BINARY_DIR}/webgpu_example_shader.wgsl COPYONLY)
 
 message("${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}")

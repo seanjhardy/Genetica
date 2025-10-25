@@ -4,13 +4,15 @@
 #include <modules/gpu/updatePoints.hpp>
 #include <simulator/simulator.hpp>
 #include <modules/gpu/findNearest.hpp>
+#include <chrono>
 // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
 // #include <modules/gpu/updateCells.hpp>
 // #include <modules/gpu/updateCellLinks.hpp>
 
 Environment::Environment(sf::FloatRect bounds) :
     initialBounds(bounds),
-    bounds(bounds) {
+    bounds(bounds),
+    lastBoundsUpdate(std::chrono::steady_clock::now()) {
     planet = &Planet::planets["Delune"];
 }
 
@@ -43,8 +45,13 @@ void Environment::render(VertexManager& vertexManager) {
 std::pair<bool, int> Environment::handleEvent(const sf::Event& event, const sf::Vector2f mousePos) {
     dragHandler.handleEvent(event);
 
-    if (!dragHandler.isDragging() && planet->getBounds() != bounds.hostData()) {
+    // Update planet bounds when dragging stops or if there's a pending update
+    if ((!dragHandler.isDragging() && (planet->getBounds() != bounds.hostData() || hasPendingBoundsUpdate))) {
+        consoleLog("Dragging stopped, applying pending bounds update if needed. Current planet bounds: ", planet->getBounds(), " Environment bounds: ", bounds.hostData());
         planet->setBounds(bounds.hostData());
+        hasPendingBoundsUpdate = false;
+        lastBoundsUpdate = std::chrono::steady_clock::now();
+        consoleLog("Applied bounds update after dragging stopped");
     }
 
     if (event.type == sf::Event::MouseButtonReleased &&
@@ -85,13 +92,36 @@ void Environment::update(const sf::Vector2f& worldCoords, float zoom, bool UIHov
     if (!UIHovered) {
         sf::FloatRect deltaBounds = dragHandler.update(worldCoords, tempBounds, 15.0f / zoom);
         if (deltaBounds.left != 0 || deltaBounds.top != 0 || deltaBounds.width != 0 || deltaBounds.height != 0) {
+            consoleLog("DragHandler detected deltaBounds: ", deltaBounds, " isDragging:", dragHandler.isDragging());
             tempBounds += deltaBounds;
-            bounds = {
+            sf::FloatRect newBounds = {
                 round(tempBounds.left / 20) * 20, round(tempBounds.top / 20) * 20,
                 round(tempBounds.width / 20) * 20, round(tempBounds.height / 20) * 20
             };
 
-            planet->setBounds(bounds.hostData());
+            // Only update planet bounds if they actually changed to avoid unnecessary noise map recalculations
+            sf::FloatRect currentBounds = bounds.hostData();
+            if (newBounds.left != currentBounds.left ||
+                newBounds.top != currentBounds.top ||
+                newBounds.width != currentBounds.width ||
+                newBounds.height != currentBounds.height ||
+                hasPendingBoundsUpdate) {
+
+                bounds = newBounds;
+
+                // Throttle expensive noise map updates to prevent lag during camera movement + resizing
+                auto now = std::chrono::steady_clock::now();
+                auto timeSinceLastUpdate = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastBoundsUpdate);
+
+                if (timeSinceLastUpdate >= BOUNDS_UPDATE_THROTTLE_MS || !dragHandler.isDragging()) {
+                    planet->setBounds(bounds.hostData());
+                    lastBoundsUpdate = now;
+                    hasPendingBoundsUpdate = false;
+                }
+                else {
+                    hasPendingBoundsUpdate = true;
+                }
+            }
         }
     }
     else {
@@ -100,22 +130,43 @@ void Environment::update(const sf::Vector2f& worldCoords, float zoom, bool UIHov
 }
 
 void Environment::drawGrid(VertexManager& vertexManager) {
+    // Draw bounding box
+    const auto bbox = bounds.hostData();
+    const auto borderColor = sf::Color(255, 255, 255, 255);
+    const auto lineSize = 2.0f / vertexManager.camera->getZoom();
+    vertexManager.addLine(
+        { bbox.left, bbox.top },
+        { bbox.left, bbox.top + bbox.height }, borderColor,
+        lineSize);
+    vertexManager.addLine(
+        { bbox.left + bbox.width, bbox.top },
+        { bbox.left + bbox.width, bbox.top + bbox.height }, borderColor,
+        lineSize);
+    vertexManager.addLine(
+        { bbox.left, bbox.top },
+        { bbox.left + bbox.width, bbox.top }, borderColor,
+        lineSize);
+    vertexManager.addLine(
+        { bbox.left, bbox.top + bbox.height },
+        { bbox.left + bbox.width, bbox.top + bbox.height }, borderColor,
+        lineSize);
+
     if (vertexManager.getSizeInView(1) < 0.2 || !gridLinesVisible) return;
 
+    // Draw gridlines
     const int opacity = (int)clamp(10.0f, vertexManager.camera->getZoom() * 10.0f, 60.0f);
     const float thickness = clamp(1.0f, 1.0f / vertexManager.camera->getZoom(), 5.0f);
     const auto gridColor = sf::Color(0, 0, 0, opacity);
-    const auto borderColor = sf::Color(255, 255, 255, 255);
-    for (int i = 0; i < bounds.hostData().width + 1; i += 20) {
-        const auto color = i == 0 ? borderColor : i == bounds.hostData().width ? borderColor : gridColor;
-        vertexManager.addLine({ bounds.hostData().left + i, bounds.hostData().top },
-            { bounds.hostData().left + i, bounds.hostData().top + bounds.hostData().height }, color,
+    const auto numWidthLines = floor(bbox.width / 20);
+    const auto numHeightLines = floor(bbox.height / 20);
+    for (int i = 1; i < numWidthLines - 2; i++) {
+        vertexManager.addLine({ bbox.left + i * 20, bbox.top },
+            { bbox.left + i * 20, bbox.top + bbox.height }, gridColor,
             thickness);
     }
-    for (int i = 0; i < bounds.hostData().height + 1; i += 20) {
-        const auto color = i == 0 ? borderColor : i == bounds.hostData().height ? borderColor : gridColor;
-        vertexManager.addLine({ bounds.hostData().left, bounds.hostData().top + i },
-            { bounds.hostData().left + bounds.hostData().width, bounds.hostData().top + i }, color,
+    for (int i = 1; i < numHeightLines - 2; i++) {
+        vertexManager.addLine({ bbox.left, bbox.top + i * 20 },
+            { bbox.left + bbox.width, bbox.top + i * 20 }, gridColor,
             thickness);
     }
 }

@@ -12,6 +12,7 @@
 #include <geneticAlgorithm/cellParts/cellLink.hpp>
 #include <geneticAlgorithm/geneticAlgorithm.hpp>
 #include <modules/gpu/structures/cellGrowthData.hpp>
+#include <chrono>
 /**
  * The environment contains information about all physics objects in the scene, as well as various
  * environmental variables such as the background map, an optional fluid simulator, grid lines,
@@ -39,6 +40,11 @@ class Environment {
     // Drag handler for holding points
     int heldPoint = -1;
     DragHandler dragHandler;
+
+    // Throttling for expensive noise map updates
+    std::chrono::steady_clock::time_point lastBoundsUpdate;
+    static constexpr std::chrono::milliseconds BOUNDS_UPDATE_THROTTLE_MS{ 50 }; // 20fps max for bounds updates
+    bool hasPendingBoundsUpdate = false;
 
 public:
     explicit Environment(sf::FloatRect bounds);
