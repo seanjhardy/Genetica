@@ -120,14 +120,18 @@ cl_program OpenCLManager::loadProgram(const std::string& filename) {
 
   // Build program
   err = clBuildProgram(program, 1, &device_, nullptr, nullptr, nullptr);
-  if (err != CL_SUCCESS) {
-    // Get build log
-    size_t logSize;
-    clGetProgramBuildInfo(program, device_, CL_PROGRAM_BUILD_LOG, 0, nullptr, &logSize);
+
+  // Always get build log (to see warnings even on success)
+  size_t logSize;
+  clGetProgramBuildInfo(program, device_, CL_PROGRAM_BUILD_LOG, 0, nullptr, &logSize);
+  if (logSize > 1) {
     std::string buildLog(logSize, '\0');
     clGetProgramBuildInfo(program, device_, CL_PROGRAM_BUILD_LOG, logSize, &buildLog[0], nullptr);
+    std::cout << "OpenCL build log for " << filename << ":\n" << buildLog << std::endl;
+  }
 
-    std::cerr << "OpenCL build error:\n" << buildLog << std::endl;
+  if (err != CL_SUCCESS) {
+    std::cerr << "OpenCL build failed with error code: " << err << std::endl;
     clReleaseProgram(program);
     throw std::runtime_error("Failed to build OpenCL program");
   }
@@ -179,6 +183,22 @@ void OpenCLManager::runKernel1D(cl_kernel kernel, size_t globalSize, size_t loca
   }
   clCheckError(err, "clEnqueueNDRangeKernel (1D)");
 
+  // Don't block here - let GPU work async
+  // Data will be synced when needed (e.g., in toHost())
+  // clFinish(queue_);
+}
+
+void OpenCLManager::flush() {
+  if (!initialized_) {
+    throw std::runtime_error("OpenCL not initialized");
+  }
+  clFlush(queue_);
+}
+
+void OpenCLManager::finish() {
+  if (!initialized_) {
+    throw std::runtime_error("OpenCL not initialized");
+  }
   clFinish(queue_);
 }
 
@@ -201,5 +221,6 @@ void OpenCLManager::runKernel2D(cl_kernel kernel, size_t globalSizeX, size_t glo
   }
   clCheckError(err, "clEnqueueNDRangeKernel (2D)");
 
-  clFinish(queue_);
+  // Don't block here - let GPU work async
+  // clFinish(queue_);
 }

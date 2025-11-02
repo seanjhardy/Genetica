@@ -39,8 +39,27 @@ void updatePoints(GPUVector<Point>& points, CGPUValue<sf::FloatRect>& bounds) {
         cl_mem boundsBuffer = bounds.deviceData();
         int numPoints = static_cast<int>(points.size());
 
-        // Set kernel arguments for update kernel
         cl_int err;
+
+        // STEP 1: Compute collisions FIRST (add forces to points)
+        // Set kernel arguments for collision kernel
+        err = clSetKernelArg(collisionKernel, 0, sizeof(cl_mem), &pointsBuffer);
+        clCheckError(err, "clSetKernelArg (collisionKernel points)");
+        err = clSetKernelArg(collisionKernel, 1, sizeof(int), &numPoints);
+        clCheckError(err, "clSetKernelArg (collisionKernel numPoints)");
+
+        // Run collision kernel (2D) - compute forces
+        size_t globalSizeX = points.size();
+        size_t globalSizeY = points.size();
+        size_t localSizeX = 16;
+        size_t localSizeY = 16;
+        // Round up to nearest multiple
+        globalSizeX = ((globalSizeX + localSizeX - 1) / localSizeX) * localSizeX;
+        globalSizeY = ((globalSizeY + localSizeY - 1) / localSizeY) * localSizeY;
+        OpenCLManager::runKernel2D(collisionKernel, globalSizeX, globalSizeY, localSizeX, localSizeY);
+
+        // STEP 2: Update points SECOND (apply forces and move)
+        // Set kernel arguments for update kernel
         err = clSetKernelArg(updateKernel, 0, sizeof(cl_mem), &pointsBuffer);
         clCheckError(err, "clSetKernelArg (updateKernel points)");
         err = clSetKernelArg(updateKernel, 1, sizeof(int), &numPoints);
@@ -48,28 +67,15 @@ void updatePoints(GPUVector<Point>& points, CGPUValue<sf::FloatRect>& bounds) {
         err = clSetKernelArg(updateKernel, 2, sizeof(cl_mem), &boundsBuffer);
         clCheckError(err, "clSetKernelArg (updateKernel bounds)");
 
-        // Run update kernel
+        // Run update kernel (apply forces and move points)
         size_t globalSize = points.size();
         size_t localSize = 256;
         // Round up to nearest multiple of localSize
         globalSize = ((globalSize + localSize - 1) / localSize) * localSize;
         OpenCLManager::runKernel1D(updateKernel, globalSize, localSize);
 
-        // Set kernel arguments for collision kernel
-        err = clSetKernelArg(collisionKernel, 0, sizeof(cl_mem), &pointsBuffer);
-        clCheckError(err, "clSetKernelArg (collisionKernel points)");
-        err = clSetKernelArg(collisionKernel, 1, sizeof(int), &numPoints);
-        clCheckError(err, "clSetKernelArg (collisionKernel numPoints)");
-
-        // Run collision kernel (2D)
-        size_t globalSizeX = points.size();
-        size_t globalSizeY = points.size();
-        size_t localSizeX = 32;
-        size_t localSizeY = 32;
-        // Round up to nearest multiple
-        globalSizeX = ((globalSizeX + localSizeX - 1) / localSizeX) * localSizeX;
-        globalSizeY = ((globalSizeY + localSizeY - 1) / localSizeY) * localSizeY;
-        OpenCLManager::runKernel2D(collisionKernel, globalSizeX, globalSizeY, localSizeX, localSizeY);
+        // Don't block here - data will sync when toHost() is called for rendering
+        // OpenCLManager::finish(); // This blocks CPU, causing slowness
 
     }
     catch (const std::exception& e) {

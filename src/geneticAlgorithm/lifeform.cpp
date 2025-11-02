@@ -107,7 +107,7 @@ void LifeForm::addCell(size_t motherIdx, const Cell& mother) {
     // Set position and velocity relative to mother
     Point motherPoint = Simulator::get().getEnv().getPoints().itemToHost(mother.pointIdx);
     float2 pos = motherPoint.getPos() + vec(motherPoint.angle + mother.divisionRotation) * motherPoint.radius * 2;
-    double2 prevPos = motherPoint.prevPos + vec(motherPoint.angle + mother.divisionRotation) * motherPoint.radius * 2;
+    float2 prevPos = motherPoint.prevPos + vec(motherPoint.angle + mother.divisionRotation) * motherPoint.radius * 2;
     Point daughterPoint = Point(idx, pos.x, pos.y, motherPoint.radius);
     daughterPoint.angle = motherPoint.angle + mother.divisionRotation + M_PI;
     daughterPoint.prevPos = prevPos;

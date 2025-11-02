@@ -80,9 +80,10 @@ size_t GPUVector<T>::push(const T& value) {
         this->reallocateDevice(new_capacity);
     }
 
-    this->setItem(this->size_, value);
+    size_t new_index = this->size_;
     ++this->size_;
-    return this->size_ - 1;
+    this->setItem(new_index, value);
+    return new_index;
 }
 
 template <typename T>

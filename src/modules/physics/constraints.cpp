@@ -17,13 +17,13 @@ inline void constrainDistance(Point& pointA, Point& pointB, double distance) {
         return; // No significant change needed
     }
 
-    double2 delta = 0.5 * deltaDistance * (pointB.pos - pointA.pos) / currentDistance;
+    float2 delta = 0.5 * deltaDistance * (pointB.pos - pointA.pos) / currentDistance;
 
-    double pointAMass = pointA.radius * pointA.radius;
-    double pointBMass = pointB.radius * pointB.radius;
-    double massRatio = pointAMass / (pointAMass + pointBMass);
-    double2 forceA = delta * (massRatio - 1);
-    double2 forceB = delta * massRatio;
+    float pointAMass = pointA.radius * pointA.radius;
+    float pointBMass = pointB.radius * pointB.radius;
+    float massRatio = pointAMass / (pointAMass + pointBMass);
+    float2 forceA = delta * (massRatio - 1);
+    float2 forceB = delta * massRatio;
 
     pointA.force.s[0] += forceA.s[0];
     pointA.force.s[1] += forceA.s[1];
@@ -32,8 +32,8 @@ inline void constrainDistance(Point& pointA, Point& pointB, double distance) {
 }
 
 inline void constrainMinDistance(Point& pointA, Point& pointB, float minDistance) {
-    double2 posA = pointA.pos;
-    double2 posB = pointB.pos;
+    float2 posA = pointA.pos;
+    float2 posB = pointB.pos;
     float distance = distanceBetween(posA, posB);
 
     if (distance >= minDistance) return;
@@ -42,7 +42,7 @@ inline void constrainMinDistance(Point& pointA, Point& pointB, float minDistance
     float overlap = minDistance - distance;
     float resistiveForceMagnitude = overlap * overlap * 0.01;
 
-    double2 direction = posA - posB;
+    float2 direction = posA - posB;
     float length = magnitude(direction);
 
     if (length < 1e-6f) return;
@@ -52,8 +52,8 @@ inline void constrainMinDistance(Point& pointA, Point& pointB, float minDistance
     direction.s[1] /= length;
 
     // Apply resistive force proportionally
-    double2 forceA = direction * resistiveForceMagnitude;
-    double2 forceB = direction * -resistiveForceMagnitude;
+    float2 forceA = direction * resistiveForceMagnitude;
+    float2 forceB = direction * -resistiveForceMagnitude;
 
     pointA.force.s[0] += forceA.s[0];
     pointA.force.s[1] += forceA.s[1];
@@ -94,7 +94,7 @@ inline void constrainAngle(Point& pointA, Point& pointB, float angleFromA, float
     float massA = pointA.radius * pointA.radius;
     float massB = pointB.radius * pointB.radius;
     float totalMass = massA + massB;
-    double2 centerOfMass = (pointA.pos * massA + pointB.pos * massB) / totalMass;
+    float2 centerOfMass = (pointA.pos * massA + pointB.pos * massB) / totalMass;
 
     //pointA.rotate(centerOfMass, errorMean * 0.0001f);
     //pointB.rotate(centerOfMass, errorMean * 0.0001f);

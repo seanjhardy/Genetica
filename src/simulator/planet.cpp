@@ -30,10 +30,8 @@ void Planet::render(VertexManager& vertexManager) {
 }
 
 void Planet::setBounds(sf::FloatRect bounds) {
-    consoleLog("Planet::setBounds called with bounds: ", bounds);
     if (bounds.left == mapBounds.left && bounds.top == mapBounds.top &&
         bounds.width == mapBounds.width && bounds.height == mapBounds.height) {
-        consoleLog("Planet bounds unchanged, skipping update");
         return;
     }
 
@@ -64,17 +62,14 @@ void Planet::updateMap() {
         }
     }
     if (!update) {
-        consoleLog("Planet::updateMap called but no update needed, skipping");
         return;
     }
 
-    consoleLog("Planet::updateMap starting expensive noise map recalculation for bounds: ", mapBounds);
     auto startTime = std::chrono::high_resolution_clock::now();
 
     sf::Texture map;
     int x_size = clamp(1, round(mapBounds.width / MAP_SCALE), 100000);
     int y_size = clamp(1, round(mapBounds.height / MAP_SCALE), 100000);
-    consoleLog("Creating texture with size: ", x_size, "x", y_size);
 
     if (!texture.create(x_size, y_size)) {
         consoleLog("ERROR: Failed to create render texture!");
@@ -100,7 +95,6 @@ void Planet::updateMap() {
 
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-    consoleLog("Planet::updateMap completed in ", duration.count(), "ms");
 }
 
 Planet* Planet::getRandom() {

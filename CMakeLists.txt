@@ -41,15 +41,9 @@ include_directories(./include
         ${CMAKE_SOURCE_DIR}/libs/GLEW/include
         )
 
-add_subdirectory(./libs/webgpu)
-target_link_libraries(Genetica webgpu)
-target_copy_webgpu_binaries(Genetica)
-
-# Add WebGPU example right after WebGPU setup
-add_executable(WebGPUExample webgpu_example.cpp)
-target_include_directories(WebGPUExample PRIVATE ./include ${CMAKE_SOURCE_DIR}/libs/GLEW/include)
-target_link_libraries(WebGPUExample webgpu)
-target_copy_webgpu_binaries(WebGPUExample)
+# Add OpenCL example
+add_executable(OpenCLExample opencl_example.cpp)
+target_include_directories(OpenCLExample PRIVATE ./include)
 
 # Platform-specific library linking
 if(WIN32)
@@ -65,7 +59,6 @@ elseif(APPLE)
     find_library(COCOA_LIBRARY Cocoa)
     find_library(OPENGL_LIBRARY OpenGL)
     target_link_libraries(Genetica ${COCOA_LIBRARY} ${OPENGL_LIBRARY})
-    target_link_libraries(WebGPUExample ${COCOA_LIBRARY} ${OPENGL_LIBRARY})
 else()
     # For Linux
     find_package(SFML 2.5 COMPONENTS graphics window audio network system REQUIRED)
@@ -107,18 +100,21 @@ if(WIN32)
     file(COPY ${MINGW_DEP_DLLS} DESTINATION ${CMAKE_BINARY_DIR})
 endif()
 
-# OpenCL
+# OpenCL for main project and example
 if(APPLE)
     find_library(OpenCL_LIBRARY OpenCL)
     target_link_libraries(Genetica ${OpenCL_LIBRARY})
+    target_link_libraries(OpenCLExample ${OpenCL_LIBRARY})
 else()
     find_package(OpenCL REQUIRED)
     target_include_directories(Genetica ${OpenCL_INCLUDE_DIRS})
     target_link_libraries(Genetica ${OpenCL_LIBRARIES})
+    target_include_directories(OpenCLExample PRIVATE ${OpenCL_INCLUDE_DIRS})
+    target_link_libraries(OpenCLExample ${OpenCL_LIBRARIES})
 endif()
 
 
-# Copy shader file to build directory
-configure_file(webgpu_example_shader.wgsl ${CMAKE_BINARY_DIR}/webgpu_example_shader.wgsl COPYONLY)
+# Copy kernel file to build directory
+configure_file(opencl_example_kernel.cl ${CMAKE_BINARY_DIR}/opencl_example_kernel.cl COPYONLY)
 
 message("${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}")

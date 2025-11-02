@@ -12,6 +12,7 @@ int main() {
     try {
         consoleLog("Starting Genetica");
         // Initialise and load resources
+        OpenCLManager::init();
         Styles::init();
         SpriteManager::init();
         ShaderManager::init();
@@ -20,7 +21,6 @@ int main() {
         CursorManager::init();
         Planet::init();
         Simulator::get().init();
-        OpenCLManager::init();
 
         // Set up and run simulation
         Simulator::get().run();

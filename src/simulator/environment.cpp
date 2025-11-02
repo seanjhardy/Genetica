@@ -4,6 +4,8 @@
 #include <modules/gpu/updatePoints.hpp>
 #include <simulator/simulator.hpp>
 #include <modules/gpu/findNearest.hpp>
+#include <modules/gpu/OpenCLManager.hpp>
+#include <modules/utils/random.hpp>
 #include <chrono>
 // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
 // #include <modules/gpu/updateCells.hpp>
@@ -37,6 +39,9 @@ void Environment::render(VertexManager& vertexManager) {
     // COMMENTED OUT FOR BAREBONES VERSION - TODO: Refactor for OpenCL
     //draw life forms
     // geneticAlgorithm.render(vertexManager, cells, cellLinks, points);
+
+    // Render points
+    renderPoints(vertexManager);
 
     // Render draggable environment bounds
     dragHandler.render(vertexManager, bounds.hostData());
@@ -92,7 +97,6 @@ void Environment::update(const sf::Vector2f& worldCoords, float zoom, bool UIHov
     if (!UIHovered) {
         sf::FloatRect deltaBounds = dragHandler.update(worldCoords, tempBounds, 15.0f / zoom);
         if (deltaBounds.left != 0 || deltaBounds.top != 0 || deltaBounds.width != 0 || deltaBounds.height != 0) {
-            consoleLog("DragHandler detected deltaBounds: ", deltaBounds, " isDragging:", dragHandler.isDragging());
             tempBounds += deltaBounds;
             sf::FloatRect newBounds = {
                 round(tempBounds.left / 20) * 20, round(tempBounds.top / 20) * 20,
@@ -181,6 +185,9 @@ void Environment::reset() {
     tempBounds = initialBounds;
     planet->reset();
     planet->setBounds(bounds.hostData());
+
+    // Spawn test points after reset
+    spawnTestPoints(6000);
 };
 
 void Environment::cleanup() {
@@ -250,4 +257,67 @@ void Environment::setPlanet(Planet* newPlanet) {
 
 int Environment::nextEntityID() {
     return entityID++;
+}
+
+// Spawn test points
+void Environment::spawnTestPoints(int count) {
+    sf::FloatRect b = bounds.hostData();
+    std::cout << "Bounds: left=" << b.left << " top=" << b.top
+        << " width=" << b.width << " height=" << b.height << std::endl;
+
+    for (int i = 0; i < count; i++) {
+        // Random position within bounds
+        float x = Random::random(b.left + 20, b.left + b.width - 20);
+        float y = Random::random(b.top + 20, b.top + b.height - 20);
+
+        // Create point with random initial velocity
+        Point p(nextEntityID(), x, y, 5.0f);
+
+        // Give it a random initial velocity
+        float vx = Random::random(-5.0f, 5.0f);
+        float vy = Random::random(-5.0f, 5.0f);
+        p.prevPos = make_float2(x - vx, y - vy);
+
+        size_t index = addPoint(p);
+
+        if (i == 0) {
+            std::cout << "First point: entityID=" << p.entityID
+                << " pos=(" << p.pos.s[0] << "," << p.pos.s[1] << ")"
+                << " radius=" << p.radius << " index=" << index << std::endl;
+        }
+    }
+
+    std::cout << "Spawned " << count << " test points, total points.size()=" << points.size() << std::endl;
+}
+
+// Render points
+void Environment::renderPoints(VertexManager& vertexManager) {
+    static bool firstRender = true;
+
+    if (points.size() == 0) {
+        if (firstRender) {
+            std::cout << "renderPoints: points.size() is 0!" << std::endl;
+            firstRender = false;
+        }
+        return;
+    }
+
+    // Read points from GPU
+    auto hostPoints = points.toHost();
+
+    if (firstRender) {
+        std::cout << "renderPoints: points.size()=" << points.size()
+            << ", hostPoints.size()=" << hostPoints.size() << std::endl;
+        if (hostPoints.size() > 0) {
+            std::cout << "First point position: (" << hostPoints[0].pos.s[0]
+                << "," << hostPoints[0].pos.s[1] << "), radius=" << hostPoints[0].radius << std::endl;
+        }
+        firstRender = false;
+    }
+
+    // Render each point as a circle
+    for (const auto& point : hostPoints) {
+        sf::Color color = sf::Color(100, 150, 255, 255); // Blue color
+        vertexManager.addCircle(point.getPos(), point.radius, color);
+    }
 }

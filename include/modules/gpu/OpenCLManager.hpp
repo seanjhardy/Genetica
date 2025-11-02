@@ -38,6 +38,12 @@ public:
   static void runKernel2D(cl_kernel kernel, size_t globalSizeX, size_t globalSizeY,
     size_t localSizeX = 0, size_t localSizeY = 0);
 
+  // Flush command queue (ensure commands are submitted, non-blocking)
+  static void flush();
+
+  // Finish command queue (block until all commands complete)
+  static void finish();
+
   // Get OpenCL context
   static cl_context getContext() {
     if (!initialized_) {

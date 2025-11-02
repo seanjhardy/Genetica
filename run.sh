@@ -5,4 +5,4 @@
 # (cmake -S . -B build && cd build && make && ./Genetica.app/Contents/MacOS/Genetica)
 
 
-(cmake -S . -B build && cd build && make && ./WebGPUExample)
+(cmake -S . -B build && cd build && make && ./Genetica.app/Contents/MacOS/Genetica)

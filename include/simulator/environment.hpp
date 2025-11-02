@@ -80,6 +80,10 @@ public:
     void setPlanet(Planet* newPlanet);
 
     int nextEntityID();
+
+    // Test functions
+    void spawnTestPoints(int count);
+    void renderPoints(VertexManager& vertexManager);
 };
 
 #endif
