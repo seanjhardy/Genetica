@@ -1,0 +1,22 @@
+[package]
+name = "genetica-rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winit = "0.30"
+wgpu = "25"
+bytemuck = { version = "1.16", features = ["derive"] }
+pollster = "0.3"
+cgmath = "0.18"
+env_logger = "0.11"
+puffin = "0.19"
+puffin_http = "0.16"
+glyph_brush = "0.7"
+ab_glyph = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
