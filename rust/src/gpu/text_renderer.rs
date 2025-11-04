@@ -30,7 +30,7 @@ struct TextVertex {
 impl TextRenderer {
     pub fn new(
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _queue: &wgpu::Queue,
         surface_config: &wgpu::SurfaceConfiguration,
     ) -> Self {
         // Load font
@@ -38,7 +38,7 @@ impl TextRenderer {
         let font = FontArc::try_from_slice(font_data).unwrap();
         
         // Create glyph brush
-        let mut glyph_brush = GlyphBrushBuilder::using_font(font).build();
+        let glyph_brush = GlyphBrushBuilder::using_font(font).build();
         
         // Create texture for glyph atlas (will be resized as needed)
         let texture_size = 512u32;
@@ -192,7 +192,7 @@ impl TextRenderer {
         }
     }
 
-    pub fn queue_text(&mut self, queue: &wgpu::Queue, text: &str, x: f32, y: f32, color: [f32; 4]) {
+    pub fn queue_text(&mut self, _queue: &wgpu::Queue, text: &str, x: f32, y: f32, color: [f32; 4]) {
         let section = Section::default()
             .add_text(Text::new(text)
                 .with_scale(20.0)
@@ -220,8 +220,14 @@ impl TextRenderer {
         self.vertices.clear();
         self.indices.clear();
         
+        // Store vertices and indices in RefCell for the closures
+        use std::cell::RefCell;
+        let vertices = RefCell::new(Vec::new());
+        let indices = RefCell::new(Vec::new());
+        
         // Process queued glyphs
         // The callbacks are called for each rect/tex_data and each vertex
+        let texture = &self.texture;
         match self.glyph_brush.process_queued(
             |rect, tex_data| {
                 // Update texture with new glyph data
@@ -229,7 +235,7 @@ impl TextRenderer {
                 let height = rect.height();
                 queue.write_texture(
                     wgpu::TexelCopyTextureInfo {
-                        texture: &self.texture,
+                        texture,
                         mip_level: 0,
                         origin: wgpu::Origin3d {
                             x: rect.min[0],
@@ -254,12 +260,30 @@ impl TextRenderer {
             |glyph_vertex| {
                 // Convert each glyph vertex to our vertex format
                 // This callback is called for each vertex
-                // Check GlyphVertex structure - it has fields like x, y, u, v, etc.
-                let vertex_idx = self.vertices.len();
-                self.vertices.push(TextVertex {
-                    position: [glyph_vertex.pixel_coords.x as f32, glyph_vertex.pixel_coords.y as f32],
-                    tex_coords: [glyph_vertex.tex_coords.x, glyph_vertex.tex_coords.y],
-                    color: glyph_vertex.extra,
+                let mut verts = vertices.borrow_mut();
+                let mut inds = indices.borrow_mut();
+                let vertex_idx = verts.len();
+                
+                // GlyphVertex structure based on glyph_brush API:
+                // pixel_coords and tex_coords are Rect types with min/max fields
+                // min and max are Point types with x, y fields
+                let pos = [
+                    glyph_vertex.pixel_coords.min.x as f32,
+                    glyph_vertex.pixel_coords.min.y as f32,
+                ];
+                
+                let tex = [
+                    glyph_vertex.tex_coords.min.x,
+                    glyph_vertex.tex_coords.min.y,
+                ];
+                
+                // Extract color from extra - Extra has a color field that returns [f32; 4]
+                let color = glyph_vertex.extra.color;
+                
+                verts.push(TextVertex {
+                    position: pos,
+                    tex_coords: tex,
+                    color,
                 });
                 
                 // Each glyph quad has 4 vertices, we need 6 indices (2 triangles)
@@ -267,21 +291,23 @@ impl TextRenderer {
                 if vertex_idx % 4 == 0 && vertex_idx >= 3 {
                     let base = (vertex_idx - 3) as u16;
                     // First triangle: 0-1-2
-                    self.indices.push(base);
-                    self.indices.push(base + 1);
-                    self.indices.push(base + 2);
+                    inds.push(base);
+                    inds.push(base + 1);
+                    inds.push(base + 2);
                     // Second triangle: 1-2-3
-                    self.indices.push(base + 1);
-                    self.indices.push(base + 2);
-                    self.indices.push(base + 3);
+                    inds.push(base + 1);
+                    inds.push(base + 2);
+                    inds.push(base + 3);
                 }
             },
         ) {
             Ok(BrushAction::Draw(_)) => {
-                // Vertices are ready to draw
+                // Vertices are ready to draw - copy them to self
+                self.vertices = vertices.into_inner();
+                self.indices = indices.into_inner();
             }
             Ok(BrushAction::ReDraw) => {
-                // Reuse last frame's vertices
+                // Reuse last frame's vertices - don't clear
             }
             Err(e) => {
                 // Handle errors (e.g., texture too small)
@@ -334,7 +360,7 @@ impl TextRenderer {
         }
     }
 
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>, device: &wgpu::Device, surface_config: &wgpu::SurfaceConfiguration, queue: &wgpu::Queue) {
+    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>, _device: &wgpu::Device, _surface_config: &wgpu::SurfaceConfiguration, _queue: &wgpu::Queue) {
         self.screen_width = new_size.width;
         self.screen_height = new_size.height;
         // Resize glyph brush view dimensions

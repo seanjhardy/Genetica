@@ -1,5 +1,9 @@
 // Simulator module - main simulation loop and window management
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -7,7 +11,6 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId, CursorIcon},
 };
-use puffin::profile_function;
 
 use crate::modules::math::{Rect, Vec2};
 use crate::modules::camera::{Camera, KeyStates};
@@ -21,57 +24,461 @@ use crate::gpu::bounds_renderer::BoundsRenderer;
 use crate::simulator::environment::Environment;
 use crate::simulator::renderer::Renderer;
 
-const NUM_POINTS: usize = 5000;
+const NUM_LIFEFORMS: usize = 500;
 
-/// Main simulator that manages window, camera, environment, and rendering
+// Fixed simulation timestep - large value for faster simulation at lower accuracy
+// This is NOT tied to render frame time - simulation runs independently
+const SIMULATION_DELTA_TIME: f32 = 0.1; // 100ms per simulation step (10x faster than real-time with 10ms steps)
+
+/// Simulation structure - runs compute updates as fast as possible
+pub struct Simulation {
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    compute_pipelines: ComputePipelines,
+    buffers: Arc<GpuBuffers>,
+    environment: Arc<parking_lot::Mutex<Environment>>,
+    
+    // Simulation parameters
+    workgroup_size: u32,
+    
+    // Step counter (atomic for thread-safe access)
+    step_count: Arc<AtomicU64>,
+}
+
+impl Simulation {
+    pub fn new(
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        compute_pipelines: ComputePipelines,
+        buffers: Arc<GpuBuffers>,
+        environment: Arc<parking_lot::Mutex<Environment>>,
+    ) -> Self {
+        Self {
+            device,
+            queue,
+            compute_pipelines,
+            buffers,
+            environment,
+            workgroup_size: 128, // Match compute shader workgroup size
+            step_count: Arc::new(AtomicU64::new(0)),
+        }
+    }
+    
+    // Run a single simulation step (called as fast as possible)
+    pub fn step(&mut self) {
+        // DON'T update uniforms here - the render thread handles uniform updates
+        // This prevents race conditions where both threads write to uniforms simultaneously
+        // The compute shader doesn't need camera/view info anyway, just physics bounds
+        
+        // Get bounds for compute (but don't update uniforms - render thread does that)
+        let environment = self.environment.lock();
+        let _bounds = environment.get_bounds();
+        drop(environment);
+        
+        // CRITICAL: For proper double-buffering, we need to:
+        // 1. Read from the current read buffer (which has the previous state)
+        // 2. Write to the current write buffer (which will become the new read buffer after swap)
+        // 3. Copy data from read to write buffer first, then compute updates it
+        // 
+        // Actually, simpler approach: The compute shader reads and writes to the write buffer.
+        // After compute finishes, we copy write -> read. But we can't easily synchronize that.
+        //
+        // Even simpler: Just always use write buffer for compute. After compute finishes a step,
+        // we'll copy it to read buffer in the render thread before swapping.
+        
+        // Submit simulation compute pass (non-blocking - GPU operations are async)
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Simulation Encoder"),
+        });
+        
+        // Compute always reads and writes to the write buffer
+        // The bind group was created pointing to the write buffer and never changes
+        // After compute finishes, the render thread will copy write->read
+        let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Update Compute Pass"),
+            timestamp_writes: None,
+        });
+
+        compute_pass.set_pipeline(&self.compute_pipelines.update);
+        compute_pass.set_bind_group(0, &self.compute_pipelines.compute_bind_group, &[]);
+        // Dispatch for actual cell count (but uniforms.cell_capacity bounds the shader loop)
+        let num_cells = self.buffers.cell_size() as u32;
+        compute_pass.dispatch_workgroups((num_cells + self.workgroup_size - 1) / self.workgroup_size, 1, 1);
+        
+        drop(compute_pass);
+        let command_buffer = encoder.finish();
+        
+        // Submit compute work - GPU will execute asynchronously
+        // The render thread's uniform updates will ensure correct camera/bounds for rendering
+        self.queue.submit(std::iter::once(command_buffer));
+        
+        // Increment step counter
+        self.step_count.fetch_add(1, Ordering::Relaxed);
+    }
+    
+    pub fn get_step_count(&self) -> u64 {
+        self.step_count.load(Ordering::Relaxed)
+    }
+    
+    pub fn get_buffers(&self) -> Arc<GpuBuffers> {
+        self.buffers.clone()
+    }
+}
+
+/// Application structure - manages rendering at 60 FPS
+pub struct Application {
+    simulation: Arc<parking_lot::Mutex<Simulation>>,
+    compute_pipelines: ComputePipelines,
+    render_pipelines: RenderPipelines,
+    
+    // Window and surface
+    gpu: GpuDevice,
+    
+    // Rendering resources
+    timestamps: TimestampBuffers,
+    bounds_renderer: BoundsRenderer,
+    text_renderer: TextRenderer,
+    
+    // Camera and UI
+    camera: Camera,
+    environment: Arc<parking_lot::Mutex<Environment>>,
+    ui_state: UiState,
+    bounds_border: BoundsBorder,
+    key_states: KeyStates,
+    last_cursor_pos: Vec2,
+    
+    // Performance tracking
+    last_render_step_count: u64,
+    last_frame_time: std::time::Instant,
+    last_render_time: std::time::Instant,
+    target_frame_duration: std::time::Duration,
+    frame_count: u32,
+    last_profile_print: std::time::Instant,
+    last_fps_update: std::time::Instant,
+    fps_frames: u32,
+    last_cleanup: std::time::Instant,
+    cleanup_interval: std::time::Duration,
+    
+    // Deferred resize to avoid blocking the event loop
+    pending_resize: Option<winit::dpi::PhysicalSize<u32>>,
+}
+
+impl Application {
+    pub fn new(
+        _window: &Window,
+        gpu: GpuDevice,
+        compute_pipelines: ComputePipelines,
+        render_pipelines: RenderPipelines,
+        buffers: Arc<GpuBuffers>,
+        timestamps: TimestampBuffers,
+        bounds_renderer: BoundsRenderer,
+        text_renderer: TextRenderer,
+        camera: Camera,
+        environment: Arc<parking_lot::Mutex<Environment>>,
+        ui_state: UiState,
+        bounds_border: BoundsBorder,
+    ) -> Self {
+        let device = Arc::new(gpu.device.clone());
+        let queue = Arc::new(gpu.queue.clone());
+        
+        // Clone compute_pipelines for simulation (they'll be moved into Simulation)
+        // We need to create a new ComputePipelines for the simulation since it will own them
+        // But we also need to keep a reference for render - so we'll create another one
+        // Actually, let's clone the pipeline references by creating new pipelines
+        // For now, we'll pass the same compute_pipelines to Simulation and store a reference here
+        // Since Simulation needs to own them, we'll need to clone/create them separately
+        let compute_pipelines_for_sim = ComputePipelines::new(
+            &gpu.device,
+            buffers.cell_buffer_write(), // Compute writes to write buffer
+            buffers.lifeform_buffer(),
+            &buffers.uniform_buffer,
+            buffers.cell_free_list_buffer_write(), // Compute uses write buffer's free list
+        );
+        
+        let simulation = Arc::new(parking_lot::Mutex::new(Simulation::new(
+            device,
+            queue,
+            compute_pipelines_for_sim,
+            buffers,
+            environment.clone(),
+        )));
+        
+        Self {
+            simulation,
+            compute_pipelines,
+            render_pipelines,
+            gpu,
+            timestamps,
+            bounds_renderer,
+            text_renderer,
+            camera,
+            environment,
+            ui_state,
+            bounds_border,
+            key_states: KeyStates::default(),
+            last_cursor_pos: Vec2::new(0.0, 0.0),
+            last_render_step_count: 0,
+            last_frame_time: std::time::Instant::now(),
+            last_render_time: std::time::Instant::now(),
+            target_frame_duration: std::time::Duration::from_secs_f64(1.0 / 60.0),
+            frame_count: 0,
+            last_profile_print: std::time::Instant::now(),
+            last_fps_update: std::time::Instant::now(),
+            fps_frames: 0,
+            last_cleanup: std::time::Instant::now(),
+            cleanup_interval: std::time::Duration::from_secs(5),
+            pending_resize: None,
+        }
+    }
+    
+    // Spawn simulation thread (runs as fast as possible)
+    pub fn spawn_simulation_thread(&self) {
+        let simulation = self.simulation.clone();
+        
+        thread::spawn(move || {
+            // With double-buffering, we can run simulation as fast as possible!
+            // Compute writes to write buffer, render reads from read buffer - no race conditions
+            loop {
+                simulation.lock().step();
+                // Small sleep to prevent burning CPU, but simulation can run much faster now
+                std::thread::sleep(std::time::Duration::from_micros(100));
+            }
+        });
+    }
+    
+    // Render at 60fps (called from main event loop)
+    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let now = std::time::Instant::now();
+        
+        // Handle pending resize at the start of the render frame (avoids blocking event loop)
+        if let Some(new_size) = self.pending_resize.take() {
+            self.gpu.resize(new_size);
+            
+            // Update camera view size
+            self.camera
+                .set_view_size(Vec2::new(new_size.width as f32, new_size.height as f32));
+            
+            // Update text renderer
+            self.text_renderer.resize(new_size, &self.gpu.device, &self.gpu.config, &self.gpu.queue);
+        }
+        
+        // Periodically collect free indices from dead cells (do this in render, not simulation update)
+        // Note: sync_free_cell_count requires mutable access, so we skip it here
+        // The simulation thread can handle this if needed
+        if now.duration_since(self.last_cleanup) >= self.cleanup_interval {
+            self.last_cleanup = now;
+            // Sync is skipped - buffers are read-only from render thread
+        }
+        
+        // Update camera and UI (happens every render frame)
+        let delta_time = now.duration_since(self.last_frame_time).as_secs_f32();
+        self.last_frame_time = now;
+        
+        // Get current simulation state and clone buffers
+        let (current_step, buffers, bounds) = {
+            let simulation = self.simulation.lock();
+            let current_step = simulation.get_step_count();
+            let buffers = simulation.get_buffers();
+            let environment = self.environment.lock();
+            let bounds = environment.get_bounds();
+            (current_step, buffers, bounds)
+        };
+        
+        // Calculate simulation rate
+        let steps_per_frame = current_step - self.last_render_step_count;
+        self.last_render_step_count = current_step;
+        
+        // Update framerate tracking
+        self.fps_frames += 1;
+        if now.duration_since(self.last_fps_update).as_secs_f32() >= 0.05 {
+            let fps = self.fps_frames as f32 / now.duration_since(self.last_fps_update).as_secs_f32();
+            self.ui_state.update(fps, current_step);
+            self.fps_frames = 0;
+            self.last_fps_update = now;
+        }
+
+        // Update camera (uses actual frame time for smooth camera movement)
+        self.camera.update(delta_time, &self.key_states);
+
+        // Update bounds border
+        self.bounds_border.set_bounds(bounds);
+        
+        // Update uniforms for rendering (use actual render delta time for UI effects)
+        // CRITICAL: Only the render thread updates uniforms to avoid race conditions
+        // The compute shader uses the same uniform buffer but only reads bounds/capacity
+        let camera_pos = self.camera.get_position();
+        let zoom = self.camera.get_zoom();
+        let view_size = Vec2::new(self.gpu.config.width as f32, self.gpu.config.height as f32);
+        
+        let render_delta = now.duration_since(self.last_render_time).as_secs_f32();
+        
+        let num_lifeforms = {
+            let environment = self.environment.lock();
+            environment.num_lifeforms() as u32
+        };
+        
+        // Use SIMULATION_DELTA_TIME for compute shader physics, but render_delta for UI
+        // The compute shader uses delta_time for physics calculations
+        let uniforms = Uniforms::new(
+            SIMULATION_DELTA_TIME, // Use fixed timestep for physics consistency
+            [camera_pos.x, camera_pos.y],
+            zoom,
+            2.0,
+            bounds.left,
+            bounds.top,
+            bounds.right(),
+            bounds.bottom(),
+            view_size.x,
+            view_size.y,
+            buffers.cell_capacity() as u32,
+            num_lifeforms,
+        );
+
+        // Update uniforms on the buffers (this updates the uniform buffer for both compute and render)
+        // This happens on the render thread before rendering to ensure consistency
+        buffers.update_uniforms(&self.gpu.queue, bytemuck::cast_slice(&[uniforms]));
+        
+        // CRITICAL: We'll copy write->read in the render encoder to ensure proper ordering
+        // For now, just recreate render bind group (the copy happens in Renderer::render)
+        
+        // Recreate render bind group to point to the read buffer (always the same, but recreate for safety)
+        // This is necessary because bind groups reference buffers directly
+        let render_bind_group_layout = self.render_pipelines.points.get_bind_group_layout(0);
+        self.render_pipelines.render_bind_group = self.gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Render Bind Group"),
+            layout: &render_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.cell_buffer_read().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buffers.cell_free_list_buffer_read().as_entire_binding(),
+                },
+            ],
+        });
+        
+        // Debug output every 60 frames (once per second at 60fps)
+        if self.frame_count % 60 == 0 {
+            let cell_size = buffers.cell_size();
+            println!("Render frame {}: camera=({:.1}, {:.1}), zoom={:.3}, bounds=({:.1}, {:.1}, {:.1}x{:.1}), cell_size={}, cell_capacity={}", 
+                     self.frame_count, camera_pos.x, camera_pos.y, zoom, 
+                     bounds.left, bounds.top, bounds.width, bounds.height,
+                     cell_size, buffers.cell_capacity());
+            println!("  View size: {:.1}x{:.1}, viewport world size: {:.1}x{:.1}", 
+                     view_size.x, view_size.y, view_size.x / zoom, view_size.y / zoom);
+        }
+        
+        // Render frame
+        let bounds_corners = self.bounds_border.get_corners();
+        let camera_pos = self.camera.get_position();
+        let zoom = self.camera.get_zoom();
+        let text_overlays = &self.ui_state.text_overlays;
+        
+        // Use actual cell size (number of initialized cells) instead of capacity
+        // This ensures we only render the cells that actually exist
+        let num_cells_to_render = buffers.cell_size();
+        
+        if let Err(e) = Renderer::render(
+            &mut self.gpu,
+            &self.compute_pipelines, // Not used since simulation_steps is 0, but required by signature
+            &self.render_pipelines,
+            &*buffers,
+            &self.timestamps,
+            &mut self.bounds_renderer,
+            &mut self.text_renderer,
+            bounds_corners,
+            camera_pos,
+            zoom,
+            num_cells_to_render,
+            text_overlays,
+            &mut self.frame_count,
+            &mut self.last_profile_print,
+            0, // No compute passes in render - simulation runs in separate thread
+        ) {
+            return Err(e);
+        }
+        
+        self.last_render_time = now;
+        
+        Ok(())
+    }
+    
+    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        // Defer resize to render thread to avoid blocking the event loop
+        // This prevents freezing when resizing the window
+        self.pending_resize = Some(new_size);
+    }
+    
+    pub fn handle_keyboard_input(&mut self, pressed: bool, key_code: KeyCode) {
+        match key_code {
+            KeyCode::KeyW => self.key_states.w = pressed,
+            KeyCode::KeyA => self.key_states.a = pressed,
+            KeyCode::KeyS => self.key_states.s = pressed,
+            KeyCode::KeyD => self.key_states.d = pressed,
+            _ => {}
+        }
+    }
+    
+    pub fn handle_mouse_wheel(&mut self, delta: f32, mouse_pos: Vec2) {
+        self.camera.zoom(delta, mouse_pos);
+    }
+    
+    pub fn handle_mouse_move(&mut self, mouse_pos: Vec2, ui_hovered: bool) {
+        // Convert screen coordinates to world coordinates
+        let world_pos = self.camera.screen_to_world(mouse_pos);
+
+        // Update environment drag handler
+        let mut environment = self.environment.lock();
+        environment
+            .update(world_pos, self.camera.get_zoom(), ui_hovered);
+    }
+    
+    pub fn handle_mouse_press(&mut self, pressed: bool) {
+        let mut environment = self.environment.lock();
+        environment.handle_mouse_press(pressed);
+    }
+    
+    pub fn get_cursor_hint(&self) -> Option<&'static str> {
+        let environment = self.environment.lock();
+        environment.get_cursor_hint()
+    }
+    
+    pub fn get_ui_state(&self) -> &UiState {
+        &self.ui_state
+    }
+    
+    pub fn set_last_cursor_pos(&mut self, pos: Vec2) {
+        self.last_cursor_pos = pos;
+    }
+}
+
+/// Main simulator that manages window and application
 pub struct Simulator {
-    app: App,
+    window: Option<Window>,
+    application: Option<Application>,
 }
 
 impl Simulator {
     pub fn new() -> Self {
         Self {
-            app: App {
-                window: None,
-                state: None,
-            },
+            window: None,
+            application: None,
         }
     }
 
     pub fn run(mut self) {
         let event_loop = EventLoop::new().unwrap();
-        event_loop.run_app(&mut self.app).unwrap();
+        event_loop.run_app(&mut self).unwrap();
     }
 }
 
-struct App {
-    window: Option<Window>,
-    state: Option<SimulatorState>,
-}
-
-struct SimulatorState {
-    gpu: GpuDevice,
-    compute_pipelines: ComputePipelines,
-    render_pipelines: RenderPipelines,
-    buffers: GpuBuffers,
-    timestamps: TimestampBuffers,
-    bounds_renderer: BoundsRenderer,
-    text_renderer: TextRenderer<()>, // Type parameter - will be inferred at creation
-    camera: Camera,
-    environment: Environment,
-    ui_state: UiState,
-    bounds_border: BoundsBorder,
-    key_states: KeyStates,
-    last_cursor_pos: Vec2, // Track cursor position for mouse wheel events
-    last_frame_time: std::time::Instant,
-    frame_count: u32,
-    last_profile_print: std::time::Instant,
-    last_fps_update: std::time::Instant,
-    fps_frames: u32,
-    step_counter: u64,
-}
-
-impl ApplicationHandler for App {
+impl ApplicationHandler for Simulator {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes()
             .with_title("Genetica Rust - Verlet Integration")
@@ -79,10 +486,18 @@ impl ApplicationHandler for App {
 
         let window = event_loop.create_window(window_attributes).unwrap();
 
-        let state = pollster::block_on(SimulatorState::new(&window));
+        let application = pollster::block_on(Application::new_from_window(&window));
+
+        // Spawn simulation thread
+        application.spawn_simulation_thread();
 
         self.window = Some(window);
-        self.state = Some(state);
+        self.application = Some(application);
+        
+        // Request initial redraw to start the render loop
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
@@ -91,14 +506,14 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::Resized(physical_size) => {
-                if let Some(ref mut state) = self.state {
-                    state.resize(physical_size);
+                if let Some(ref mut application) = self.application {
+                    application.resize(physical_size);
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                if let Some(ref mut state) = self.state {
+                if let Some(ref mut application) = self.application {
                     if let PhysicalKey::Code(key_code) = event.physical_key {
-                        state.handle_keyboard_input(
+                        application.handle_keyboard_input(
                             event.state == winit::event::ElementState::Pressed,
                             key_code,
                         );
@@ -106,26 +521,25 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                if let Some(ref mut state) = self.state {
+                if let Some(ref mut application) = self.application {
                     let delta_scroll = match delta {
                         winit::event::MouseScrollDelta::LineDelta(_, y) => y,
                         winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 10.0,
                     };
-                    // Use last known cursor position
-                    state.handle_mouse_wheel(delta_scroll, state.last_cursor_pos);
+                    application.handle_mouse_wheel(delta_scroll, application.last_cursor_pos);
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                if let Some(ref mut state) = self.state {
+                if let Some(ref mut application) = self.application {
                     let pos = Vec2::new(position.x as f32, position.y as f32);
-                    state.last_cursor_pos = pos;
-                    state.handle_mouse_move(pos, false); // TODO: check UI hover
+                    application.set_last_cursor_pos(pos);
+                    application.handle_mouse_move(pos, false);
                 }
             }
             WindowEvent::MouseInput { button, state: button_state, .. } => {
-                if let Some(ref mut state) = self.state {
+                if let Some(ref mut application) = self.application {
                     if button == winit::event::MouseButton::Left {
-                        state.environment.handle_mouse_press(
+                        application.handle_mouse_press(
                             button_state == winit::event::ElementState::Pressed,
                         );
                     }
@@ -133,62 +547,67 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 puffin::GlobalProfiler::lock().new_frame();
-                if let Some(ref mut state) = self.state {
+                if let Some(ref mut application) = self.application {
                     if let Some(ref window) = self.window {
-                        state.update(window);
-
-                        // Display UI info in window title
-                        let ui_text = format!("FPS: {:.1} | Step: {}", state.ui_state.framerate, state.ui_state.step);
-                        window.set_title(&format!("Genetica Rust - {}", ui_text));
-
-                        // Update cursor icon based on drag handle
-                        if let Some(cursor_hint) = state.environment.get_cursor_hint() {
-                            let cursor = match cursor_hint {
-                                "ew-resize" => CursorIcon::ColResize,
-                                "ns-resize" => CursorIcon::RowResize,
-                                "nwse-resize" => CursorIcon::NwseResize,
-                                "nesw-resize" => CursorIcon::NeswResize,
-                                _ => CursorIcon::Default,
-                            };
-                            window.set_cursor(cursor);
-                        } else {
-                            window.set_cursor(CursorIcon::Default);
-                        }
-
-                        match state.render() {
-                            Ok(_) => {}
-                            Err(wgpu::SurfaceError::Lost) => {
-                                if let Some(ref mut state) = self.state {
-                                    state.resize(winit::dpi::PhysicalSize::new(
-                                        state.gpu.config.width,
-                                        state.gpu.config.height,
-                                    ));
-                                }
+                        let now = std::time::Instant::now();
+                        
+                        // Only render if enough time has passed (60 FPS cap)
+                        let time_since_last_render = now.duration_since(application.last_render_time);
+                        if time_since_last_render >= application.target_frame_duration {
+                            // Render frame only - no simulation
+                            if let Err(e) = application.render() {
+                                eprintln!("Render error: {:?}", e);
                             }
-                            Err(wgpu::SurfaceError::OutOfMemory) => {
-                                event_loop.exit();
+
+                            // Display UI info in window title
+                            let ui_state = application.get_ui_state();
+                            let ui_text = format!("FPS: {:.1} | Step: {}", ui_state.framerate, ui_state.step);
+                            window.set_title(&format!("Genetica Rust - {}", ui_text));
+
+                            // Update cursor icon based on drag handle
+                            if let Some(cursor_hint) = application.get_cursor_hint() {
+                                let cursor = match cursor_hint {
+                                    "ew-resize" => CursorIcon::ColResize,
+                                    "ns-resize" => CursorIcon::RowResize,
+                                    "nwse-resize" => CursorIcon::NwseResize,
+                                    "nesw-resize" => CursorIcon::NeswResize,
+                                    _ => CursorIcon::Default,
+                                };
+                                window.set_cursor(cursor);
+                            } else {
+                                window.set_cursor(CursorIcon::Default);
                             }
-                            Err(e) => eprintln!("{:?}", e),
                         }
                     }
-                }
-                if let Some(ref window) = self.window {
-                    window.request_redraw();
                 }
             }
             _ => {}
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(ref window) = self.window {
-            window.request_redraw();
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(ref application) = self.application {
+            let now = std::time::Instant::now();
+            
+            // Schedule next wake time for rendering
+            let next_frame_time = application.last_render_time + application.target_frame_duration;
+            
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(next_frame_time));
+            
+            // Request redraw when it's time for rendering
+            if let Some(ref window) = self.window {
+                if now >= next_frame_time {
+                    window.request_redraw();
+                }
+            }
+        } else {
+            event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
         }
     }
 }
 
-impl SimulatorState {
-    async fn new(window: &Window) -> Self {
+impl Application {
+    async fn new_from_window(window: &Window) -> Self {
         let size = window.inner_size();
 
         // Initialize GPU device
@@ -196,7 +615,7 @@ impl SimulatorState {
 
         // Initialize environment
         let initial_bounds = Rect::new(0.0, 0.0, size.width as f32, size.height as f32);
-        let environment = Environment::new(initial_bounds, NUM_POINTS);
+        let mut environment = Environment::new(initial_bounds, NUM_LIFEFORMS);
 
         // Initialize camera (must be before buffers since we need camera data for uniforms)
         let camera = Camera::new(
@@ -204,14 +623,22 @@ impl SimulatorState {
             Some(initial_bounds),
         );
 
-        // Initialize points
-        let points = environment.initialize_points();
-        
-        // Initialize GPU buffers with initial uniforms
+        // Get initial cells and lifeforms from environment
+        let (cells, lifeforms) = environment.initialize_genomes(NUM_LIFEFORMS);
+
+        // Initialize GPU buffers with initial data
         let bounds = environment.get_bounds();
         let camera_pos = camera.get_position();
         let zoom = camera.get_zoom();
         let view_size = Vec2::new(size.width as f32, size.height as f32);
+        
+        let buffers = Arc::new(GpuBuffers::new(
+            &gpu.device,
+            bytemuck::cast_slice(&cells),
+            bytemuck::cast_slice(&lifeforms),
+            bytemuck::cast_slice(&[Uniforms::zeroed()]),
+            None, // GRNs will be uploaded separately for compute kernels
+        ));
         
         let initial_uniforms = Uniforms::new(
             0.0,
@@ -224,26 +651,27 @@ impl SimulatorState {
             bounds.bottom(),
             view_size.x,
             view_size.y,
+            buffers.cell_capacity() as u32,
+            environment.num_lifeforms() as u32,
         );
         
-        let buffers = GpuBuffers::new(
-            &gpu.device,
-            bytemuck::cast_slice(&points),
-            bytemuck::cast_slice(&[initial_uniforms]),
-        );
+        buffers.update_uniforms(&gpu.queue, bytemuck::cast_slice(&[initial_uniforms]));
 
         // Initialize pipelines
         let compute_pipelines = ComputePipelines::new(
             &gpu.device,
-            &buffers.point_buffer,
+            buffers.cell_buffer(),
+            buffers.lifeform_buffer(),
             &buffers.uniform_buffer,
+            buffers.cell_free_list_buffer(),
         );
 
         let render_pipelines = RenderPipelines::new(
             &gpu.device,
             &gpu.config,
-            &buffers.point_buffer,
+            buffers.cell_buffer(),
             &buffers.uniform_buffer,
+            buffers.cell_free_list_buffer(),
         );
 
         // Initialize timestamp buffers
@@ -252,35 +680,24 @@ impl SimulatorState {
         // Initialize bounds renderer
         let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.config);
         
-        // Initialize text renderer - create it inline so compiler can infer the type
-        // The type will be TextRenderer<FontRef<'static>> where FontRef is private
-        // but the compiler knows it and can satisfy trait bounds
-        let font_data = include_bytes!("../../../assets/fonts/russoone-regular.ttf");
-        let brush = wgpu_text::BrushBuilder::using_font_bytes(font_data)
-            .unwrap()
-            .build(
-                &gpu.device,
-                gpu.config.width,
-                gpu.config.height,
-                gpu.config.format,
-            );
-        // Create TextRenderer with inferred type - the brush's type is FontRef<'static>
-        // but we can't name it, so we'll use unsafe to convert the type
-        let text_renderer_typed = TextRenderer {
-            brush,
-            screen_width: gpu.config.width as f32,
-            screen_height: gpu.config.height as f32,
-        };
-        // Convert to TextRenderer<()> for storage - unsafe but we know the types match
-        let text_renderer: TextRenderer<()> = unsafe { std::mem::transmute(text_renderer_typed) };
+        // Initialize text renderer using the new glyph_brush-based API
+        let text_renderer = crate::gpu::text_renderer::TextRenderer::new(
+            &gpu.device,
+            &gpu.queue,
+            &gpu.config,
+        );
 
         // Initialize UI state
         let ui_state = UiState::new();
         
         // Initialize bounds border
         let bounds_border = BoundsBorder::new(initial_bounds);
+        
+        // Wrap environment in Arc for sharing
+        let environment = Arc::new(parking_lot::Mutex::new(environment));
 
-        Self {
+        Self::new(
+            window,
             gpu,
             compute_pipelines,
             render_pipelines,
@@ -292,120 +709,7 @@ impl SimulatorState {
             environment,
             ui_state,
             bounds_border,
-            key_states: KeyStates::default(),
-            last_cursor_pos: Vec2::new(size.width as f32 / 2.0, size.height as f32 / 2.0),
-            last_frame_time: std::time::Instant::now(),
-            frame_count: 0,
-            last_profile_print: std::time::Instant::now(),
-            last_fps_update: std::time::Instant::now(),
-            fps_frames: 0,
-            step_counter: 0,
-        }
-    }
-
-    fn update(&mut self, _window: &Window) {
-        profile_function!();
-        let now = std::time::Instant::now();
-        let delta_time = now.duration_since(self.last_frame_time).as_secs_f32();
-        self.last_frame_time = now;
-
-        // Update framerate tracking
-        self.fps_frames += 1;
-        if now.duration_since(self.last_fps_update).as_secs_f32() >= 0.5 {
-            let fps = self.fps_frames as f32 / now.duration_since(self.last_fps_update).as_secs_f32();
-            self.ui_state.update(fps, self.step_counter);
-            self.fps_frames = 0;
-            self.last_fps_update = now;
-        }
-
-        // Update camera
-        self.camera.update(delta_time, &self.key_states);
-
-        // Update step counter
-        self.step_counter += 1;
-
-        // Update bounds border
-        let bounds = self.environment.get_bounds();
-        self.bounds_border.set_bounds(bounds);
-
-        // Update uniforms with current bounds, camera position, and zoom
-        let camera_pos = self.camera.get_position();
-        let zoom = self.camera.get_zoom();
-        let view_size = Vec2::new(self.gpu.config.width as f32, self.gpu.config.height as f32);
-        
-        let uniforms = Uniforms::new(
-            delta_time,
-            [camera_pos.x, camera_pos.y],
-            zoom,
-            2.0, // point_radius - match physics collision radius
-            bounds.left,
-            bounds.top,
-            bounds.right(),
-            bounds.bottom(),
-            view_size.x,
-            view_size.y,
-        );
-
-        self.buffers
-            .update_uniforms(&self.gpu.queue, bytemuck::cast_slice(&[uniforms]));
-    }
-
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        profile_function!();
-        let bounds_corners = self.bounds_border.get_corners();
-        let camera_pos = self.camera.get_position();
-        let zoom = self.camera.get_zoom();
-        
-        Renderer::render(
-            &mut self.gpu,
-            &self.compute_pipelines,
-            &self.render_pipelines,
-            &self.buffers,
-            &self.timestamps,
-            &mut self.bounds_renderer,
-            &mut self.text_renderer,
-            bounds_corners,
-            camera_pos,
-            zoom,
-            self.environment.num_points(),
-            &self.ui_state.text_overlays,
-            &mut self.frame_count,
-            &mut self.last_profile_print,
         )
-    }
-
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        self.gpu.resize(new_size);
-
-        // Update camera view size
-        self.camera
-            .set_view_size(Vec2::new(new_size.width as f32, new_size.height as f32));
-        
-        // Update text renderer
-        self.text_renderer.resize(new_size, &self.gpu.device, &self.gpu.config, &self.gpu.queue);
-    }
-
-    fn handle_keyboard_input(&mut self, pressed: bool, key_code: KeyCode) {
-        match key_code {
-            KeyCode::KeyW => self.key_states.w = pressed,
-            KeyCode::KeyA => self.key_states.a = pressed,
-            KeyCode::KeyS => self.key_states.s = pressed,
-            KeyCode::KeyD => self.key_states.d = pressed,
-            _ => {}
-        }
-    }
-
-    fn handle_mouse_wheel(&mut self, delta: f32, mouse_pos: Vec2) {
-        self.camera.zoom(delta, mouse_pos);
-    }
-
-    fn handle_mouse_move(&mut self, mouse_pos: Vec2, ui_hovered: bool) {
-        // Convert screen coordinates to world coordinates
-        let world_pos = self.camera.screen_to_world(mouse_pos);
-
-        // Update environment drag handler
-        self.environment
-            .update(world_pos, self.camera.get_zoom(), ui_hovered);
     }
 }
 

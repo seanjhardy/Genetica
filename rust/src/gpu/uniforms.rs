@@ -14,14 +14,37 @@ pub struct Uniforms {
     pub point_radius: f32, // 4 bytes at offset 28
     pub bounds: [f32; 4], // 16 bytes at offset 32
     pub view_size: [f32; 2], // 8 bytes at offset 48
-    _padding5: [f32; 2], // 8 bytes at offset 56 to reach 64 bytes
-    _final_padding: [f32; 4], // 16 bytes at offset 64 to reach 80 bytes
+    pub cell_capacity: u32, // 4 bytes at offset 56 (fixed buffer capacity)
+    pub num_lifeforms: u32, // 4 bytes at offset 60
+    _padding4: [f32; 2], // 8 bytes at offset 64 to reach 72 bytes
+    _final_padding: [f32; 2], // 8 bytes at offset 72 to reach 80 bytes (maintain 80 byte alignment)
 }
 
 // Manually implement Pod and Zeroable since we have explicit padding
 // This is safe because the struct has #[repr(C)] and explicit padding fields
 unsafe impl bytemuck::Pod for Uniforms {}
 unsafe impl bytemuck::Zeroable for Uniforms {}
+
+impl Uniforms {
+    /// Create a zeroed uniform (for buffer initialization)
+    pub fn zeroed() -> Self {
+        Self {
+            delta_time: 0.0,
+            _padding1: 0.0,
+            _padding2: 0.0,
+            _padding3: 0.0,
+            camera_pos: [0.0, 0.0],
+            zoom: 1.0,
+            point_radius: 2.0,
+            bounds: [0.0, 0.0, 0.0, 0.0],
+            view_size: [0.0, 0.0],
+            cell_capacity: 0,
+            num_lifeforms: 0,
+            _padding4: [0.0, 0.0],
+            _final_padding: [0.0, 0.0],
+        }
+    }
+}
 
 impl Uniforms {
     pub fn new(
@@ -35,6 +58,8 @@ impl Uniforms {
         bottom: f32,
         view_width: f32,
         view_height: f32,
+        cell_capacity: u32,
+        num_lifeforms: u32,
     ) -> Self {
         Self {
             delta_time,
@@ -46,8 +71,10 @@ impl Uniforms {
             point_radius,
             bounds: [left, top, right, bottom],
             view_size: [view_width, view_height],
-            _padding5: [0.0, 0.0],
-            _final_padding: [0.0, 0.0, 0.0, 0.0],
+            cell_capacity,
+            num_lifeforms,
+            _padding4: [0.0, 0.0],
+            _final_padding: [0.0, 0.0],
         }
     }
 }

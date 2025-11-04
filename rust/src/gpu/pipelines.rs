@@ -4,30 +4,25 @@ use wgpu;
 
 /// Compute pipelines for physics simulation
 pub struct ComputePipelines {
-    pub verlet: wgpu::ComputePipeline,
-    pub collision: wgpu::ComputePipeline,
+    pub update: wgpu::ComputePipeline,
     pub compute_bind_group: wgpu::BindGroup,
-    pub collision_bind_group: wgpu::BindGroup,
 }
 
 impl ComputePipelines {
     pub fn new(
         device: &wgpu::Device,
-        point_buffer: &wgpu::Buffer,
+        cell_buffer: &wgpu::Buffer,
+        lifeform_buffer: &wgpu::Buffer,
         uniform_buffer: &wgpu::Buffer,
+        cell_free_list_buffer: &wgpu::Buffer,
     ) -> Self {
-        // Create shader modules
+        // Create shader module
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Compute Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/compute.wgsl").into()),
         });
 
-        let collision_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Collision Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/collisions.wgsl").into()),
-        });
-
-        // Create bind group layouts
+        // Create bind group layout
         let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Compute Bind Group Layout"),
             entries: &[
@@ -45,7 +40,27 @@ impl ComputePipelines {
                     binding: 1,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -60,25 +75,10 @@ impl ComputePipelines {
             push_constant_ranges: &[],
         });
 
-        let verlet = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Verlet Compute Pipeline"),
+        let update = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Update Compute Pipeline"),
             layout: Some(&compute_pipeline_layout),
             module: &compute_shader,
-            entry_point: Some("main"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
-
-        let collision_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Collision Pipeline Layout"),
-            bind_group_layouts: &[&compute_bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let collision = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Collision Compute Pipeline"),
-            layout: Some(&collision_pipeline_layout),
-            module: &collision_shader,
             entry_point: Some("main"),
             compilation_options: Default::default(),
             cache: None,
@@ -90,35 +90,26 @@ impl ComputePipelines {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: point_buffer.as_entire_binding(),
+                    resource: cell_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-            ],
-        });
-
-        let collision_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Collision Bind Group"),
-            layout: &compute_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: point_buffer.as_entire_binding(),
+                    resource: lifeform_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 1,
+                    binding: 2,
                     resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: cell_free_list_buffer.as_entire_binding(),
                 },
             ],
         });
 
         Self {
-            verlet,
-            collision,
+            update,
             compute_bind_group,
-            collision_bind_group,
         }
     }
 }
@@ -133,8 +124,9 @@ impl RenderPipelines {
     pub fn new(
         device: &wgpu::Device,
         surface_config: &wgpu::SurfaceConfiguration,
-        point_buffer: &wgpu::Buffer,
+        cell_buffer: &wgpu::Buffer,
         uniform_buffer: &wgpu::Buffer,
+        cell_free_list_buffer: &wgpu::Buffer,
     ) -> Self {
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Render Shader"),
@@ -159,6 +151,16 @@ impl RenderPipelines {
                     visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -217,11 +219,15 @@ impl RenderPipelines {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: point_buffer.as_entire_binding(),
+                    resource: cell_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: cell_free_list_buffer.as_entire_binding(),
                 },
             ],
         });

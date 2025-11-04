@@ -1,81 +1,171 @@
-// Compute shader for Verlet integration
+// Compute shader for cell and lifeform updates
 
-struct Point {
+struct Cell {
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
-    velocity: vec2<f32>,
+    energy: f32,
+    lifeform_idx: u32,
+    random_force: vec2<f32>, // Random force vector that changes over time
+}
+
+struct Lifeform {
+    first_cell_idx: u32,
+    cell_count: u32,
+    is_alive: u32,
+    _padding: u32,
 }
 
 // Uniforms struct must match Rust struct layout exactly (including padding)
-// In WGSL uniform buffers, vec3<f32> takes 16 bytes for alignment (padded to vec4)
 struct Uniforms {
-    delta_time: f32, // 4 bytes at offset 0
-    _padding1: f32, // 4 bytes at offset 4 - pad to align vec2 (not needed, but for consistency)
-    _padding2: f32, // 4 bytes at offset 8
-    _padding3: f32, // 4 bytes at offset 12 (totals 16 bytes to align vec2)
-    camera_pos: vec2<f32>, // 8 bytes at offset 16
-    zoom: f32, // 4 bytes at offset 24
-    point_radius: f32, // 4 bytes at offset 28
-    bounds: vec4<f32>, // 16 bytes at offset 32
-    view_size: vec2<f32>, // 8 bytes at offset 48
-    _padding5: vec2<f32>, // 8 bytes at offset 56 to reach 64 bytes
-    _final_padding: vec4<f32>, // 16 bytes at offset 64 to reach 80 bytes
+    delta_time: f32,
+    _padding1: f32,
+    _padding2: f32,
+    _padding3: f32,
+    camera_pos: vec2<f32>,
+    zoom: f32,
+    point_radius: f32,
+    bounds: vec4<f32>,
+    view_size: vec2<f32>,
+    cell_capacity: u32,
+    num_lifeforms: u32,
+    _padding4: vec2<f32>,
+    _final_padding: vec2<f32>,
 }
 
 @group(0) @binding(0)
-var<storage, read_write> points: array<Point>;
+var<storage, read_write> cells: array<Cell>;
 
 @group(0) @binding(1)
+var<storage, read_write> lifeforms: array<Lifeform>;
+
+@group(0) @binding(2)
 var<uniform> uniforms: Uniforms;
 
-@compute @workgroup_size(64)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let index = global_id.x;
-    
-    if index >= arrayLength(&points) {
-        return;
-    }
-    
-    var point = points[index];
-    
-    // Verlet integration
-    let dt = uniforms.delta_time;
-    let velocity = point.pos - point.prev_pos;
-    
-    // Simple gravity and damping
-    let gravity = vec2<f32>(0.0, 98.0);
-    let damping = 0.99;
-    
-    let new_pos = point.pos + velocity * damping + gravity * dt * dt;
-    
-    point.prev_pos = point.pos;
-    point.pos = new_pos;
-    point.velocity = velocity / dt;
-    
-    // Boundary constraints
-    let radius = uniforms.point_radius;
-    let min_x = uniforms.bounds.x + radius;
-    let max_x = uniforms.bounds.z - radius;
-    let min_y = uniforms.bounds.y + radius;
-    let max_y = uniforms.bounds.w - radius;
-    
-    if point.pos.x < min_x {
-        point.prev_pos.x = point.pos.x;
-        point.pos.x = min_x;
-    } else if point.pos.x > max_x {
-        point.prev_pos.x = point.pos.x;
-        point.pos.x = max_x;
-    }
-    
-    if point.pos.y < min_y {
-        point.prev_pos.y = point.pos.y;
-        point.pos.y = min_y;
-    } else if point.pos.y > max_y {
-        point.prev_pos.y = point.pos.y;
-        point.pos.y = max_y;
-    }
-    
-    points[index] = point;
+@group(0) @binding(3)
+var<storage, read_write> cell_free_list: array<atomic<u32>>;
+
+fn rand(seed: vec2<u32>) -> f32 {
+    var x = seed.x * 1664525u + 1013904223u;
+    var y = seed.y * 22695477u + 1u;
+    let n = x ^ y;
+    return f32(n & 0x00FFFFFFu) / f32(0x01000000u) * 2.0 - 1.0;
 }
 
 
+@compute @workgroup_size(128)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    
+    // Iterate through all cells up to capacity
+    if index >= uniforms.cell_capacity {
+        return;
+    }
+    
+    // Check if this cell index is in the free list first
+    // cell_free_list[0] is the count, cell_free_list[1..] are the free indices
+    /*let free_count = atomicLoad(&cell_free_list[0]);
+    for (var i: u32 = 1u; i <= free_count; i++) {
+        if atomicLoad(&cell_free_list[i]) == index {
+            return;
+        }
+    }*/
+
+    var cell = cells[index];
+    
+    // Check if the lifeform is alive
+    /*let lifeform_idx = cell.lifeform_idx;
+    if lifeform_idx >= uniforms.num_lifeforms {
+        return;
+    }
+    
+    let lifeform = lifeforms[lifeform_idx];
+    if lifeform.is_alive == 0u {
+        return;
+    }*/
+    
+    // Decrease energy over time (metabolic rate)
+    // TEMPORARILY DISABLED - cells are dying too fast
+    // let energy_decay_rate = 0.1; // Energy units per second (slower decay)
+    // cell.energy -= energy_decay_rate * uniforms.delta_time;
+    
+    // Remove cell if energy reaches 0
+    // TEMPORARILY DISABLED - don't remove cells based on energy
+    /*if cell.energy <= 0.0 {
+        cell.energy = 0.0;
+        cells[index] = cell;
+        
+        // Add this cell's index to the free list atomically
+        // cell_free_list[0] is the count, cell_free_list[1..] are the free indices
+        let free_index = atomicAdd(&cell_free_list[0], 1u);
+        // Write the index at position (free_index + 1) since index 0 is the count
+        // Use atomicStore to ensure thread-safe write
+        atomicStore(&cell_free_list[free_index + 1u], index);
+        
+        // Update lifeform cell count (atomic operation not available in WGSL,
+        // so we'll handle this on CPU side after reading back results)
+        return;
+    }*/
+    
+    // Generate random position offset for this timestep
+    // Use cell index + current position as seed - this ensures each cell gets different randomness
+    // and the randomness changes as the cell moves, creating more varied movement
+    let pos_hash_x = u32(abs(cell.pos.x) * 7919.0) % 100000u;
+    let pos_hash_y = u32(abs(cell.pos.y) * 1669.0) % 100000u;
+    
+    // Also use previous position to add more variation
+    let prev_hash_x = u32(abs(cell.prev_pos.x) * 3319.0) % 100000u;
+    let prev_hash_y = u32(abs(cell.prev_pos.y) * 4217.0) % 100000u;
+    
+    // Combine index, current position, and previous position for seed
+    // Using different prime multipliers to ensure good distribution
+    let seed1 = (index * 7919u + pos_hash_x * 17u + prev_hash_x * 31u) % 100000u;
+    let seed2 = (index * 1669u + pos_hash_y * 23u + prev_hash_y * 37u) % 100000u;
+    
+    // Generate two independent random values
+    let random_x = rand(vec2<u32>(seed1, seed2));
+    let random_y = rand(vec2<u32>(seed2, seed1 * 3u + 41u));
+    
+    // Random position offset per timestep (added directly to position, no accumulation)
+    let random_offset_magnitude = 0.5; // World units per timestep (small offset for subtle movement)
+    let random_offset = vec2<f32>(random_x, random_y) * random_offset_magnitude * uniforms.delta_time;
+    
+    // Store random offset for potential future use (but not using it for accumulation anymore)
+    cell.random_force = random_offset;
+    
+    // Verlet integration with damping (no acceleration term)
+    let dt = uniforms.delta_time;
+    let velocity = cell.pos - cell.prev_pos;
+    
+    let damping = 0.98;
+    // Add random offset directly to position instead of using acceleration
+    var new_pos = cell.pos + velocity * damping + random_offset;
+
+    cell.prev_pos = cell.pos;
+    cell.pos = new_pos;
+    
+    // Boundary constraints
+    // Note: bounds is [left, top, right, bottom]
+    let radius = uniforms.point_radius;
+    let min_x = uniforms.bounds.x + radius;
+    let max_x = uniforms.bounds.z - radius; // bounds.z is right edge
+    let min_y = uniforms.bounds.y + radius;
+    let max_y = uniforms.bounds.w - radius; // bounds.w is bottom edge
+    
+    if cell.pos.x < min_x {
+        cell.prev_pos.x = cell.pos.x;
+        cell.pos.x = min_x;
+    } else if cell.pos.x > max_x {
+        cell.prev_pos.x = cell.pos.x;
+        cell.pos.x = max_x;
+    }
+    
+    if cell.pos.y < min_y {
+        cell.prev_pos.y = cell.pos.y;
+        cell.pos.y = min_y;
+    } else if cell.pos.y > max_y {
+        cell.prev_pos.y = cell.pos.y;
+        cell.pos.y = max_y;
+    }
+    
+    cells[index] = cell;
+}

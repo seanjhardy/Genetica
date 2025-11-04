@@ -5,7 +5,6 @@ use winit::window::Window;
 
 /// GPU device, queue, and surface management
 pub struct GpuDevice {
-    pub instance: wgpu::Instance,
     pub surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -64,12 +63,32 @@ impl GpuDevice {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
+        // Choose a present mode that doesn't block on acquire_texture
+        // Prefer Mailbox (triple buffering - smooth but no blocking), then Immediate (no VSync)
+        let present_mode = surface_caps
+            .present_modes
+            .iter()
+            .copied()
+            .find(|&mode| mode == wgpu::PresentMode::Mailbox)
+            .or_else(|| {
+                surface_caps
+                    .present_modes
+                    .iter()
+                    .copied()
+                    .find(|&mode| mode == wgpu::PresentMode::Immediate)
+            })
+            .unwrap_or(surface_caps.present_modes[0]); // Fall back to first available if neither exists
+
+        // Debug: Print which present mode we're using
+        println!("Using present mode: {:?}", present_mode);
+        println!("Available present modes: {:?}", surface_caps.present_modes);
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: surface_caps.present_modes[0],
+            present_mode,  // Use the selected mode instead of surface_caps.present_modes[0]
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
@@ -78,7 +97,6 @@ impl GpuDevice {
         surface.configure(&device, &config);
 
         Self {
-            instance,
             surface,
             device,
             queue,

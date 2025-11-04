@@ -31,70 +31,86 @@ impl Renderer {
         text_overlays: &[TextOverlay],
         frame_count: &mut u32,
         _last_profile_print: &mut std::time::Instant,
+        simulation_steps: u32,  // Add this parameter
     ) -> Result<(), wgpu::SurfaceError> {
         profile_scope!("Render Frame");
-        let output = gpu.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        
+        let output = {
+            profile_scope!("get_current_texture");
+            gpu.surface.get_current_texture()?
+        };
+        
+        let view = {
+            profile_scope!("create_view");
+            output.texture.create_view(&wgpu::TextureViewDescriptor::default())
+        };
 
         // Create command encoder for both compute and render
+        // NOTE: We create a new encoder per frame to ensure proper ordering
+        // wgpu queues automatically serialize operations, so compute and render
+        // work submitted to the same queue will execute in submission order
         let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Command Encoder"),
+            label: Some("Render Command Encoder"),
         });
         
+        // CRITICAL: Copy write buffer to read buffer before rendering
+        // This synchronizes compute results (in write buffer) to read buffer (for rendering)
+        // Compute always uses write buffer, render always uses read buffer
+        // This ensures render sees the latest compute results
+        let cell_size = _buffers.cell_size();
+        if cell_size > 0 {
+            let cell_size_bytes = (cell_size * std::mem::size_of::<crate::gpu::structures::Cell>()) as u64;
+            encoder.copy_buffer_to_buffer(
+                _buffers.cell_buffer_write(),
+                0,
+                _buffers.cell_buffer_read(),
+                0,
+                cell_size_bytes,
+            );
+        }
+        
         // Update bounds renderer
-        let view_size = Vec2::new(gpu.config.width as f32, gpu.config.height as f32);
-        bounds_renderer.update_bounds(
-            &gpu.queue,
-            bounds_corners,
-            camera_pos,
-            zoom,
-            view_size.x,
-            view_size.y,
-            [0.0, 1.0, 0.0, 1.0], // Green color
-        );
-
-        // Run compute shader for verlet integration with GPU timestamps
         {
-            profile_scope!("Compute Pass (Verlet)");
-            let timestamp_writes = timestamps.compute_timestamp_set.as_ref().map(|ts| {
-                wgpu::ComputePassTimestampWrites {
-                    query_set: ts,
-                    beginning_of_pass_write_index: Some(0),
-                    end_of_pass_write_index: Some(1),
-                }
-            });
-
-            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Verlet Compute Pass"),
-                timestamp_writes,
-            });
-
-            compute_pass.set_pipeline(&compute_pipelines.verlet);
-            compute_pass.set_bind_group(0, &compute_pipelines.compute_bind_group, &[]);
-            compute_pass.dispatch_workgroups((num_points as u32 + 63) / 64, 1, 1);
+            profile_scope!("Update Bounds Renderer");
+            let view_size = Vec2::new(gpu.config.width as f32, gpu.config.height as f32);
+            bounds_renderer.update_bounds(
+                &gpu.queue,
+                bounds_corners,
+                camera_pos,
+                zoom,
+                view_size.x,
+                view_size.y,
+                [0.0, 1.0, 0.0, 1.0], // Green color
+            );
         }
 
-        // Run collision detection compute shader with GPU timestamps
-        {
-            profile_scope!("Collision Pass");
-            let timestamp_writes = timestamps.collision_timestamp_set.as_ref().map(|ts| {
-                wgpu::ComputePassTimestampWrites {
-                    query_set: ts,
-                    beginning_of_pass_write_index: Some(0),
-                    end_of_pass_write_index: Some(1),
-                }
-            });
+        // Run multiple simulation steps (compute shader dispatches)
+        // Only run if simulation_steps > 0 (0 means simulation already ran in loop)
+        if simulation_steps > 0 {
+            for _step in 0..simulation_steps {
+                profile_scope!("Compute Pass (Update)");
+                let timestamp_writes = if _step == simulation_steps - 1 {  // Only timestamp last step
+                    timestamps.compute_timestamp_set.as_ref().map(|ts| {
+                        wgpu::ComputePassTimestampWrites {
+                            query_set: ts,
+                            beginning_of_pass_write_index: Some(0),
+                            end_of_pass_write_index: Some(1),
+                        }
+                    })
+                } else {
+                    None
+                };
 
-            let mut collision_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Collision Compute Pass"),
-                timestamp_writes,
-            });
+                let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("Update Compute Pass"),
+                    timestamp_writes,
+                });
 
-            collision_pass.set_pipeline(&compute_pipelines.collision);
-            collision_pass.set_bind_group(0, &compute_pipelines.collision_bind_group, &[]);
-            collision_pass.dispatch_workgroups((num_points as u32 + 63) / 64, 1, 1);
+                compute_pass.set_pipeline(&compute_pipelines.update);
+                compute_pass.set_bind_group(0, &compute_pipelines.compute_bind_group, &[]);
+                // Dispatch for all cells up to capacity
+                compute_pass.dispatch_workgroups((num_points as u32 + 63) / 64, 1, 1);
+            }
         }
 
         // Render points
@@ -130,23 +146,35 @@ impl Renderer {
             });
 
             render_pass.set_pipeline(&render_pipelines.points);
+            // Note: We use the bind group from render_pipelines, which should be updated
+            // to point to the current read buffer (done in Application::render before calling this)
             render_pass.set_bind_group(0, &render_pipelines.render_bind_group, &[]);
+            // Render all cells up to capacity (shader will skip free cells)
             render_pass.draw(0..4, 0..(num_points as u32)); // 4 vertices per quad, num_points instances
         }
 
-        // Render bounds border (must be before finishing encoder)
-        bounds_renderer.render(&mut encoder, &view);
-        
-        // Queue and render text overlays
-        for overlay in text_overlays {
-            text_renderer.queue_text(&gpu.queue, &overlay.text, overlay.position.x, overlay.position.y, overlay.color);
+        // Render bounds border
+        {
+            profile_scope!("Render Bounds Border");
+            bounds_renderer.render(&mut encoder, &view);
         }
-        text_renderer.draw(&gpu.device, &gpu.queue, &mut encoder, &view);
+        
+        // Queue text overlays
+        {
+            profile_scope!("Queue Text Overlays");
+            for overlay in text_overlays {
+                text_renderer.queue_text(&gpu.queue, &overlay.text, overlay.position.x, overlay.position.y, overlay.color);
+            }
+        }
+        
+        {
+            profile_scope!("Draw Text");
+            text_renderer.draw(&gpu.device, &gpu.queue, &mut encoder, &view);
+        }
 
         // Handle timestamp queries if supported
-        if let (Some(compute_ts), Some(collision_ts), Some(render_ts), Some(ts_buffer)) = (
+        if let (Some(compute_ts), Some(render_ts), Some(ts_buffer)) = (
             &timestamps.compute_timestamp_set,
-            &timestamps.collision_timestamp_set,
             &timestamps.render_timestamp_set,
             &timestamps.timestamp_buffer,
         ) {
@@ -154,18 +182,23 @@ impl Renderer {
             let query_align = 256u64;
 
             let compute_offset = 0;
-            let collision_offset = query_align;
-            let render_offset = query_align * 2;
+            let render_offset = query_align;
 
             encoder.resolve_query_set(compute_ts, 0..2, ts_buffer, compute_offset);
-            encoder.resolve_query_set(collision_ts, 0..2, ts_buffer, collision_offset);
             encoder.resolve_query_set(render_ts, 0..2, ts_buffer, render_offset);
         }
 
         // Submit and present (non-blocking)
-        let command_buffer = encoder.finish();
-        gpu.queue.submit(std::iter::once(command_buffer));
-        output.present();
+        {
+            profile_scope!("Submit Commands");
+            let command_buffer = encoder.finish();
+            gpu.queue.submit(std::iter::once(command_buffer));
+        }
+
+        {
+            profile_scope!("Present Frame");
+            output.present();
+        }
 
         // Update frame count (timestamp reading can happen asynchronously later if needed)
         *frame_count += 1;
