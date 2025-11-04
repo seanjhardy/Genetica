@@ -1,0 +1,325 @@
+/* Full screen container */
+.full {
+    width: 100%;
+    height: 100%;
+    background-color: transparent;
+}
+
+/* Simulation viewport - black background, fills screen */
+.simulation-viewport {
+    flex: 1;
+    width: 100%;
+    background-color: #000000;
+}
+
+/* Show UI view */
+.show-ui-view {
+    position: absolute;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: flex-end;
+    margin: 20px;
+}
+
+/* Container */
+.container {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 5px;
+    gap: 20px;
+}
+
+/* Planet Info */
+.planet-info {
+    position: absolute;
+    align-items: flex-start;
+    justify-content: flex-end;
+}
+
+.planet-circle {
+    position: absolute;
+    width: 330px;
+    height: 330px;
+    left: -165px;
+    top: 165px;
+    border: 2px solid rgba(255, 255, 255, 80);
+    border-radius: 1000px;
+    background-color: rgba(0, 0, 0, 150);
+}
+
+.thermometer-container {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    left: 20px;
+    top: -120px;
+    flex-direction: column;
+    align-items: center;
+}
+
+.thermometer-icon {
+    width: 30px;
+    height: 30px;
+    background-color: rgba(255, 100, 0, 200);
+    border-radius: 15px;
+}
+
+.temperature-text {
+    width: 50px;
+    font-size: 14px;
+    color: #FFFFFF;
+    text-align: center;
+}
+
+.planet-settings {
+    position: absolute;
+    flex-direction: row;
+    height: 140px;
+    width: 140px;
+    left: -20px;
+    top: 20px;
+}
+
+.planetBtn {
+    width: 120px;
+    height: 120px;
+    background-color: transparent;
+    align-items: center;
+    justify-content: center;
+    border-radius: 60px;
+    position: relative;
+}
+
+.planet-icon {
+    width: 100px;
+    height: 100px;
+    background-color: rgba(100, 150, 200, 200);
+    border-radius: 50px;
+}
+
+.planet-name {
+    position: absolute;
+    font-size: 25px;
+    color: #FFFFFF;
+    text-align: center;
+    text-shadow: 0px 0px 3px rgba(0, 0, 0, 255);
+}
+
+/* Tabs */
+.tabs-container {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+.tab {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    height: 30px;
+    border: 2px solid #5E5E5E;
+    border-radius: 20px;
+    margin: 0px -20px 0px 0px;
+    padding: 15px 17px 15px 0px;
+    background-color: rgba(0, 0, 0, 204);
+    box-shadow: 0px 5px 5px rgba(0, 0, 0, 80);
+    width: auto;
+}
+
+.tabHover:hover {
+    background-color: #20868a;
+    border-color: #38c4c9;
+}
+
+.stats-tab {
+    width: auto;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.stat-item {
+    flex-direction: row;
+    align-items: center;
+    gap: 5px;
+}
+
+.stat-icon {
+    width: 25px;
+    height: 25px;
+    border-radius: 5px;
+}
+
+.dna-icon {
+    background-color: rgba(100, 200, 255, 200);
+}
+
+.paw-icon {
+    background-color: rgba(255, 150, 100, 200);
+}
+
+.cells-icon {
+    background-color: rgba(100, 255, 150, 200);
+}
+
+.tab-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 5px;
+}
+
+.grn-icon {
+    background-color: rgba(200, 100, 255, 200);
+}
+
+.stat-text {
+    font-size: 16px;
+    color: #FFFFFF;
+    margin: 0px 0px 10px 0px;
+}
+
+.tab-text {
+    font-size: 12px;
+    color: #FFFFFF;
+}
+
+.miniBtn {
+    width: 25px;
+    height: 25px;
+    background-color: transparent;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+}
+
+.miniBtn:hover {
+    background-color: rgba(255, 255, 255, 50);
+}
+
+/* Panel */
+.panel {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    gap: 5px;
+    background-color: rgba(0, 0, 0, 80);
+    border: 2px solid rgba(255, 255, 255, 40);
+    border-radius: 20px;
+    box-shadow: 0px 5px 5px rgba(0, 0, 0, 120);
+}
+
+.genome-panel {
+    position: absolute;
+    top: 50px;
+    width: 250px;
+    height: 250px;
+    background-color: rgba(0, 0, 0, 100);
+}
+
+.grn-panel {
+    position: absolute;
+    top: 50px;
+    width: 300px;
+    height: 300px;
+    background-color: rgba(0, 0, 0, 100);
+}
+
+.viewport {
+    background-color: transparent;
+}
+
+.genome-controls {
+    flex-direction: row;
+    width: 100%;
+    height: 20px;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+/* Control Panel */
+.control-panel {
+    flex-direction: column;
+    gap: 5px;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 5px;
+}
+
+.time-step-display {
+    flex-direction: row;
+    font-size: 14px;
+    gap: 5px;
+    align-items: center;
+    justify-content: center;
+    width: 200px;
+    height: 20px;
+}
+
+.time-text {
+    color: #FFFFFF;
+    text-align: center;
+}
+
+.step-text {
+    color: #FFFFFF;
+    text-align: center;
+}
+
+.control-buttons {
+    width: 280px;
+    height: 50px;
+    padding: 5px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.control-spacer {
+    width: 50px;
+    height: 100%;
+}
+
+.button-group {
+    background-color: rgba(255, 255, 255, 70);
+    border-radius: 20px;
+    flex-direction: row;
+    height: 100%;
+    flex: 1;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 5px;
+}
+
+.mainBtn {
+    flex: 1;
+    font-size: 15px;
+    padding: 3px;
+    background-color: rgba(255, 255, 255, 70);
+    border: 0px;
+    border-radius: 15px;
+    box-shadow: 0px 2px 3px rgba(0, 0, 0, 50);
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.mainBtn:hover {
+    background-color: rgba(59, 190, 255, 140);
+    box-shadow: 0px 2px 3px rgba(20, 31, 38, 60);
+}
+
+.speed-display {
+    width: 50px;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+}
+
+.speed-text {
+    font-size: 14px;
+    color: #FFFFFF;
+}

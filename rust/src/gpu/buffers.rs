@@ -89,10 +89,10 @@ impl GpuBuffers {
         });
 
         // Initialize GRN buffers if data provided
-        let (factor_vector, promoter_vector, effector_vector, regulatory_unit_vector,
-             promoter_indices, factor_indices,
-             promoter_factor_affinities, factor_effector_affinities, factor_receptor_affinities,
-             grn_metadata_vector) = if let Some(grn) = grn_data {
+        let (_factor_vector, _promoter_vector, _effector_vector, _regulatory_unit_vector,
+             _promoter_indices, _factor_indices,
+             _promoter_factor_affinities, _factor_effector_affinities, _factor_receptor_affinities,
+             _grn_metadata_vector) = if let Some(grn) = grn_data {
             // Create GPU vectors for GRN components
             let factor_vec = GpuVector::<GpuGene>::new(
                 device,
@@ -396,7 +396,7 @@ impl GpuBuffers {
         };
         let index = write_buffer.push(device, queue, cell);
         // Also add to read buffer to keep them in sync
-        if let Some(idx) = index {
+        if let Some(_idx) = index {
             let read_buffer = if self.cell_read_buffer.load(Ordering::Acquire) {
                 &mut self.cell_vector_b
             } else {

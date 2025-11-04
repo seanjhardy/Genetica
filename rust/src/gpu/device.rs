@@ -78,11 +78,7 @@ impl GpuDevice {
                     .find(|&mode| mode == wgpu::PresentMode::Immediate)
             })
             .unwrap_or(surface_caps.present_modes[0]); // Fall back to first available if neither exists
-
-        // Debug: Print which present mode we're using
-        println!("Using present mode: {:?}", present_mode);
-        println!("Available present modes: {:?}", surface_caps.present_modes);
-
+        
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,

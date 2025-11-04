@@ -1,0 +1,115 @@
+<!-- Root view - full screen -->
+<view id="root" class="full" style="flex-direction: column; align-items: flex-end;">
+    <!-- Simulation viewport - black background, fills screen -->
+    <view id="simulation" class="simulation-viewport"/>
+    
+    <!-- Show UI button view (hidden by default) -->
+    <view id="showUIView" class="show-ui-view" style="display: none;">
+        <button class="miniBtn" on-click="showUI">
+            Show UI
+        </button>
+    </view>
+    
+    <!-- Main UI container -->
+    <view id="UI" class="container" style="position: absolute; flex-direction: column; width: 100%; height: 100%;">
+        
+        <!-- PlanetInfo component -->
+        <view id="planetInfo" class="planet-info">
+            <!-- Circular background -->
+            <view class="planet-circle"></view>
+            
+            <!-- Thermometer and temperature -->
+            <view class="thermometer-container">
+                <view class="thermometer-icon"></view>
+                <text id="temperature" class="temperature-text">-5°</text>
+            </view>
+            
+            <!-- Planet button -->
+            <view id="planetSettings" class="planet-settings">
+                <button class="planetBtn" on-click="randomPlanet">
+                    <view class="planet-icon"></view>
+                    <text id="planetBtnName" class="planet-name">Delune</text>
+                </button>
+            </view>
+        </view>
+        
+        <!-- Tabs component -->
+        <view id="tabs" class="tabs-container">
+            <!-- Hide UI button tab -->
+            <view class="tab" style="width: 60px;">
+                <button class="miniBtn" on-click="hideUI">
+                    Hide UI
+                </button>
+            </view>
+            
+            <!-- Stats tab -->
+            <view class="tab stats-tab">
+                <view class="stat-item">
+                    <view class="stat-icon dna-icon"></view>
+                    <text id="species" class="stat-text">0</text>
+                </view>
+                <view class="stat-item">
+                    <view class="stat-icon paw-icon"></view>
+                    <text id="lifeforms" class="stat-text">0</text>
+                </view>
+                <view class="stat-item">
+                    <view class="stat-icon cells-icon"></view>
+                    <text id="cells" class="stat-text">0</text>
+                </view>
+            </view>
+            
+            <!-- Genome tab -->
+            <view id="genomeTab" class="tab tabHover" style="display: none;" on-click="toggleGenomeTab">
+                <view class="tab-icon dna-icon"></view>
+                <text class="tab-text">Genome</text>
+                <!-- Genome panel (hidden by default) -->
+                <view id="genomePanel" class="panel genome-panel" style="display: none;">
+                    <view id="genomePanelViewport" class="viewport" style="width: 100%; flex: 1; background: transparent;"></view>
+                    <view class="genome-controls">
+                        <button class="miniBtn" on-click="copyGenome">
+                            Copy
+                        </button>
+                    </view>
+                </view>
+            </view>
+            
+            <!-- GRN tab -->
+            <view id="grnTab" class="tab tabHover" style="display: none;" on-click="toggleGRNTab">
+                <view class="tab-icon grn-icon"></view>
+                <text class="tab-text">Gene Regulatory Network</text>
+                <!-- GRN panel (hidden by default) -->
+                <view id="grnPanel" class="panel grn-panel" style="display: none;">
+                    <view id="geneRegulatoryNetwork" class="viewport" style="width: 100%; height: 100%; background: transparent;"></view>
+                </view>
+            </view>
+        </view>
+        
+        <!-- ControlPanel component -->
+        <view id="controlPanel" class="control-panel">
+            <!-- Time and step display -->
+            <view class="time-step-display">
+                <text id="time" class="time-text">00:00:00</text>
+                <text id="step" class="step-text">0</text>
+            </view>
+            
+            <!-- Control buttons -->
+            <view class="control-buttons">
+                <view class="control-spacer"></view>
+                <view class="button-group">
+                    <button id="slowDownBtn" class="mainBtn" on-click="slowDown">
+                        -
+                    </button>
+                    <button id="playBtn" class="mainBtn" on-click="togglePaused">
+                        Pause
+                    </button>
+                    <button id="speedUpBtn" class="mainBtn" on-click="speedUp">
+                        +
+                    </button>
+                </view>
+                <view class="speed-display">
+                    <text id="speed" class="speed-text">x1.0</text>
+                </view>
+            </view>
+        </view>
+    </view>
+</view>

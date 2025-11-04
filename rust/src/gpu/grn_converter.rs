@@ -117,8 +117,8 @@ impl GrnGpuData {
             }
             
             // Get final index offsets after processing all regulatory units
-            let final_promoter_index_offset = promoter_indices.len() as u32;
-            let final_factor_index_offset = factor_indices.len() as u32;
+            let _final_promoter_index_offset = promoter_indices.len() as u32;
+            let _final_factor_index_offset = factor_indices.len() as u32;
             
             // Create GRN metadata for this lifeform
             grn_metadata.push(GpuGrnMetadata {

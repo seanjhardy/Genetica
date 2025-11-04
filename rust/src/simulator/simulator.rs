@@ -14,7 +14,8 @@ use winit::{
 
 use crate::modules::math::{Rect, Vec2};
 use crate::modules::camera::{Camera, KeyStates};
-use crate::modules::ui::{UiState, BoundsBorder};
+use crate::modules::ui::{BoundsBorder};
+use crate::ui::{UiParser, UiRenderer, UIManager};
 use crate::gpu::device::GpuDevice;
 use crate::gpu::text_renderer::TextRenderer;
 use crate::gpu::buffers::{GpuBuffers, TimestampBuffers};
@@ -28,7 +29,7 @@ const NUM_LIFEFORMS: usize = 500;
 
 // Fixed simulation timestep - large value for faster simulation at lower accuracy
 // This is NOT tied to render frame time - simulation runs independently
-const SIMULATION_DELTA_TIME: f32 = 0.1; // 100ms per simulation step (10x faster than real-time with 10ms steps)
+const SIMULATION_DELTA_TIME: f32 = 0.1; // 100ms per simulation step
 
 /// Simulation structure - runs compute updates as fast as possible
 pub struct Simulation {
@@ -74,17 +75,6 @@ impl Simulation {
         let environment = self.environment.lock();
         let _bounds = environment.get_bounds();
         drop(environment);
-        
-        // CRITICAL: For proper double-buffering, we need to:
-        // 1. Read from the current read buffer (which has the previous state)
-        // 2. Write to the current write buffer (which will become the new read buffer after swap)
-        // 3. Copy data from read to write buffer first, then compute updates it
-        // 
-        // Actually, simpler approach: The compute shader reads and writes to the write buffer.
-        // After compute finishes, we copy write -> read. But we can't easily synchronize that.
-        //
-        // Even simpler: Just always use write buffer for compute. After compute finishes a step,
-        // we'll copy it to read buffer in the render thread before swapping.
         
         // Submit simulation compute pass (non-blocking - GPU operations are async)
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -138,11 +128,12 @@ pub struct Application {
     timestamps: TimestampBuffers,
     bounds_renderer: BoundsRenderer,
     text_renderer: TextRenderer,
+    ui_renderer: UiRenderer,
+    ui_manager: UIManager,
     
     // Camera and UI
     camera: Camera,
     environment: Arc<parking_lot::Mutex<Environment>>,
-    ui_state: UiState,
     bounds_border: BoundsBorder,
     key_states: KeyStates,
     last_cursor_pos: Vec2,
@@ -173,9 +164,10 @@ impl Application {
         timestamps: TimestampBuffers,
         bounds_renderer: BoundsRenderer,
         text_renderer: TextRenderer,
+        ui_renderer: UiRenderer,
+        ui_manager: UIManager,
         camera: Camera,
         environment: Arc<parking_lot::Mutex<Environment>>,
-        ui_state: UiState,
         bounds_border: BoundsBorder,
     ) -> Self {
         let device = Arc::new(gpu.device.clone());
@@ -194,7 +186,7 @@ impl Application {
             &buffers.uniform_buffer,
             buffers.cell_free_list_buffer_write(), // Compute uses write buffer's free list
         );
-        
+
         let simulation = Arc::new(parking_lot::Mutex::new(Simulation::new(
             device,
             queue,
@@ -211,9 +203,10 @@ impl Application {
             timestamps,
             bounds_renderer,
             text_renderer,
+            ui_renderer,
+            ui_manager,
             camera,
             environment,
-            ui_state,
             bounds_border,
             key_states: KeyStates::default(),
             last_cursor_pos: Vec2::new(0.0, 0.0),
@@ -258,8 +251,9 @@ impl Application {
             self.camera
                 .set_view_size(Vec2::new(new_size.width as f32, new_size.height as f32));
             
-            // Update text renderer
-            self.text_renderer.resize(new_size, &self.gpu.device, &self.gpu.config, &self.gpu.queue);
+            self.ui_renderer.resize(new_size, &self.gpu.device, &self.gpu.config, &self.gpu.queue);
+            // Update UI manager size
+            self.ui_manager.resize(new_size.width as f32, new_size.height as f32);
         }
         
         // Periodically collect free indices from dead cells (do this in render, not simulation update)
@@ -285,14 +279,13 @@ impl Application {
         };
         
         // Calculate simulation rate
-        let steps_per_frame = current_step - self.last_render_step_count;
+        let _steps_per_frame = current_step - self.last_render_step_count;
         self.last_render_step_count = current_step;
         
         // Update framerate tracking
         self.fps_frames += 1;
         if now.duration_since(self.last_fps_update).as_secs_f32() >= 0.05 {
             let fps = self.fps_frames as f32 / now.duration_since(self.last_fps_update).as_secs_f32();
-            self.ui_state.update(fps, current_step);
             self.fps_frames = 0;
             self.last_fps_update = now;
         }
@@ -310,7 +303,7 @@ impl Application {
         let zoom = self.camera.get_zoom();
         let view_size = Vec2::new(self.gpu.config.width as f32, self.gpu.config.height as f32);
         
-        let render_delta = now.duration_since(self.last_render_time).as_secs_f32();
+        let _render_delta = now.duration_since(self.last_render_time).as_secs_f32();
         
         let num_lifeforms = {
             let environment = self.environment.lock();
@@ -363,22 +356,24 @@ impl Application {
             ],
         });
         
-        // Debug output every 60 frames (once per second at 60fps)
-        if self.frame_count % 60 == 0 {
-            let cell_size = buffers.cell_size();
-            println!("Render frame {}: camera=({:.1}, {:.1}), zoom={:.3}, bounds=({:.1}, {:.1}, {:.1}x{:.1}), cell_size={}, cell_capacity={}", 
-                     self.frame_count, camera_pos.x, camera_pos.y, zoom, 
-                     bounds.left, bounds.top, bounds.width, bounds.height,
-                     cell_size, buffers.cell_capacity());
-            println!("  View size: {:.1}x{:.1}, viewport world size: {:.1}x{:.1}", 
-                     view_size.x, view_size.y, view_size.x / zoom, view_size.y / zoom);
+        // Update UI with current state
+        if let Some(screen) = self.ui_manager.get_screen("simulation") {
+            if let Some(fps_component) = screen.find_element_by_id("fps") {
+                let fps_text = format!("FPS: {:.1}", self.fps_frames);
+                fps_component.update_text(&fps_text);
+            }
+            
+            // Update step counter if there's a component with id "step"
+            if let Some(step_component) = screen.find_element_by_id("step") {
+                let step_text = format!("Step: {}", self.step_count);
+                step_component.update_text(&step_text);
+            }
         }
         
         // Render frame
         let bounds_corners = self.bounds_border.get_corners();
         let camera_pos = self.camera.get_position();
         let zoom = self.camera.get_zoom();
-        let text_overlays = &self.ui_state.text_overlays;
         
         // Use actual cell size (number of initialized cells) instead of capacity
         // This ensures we only render the cells that actually exist
@@ -392,11 +387,12 @@ impl Application {
             &self.timestamps,
             &mut self.bounds_renderer,
             &mut self.text_renderer,
+            &mut self.ui_renderer,
+            &mut self.ui_manager,
             bounds_corners,
             camera_pos,
             zoom,
             num_cells_to_render,
-            text_overlays,
             &mut self.frame_count,
             &mut self.last_profile_print,
             0, // No compute passes in render - simulation runs in separate thread
@@ -447,10 +443,6 @@ impl Application {
     pub fn get_cursor_hint(&self) -> Option<&'static str> {
         let environment = self.environment.lock();
         environment.get_cursor_hint()
-    }
-    
-    pub fn get_ui_state(&self) -> &UiState {
-        &self.ui_state
     }
     
     pub fn set_last_cursor_pos(&mut self, pos: Vec2) {
@@ -560,9 +552,7 @@ impl ApplicationHandler for Simulator {
                             }
 
                             // Display UI info in window title
-                            let ui_state = application.get_ui_state();
-                            let ui_text = format!("FPS: {:.1} | Step: {}", ui_state.framerate, ui_state.step);
-                            window.set_title(&format!("Genetica Rust - {}", ui_text));
+                            window.set_title(&format!("Genetica"));
 
                             // Update cursor icon based on drag handle
                             if let Some(cursor_hint) = application.get_cursor_hint() {
@@ -679,17 +669,45 @@ impl Application {
 
         // Initialize bounds renderer
         let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.config);
-        
-        // Initialize text renderer using the new glyph_brush-based API
-        let text_renderer = crate::gpu::text_renderer::TextRenderer::new(
+
+        // Initialize UI renderer
+        let ui_renderer = UiRenderer::new(
             &gpu.device,
             &gpu.queue,
             &gpu.config,
         );
 
-        // Initialize UI state
-        let ui_state = UiState::new();
-        
+        // Parse UI from HTML/CSS files and create UIManager with Screen
+        let ui_manager = {
+            let window_size = gpu.config.width as f32;
+            let window_height = gpu.config.height as f32;
+            let mut manager = UIManager::new(window_size, window_height);
+            
+            let screen = match UiParser::parse_to_screen(
+                "assets/ui/simulation.html",
+                "assets/ui/simulation.css",
+            ) {
+                Ok(screen) => {
+                    eprintln!("Successfully parsed UI from HTML/CSS files");
+                    screen
+                }
+                Err(e) => {
+                    eprintln!("Failed to parse UI files: {}, creating fallback", e);
+                    // Create a fallback screen with a visible background component
+                    let mut fallback = crate::ui::Component::new(crate::ui::ComponentType::View(crate::ui::View::new()));
+                    fallback.style.width = crate::ui::Size::Percent(100.0);
+                    fallback.style.height = crate::ui::Size::Percent(100.0);
+                    fallback.style.background_color = crate::ui::Color::new(0.5, 0.5, 0.5, 1.0); // Gray background
+                    let mut screen = crate::ui::Screen::new();
+                    screen.add_element(fallback);
+                    screen
+                }
+            };
+            
+            manager.add_screen("simulation".to_string(), screen);
+            manager
+        };
+
         // Initialize bounds border
         let bounds_border = BoundsBorder::new(initial_bounds);
         
@@ -704,10 +722,10 @@ impl Application {
             buffers,
             timestamps,
             bounds_renderer,
-            text_renderer,
+            ui_renderer,
+            ui_manager,
             camera,
             environment,
-            ui_state,
             bounds_border,
         )
     }

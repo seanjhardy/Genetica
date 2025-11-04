@@ -1,22 +1,31 @@
-// Text renderer using glyph_brush for on-screen text
+// Text renderer using glyph_brush directly for simple on-screen text rendering
 
 use wgpu;
-use wgpu::util::DeviceExt;
 use glyph_brush::{GlyphBrush, GlyphBrushBuilder, Section, Text};
 use ab_glyph::FontArc;
+use wgpu::util::DeviceExt;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Uniforms {
+    screen_width: f32,
+    screen_height: f32,
+}
 
 pub struct TextRenderer {
     glyph_brush: GlyphBrush<()>,
-    texture: wgpu::Texture,
-    texture_view: wgpu::TextureView,
-    texture_bind_group: wgpu::BindGroup,
-    pipeline: wgpu::RenderPipeline,
     screen_width: u32,
     screen_height: u32,
+    texture_size: u32,
     vertices: Vec<TextVertex>,
     indices: Vec<u16>,
     vertex_buffer: Option<wgpu::Buffer>,
     index_buffer: Option<wgpu::Buffer>,
+    texture: wgpu::Texture,
+    texture_view: wgpu::TextureView,
+    uniform_buffer: wgpu::Buffer,
+    texture_bind_group: wgpu::BindGroup,
+    pipeline: wgpu::RenderPipeline,
 }
 
 #[repr(C)]
@@ -40,8 +49,12 @@ impl TextRenderer {
         // Create glyph brush
         let glyph_brush = GlyphBrushBuilder::using_font(font).build();
         
-        // Create texture for glyph atlas (will be resized as needed)
-        let texture_size = 512u32;
+        // Create texture for glyph atlas
+        // glyph_brush uses a default texture size (typically 256x256 or 512x512)
+        // We need to match glyph_brush's internal texture size for coordinates to align
+        // Based on the debug output, glyph_brush appears to use 256x256 by default
+        // The first texture update is 256 pixels wide, suggesting a 256-wide texture
+        let texture_size = 256u32;
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Text Atlas Texture"),
             size: wgpu::Extent3d {
@@ -59,25 +72,48 @@ impl TextRenderer {
         
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         
+        // Create uniform buffer
+        let uniforms = Uniforms {
+            screen_width: surface_config.width as f32,
+            screen_height: surface_config.height as f32,
+        };
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Text Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[uniforms]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        
         // Create texture bind group layout
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Text Texture Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    multisampled: false,
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
                 },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         });
         
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -102,6 +138,10 @@ impl TextRenderer {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: uniform_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -179,30 +219,31 @@ impl TextRenderer {
         
         Self {
             glyph_brush,
-            texture,
-            texture_view,
-            texture_bind_group,
-            pipeline,
             screen_width: surface_config.width,
             screen_height: surface_config.height,
+            texture_size,
             vertices: Vec::new(),
             indices: Vec::new(),
             vertex_buffer: None,
             index_buffer: None,
+            texture,
+            texture_view,
+            uniform_buffer,
+            texture_bind_group,
+            pipeline,
         }
     }
 
     pub fn queue_text(&mut self, _queue: &wgpu::Queue, text: &str, x: f32, y: f32, color: [f32; 4]) {
+        self.queue_text_with_size(_queue, text, x, y, color, 24.0);
+    }
+
+    pub fn queue_text_with_size(&mut self, _queue: &wgpu::Queue, text: &str, x: f32, y: f32, color: [f32; 4], font_size: f32) {
         let section = Section::default()
             .add_text(Text::new(text)
-                .with_scale(20.0)
-                .with_color(color));
-        
-        // Set screen position via Section
-        let section = Section {
-            screen_position: (x, y),
-            ..section
-        };
+                .with_scale(font_size)
+                .with_color([color[0], color[1], color[2], color[3]]))
+            .with_screen_position((x, y));
         
         self.glyph_brush.queue(section);
     }
@@ -213,33 +254,49 @@ impl TextRenderer {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
-    ) {
+    ) -> Option<wgpu::CommandBuffer> {
+        // Update uniform buffer
+        let uniforms = Uniforms {
+            screen_width: self.screen_width as f32,
+            screen_height: self.screen_height as f32,
+        };
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
         use glyph_brush::BrushAction;
-        
-        // Clear previous frame's data
-        self.vertices.clear();
-        self.indices.clear();
-        
-        // Store vertices and indices in RefCell for the closures
         use std::cell::RefCell;
+        
+        // Clear previous frame's data (but keep buffers if ReDraw)
         let vertices = RefCell::new(Vec::new());
         let indices = RefCell::new(Vec::new());
         
         // Process queued glyphs
-        // The callbacks are called for each rect/tex_data and each vertex
-        let texture = &self.texture;
         match self.glyph_brush.process_queued(
             |rect, tex_data| {
                 // Update texture with new glyph data
+                // rect coordinates are in pixel coordinates relative to glyph_brush's internal texture
+                // These coordinates are where to write the glyph data in the texture atlas
                 let width = rect.width();
                 let height = rect.height();
+                let x = rect.min[0] as u32;
+                let y = rect.min[1] as u32;
+                
+                // Ensure coordinates are within texture bounds
+                if x + width > self.texture_size || y + height > self.texture_size {
+                    eprintln!("Warning: Texture update out of bounds! x={}, y={}, width={}, height={}, texture_size={}", 
+                        x, y, width, height, self.texture_size);
+                    return;
+                }
+                
+                // wgpu requires bytes_per_row to be aligned to 256 bytes for optimal performance
+                // For R8Unorm (1 byte per pixel), we need to align the row size
+                // But glyph_brush provides data in a packed format, so we use the actual width
+                // Note: wgpu will handle padding internally if needed
                 queue.write_texture(
                     wgpu::TexelCopyTextureInfo {
-                        texture,
+                        texture: &self.texture,
                         mip_level: 0,
                         origin: wgpu::Origin3d {
-                            x: rect.min[0],
-                            y: rect.min[1],
+                            x,
+                            y,
                             z: 0,
                         },
                         aspect: wgpu::TextureAspect::All,
@@ -247,7 +304,7 @@ impl TextRenderer {
                     tex_data,
                     wgpu::TexelCopyBufferLayout {
                         offset: 0,
-                        bytes_per_row: Some(width),
+                        bytes_per_row: Some(width), // R8Unorm = 1 byte per pixel
                         rows_per_image: Some(height),
                     },
                     wgpu::Extent3d {
@@ -258,61 +315,66 @@ impl TextRenderer {
                 );
             },
             |glyph_vertex| {
-                // Convert each glyph vertex to our vertex format
-                // This callback is called for each vertex
+                // Convert glyph vertex to our vertex format
+                // glyph_brush calls this callback ONCE per glyph, not per vertex
+                // Each glyph_vertex contains the full rect for that glyph
+                // We need to generate 4 vertices (one per corner) from each glyph
                 let mut verts = vertices.borrow_mut();
                 let mut inds = indices.borrow_mut();
-                let vertex_idx = verts.len();
                 
-                // GlyphVertex structure based on glyph_brush API:
-                // pixel_coords and tex_coords are Rect types with min/max fields
-                // min and max are Point types with x, y fields
-                let pos = [
-                    glyph_vertex.pixel_coords.min.x as f32,
-                    glyph_vertex.pixel_coords.min.y as f32,
-                ];
-                
-                let tex = [
-                    glyph_vertex.tex_coords.min.x,
-                    glyph_vertex.tex_coords.min.y,
-                ];
-                
-                // Extract color from extra - Extra has a color field that returns [f32; 4]
+                let base_idx = verts.len();
                 let color = glyph_vertex.extra.color;
                 
+                // glyph_brush provides texture coordinates already normalized to [0,1] range
+                // These coordinates are relative to glyph_brush's internal texture atlas
+                // We need to ensure our texture writes match where these coordinates point
+                // Generate 4 vertices for this glyph quad (one per corner)
+                // Order: top-left, top-right, bottom-right, bottom-left
                 verts.push(TextVertex {
-                    position: pos,
-                    tex_coords: tex,
+                    position: [glyph_vertex.pixel_coords.min.x as f32, glyph_vertex.pixel_coords.min.y as f32],
+                    tex_coords: [glyph_vertex.tex_coords.min.x, glyph_vertex.tex_coords.min.y],
+                    color,
+                });
+                verts.push(TextVertex {
+                    position: [glyph_vertex.pixel_coords.max.x as f32, glyph_vertex.pixel_coords.min.y as f32],
+                    tex_coords: [glyph_vertex.tex_coords.max.x, glyph_vertex.tex_coords.min.y],
+                    color,
+                });
+                verts.push(TextVertex {
+                    position: [glyph_vertex.pixel_coords.max.x as f32, glyph_vertex.pixel_coords.max.y as f32],
+                    tex_coords: [glyph_vertex.tex_coords.max.x, glyph_vertex.tex_coords.max.y],
+                    color,
+                });
+                verts.push(TextVertex {
+                    position: [glyph_vertex.pixel_coords.min.x as f32, glyph_vertex.pixel_coords.max.y as f32],
+                    tex_coords: [glyph_vertex.tex_coords.min.x, glyph_vertex.tex_coords.max.y],
                     color,
                 });
                 
-                // Each glyph quad has 4 vertices, we need 6 indices (2 triangles)
-                // Generate indices when we have a complete quad (every 4 vertices)
-                if vertex_idx % 4 == 0 && vertex_idx >= 3 {
-                    let base = (vertex_idx - 3) as u16;
-                    // First triangle: 0-1-2
-                    inds.push(base);
-                    inds.push(base + 1);
-                    inds.push(base + 2);
-                    // Second triangle: 1-2-3
-                    inds.push(base + 1);
-                    inds.push(base + 2);
-                    inds.push(base + 3);
-                }
+                // Generate indices for the quad (2 triangles)
+                let base = base_idx as u16;
+                // First triangle: 0-1-2 (top-left, top-right, bottom-right)
+                inds.push(base);
+                inds.push(base + 1);
+                inds.push(base + 2);
+                // Second triangle: 0-2-3 (top-left, bottom-right, bottom-left)
+                inds.push(base);
+                inds.push(base + 2);
+                inds.push(base + 3);
             },
         ) {
             Ok(BrushAction::Draw(_)) => {
-                // Vertices are ready to draw - copy them to self
                 self.vertices = vertices.into_inner();
                 self.indices = indices.into_inner();
             }
             Ok(BrushAction::ReDraw) => {
-                // Reuse last frame's vertices - don't clear
+                // Reuse last frame's vertices - don't update self.vertices/indices
+                // The vertices are already in self.vertices from previous frame
+                // We'll use them below when creating buffers
             }
             Err(e) => {
-                // Handle errors (e.g., texture too small)
                 eprintln!("Glyph brush error: {:?}", e);
-                return;
+                return None;
             }
         }
         
@@ -358,13 +420,18 @@ impl TextRenderer {
             render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..(self.indices.len() as u32), 0, 0..1);
         }
+        
+        None
     }
 
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>, _device: &wgpu::Device, _surface_config: &wgpu::SurfaceConfiguration, _queue: &wgpu::Queue) {
+    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>, _device: &wgpu::Device, _surface_config: &wgpu::SurfaceConfiguration, queue: &wgpu::Queue) {
         self.screen_width = new_size.width;
         self.screen_height = new_size.height;
-        // Resize glyph brush view dimensions
-        // Note: glyph_brush doesn't have resize_view, we'll need to recreate or handle differently
-        // For now, just update our stored dimensions
+        // Update uniform buffer with new screen size
+        let uniforms = Uniforms {
+            screen_width: new_size.width as f32,
+            screen_height: new_size.height as f32,
+        };
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
     }
 }

@@ -4,12 +4,12 @@ use wgpu;
 use puffin::profile_scope;
 
 use crate::modules::math::Vec2;
-use crate::modules::ui::TextOverlay;
 use crate::gpu::device::GpuDevice;
 use crate::gpu::buffers::{GpuBuffers, TimestampBuffers};
 use crate::gpu::pipelines::{ComputePipelines, RenderPipelines};
 use crate::gpu::bounds_renderer::BoundsRenderer;
 use crate::gpu::text_renderer::TextRenderer;
+use crate::ui::{UiRenderer, UIManager};
 
 /// Renderer handles all GPU rendering operations
 pub struct Renderer;
@@ -24,11 +24,12 @@ impl Renderer {
         timestamps: &TimestampBuffers,
         bounds_renderer: &mut BoundsRenderer,
         text_renderer: &mut TextRenderer,
+        ui_renderer: &mut UiRenderer,
+        ui_manager: &mut UIManager,
         bounds_corners: [Vec2; 4],
         camera_pos: Vec2,
         zoom: f32,
         num_points: usize,
-        text_overlays: &[TextOverlay],
         frame_count: &mut u32,
         _last_profile_print: &mut std::time::Instant,
         simulation_steps: u32,  // Add this parameter
@@ -113,7 +114,19 @@ impl Renderer {
             }
         }
 
-        // Render points
+        // Render UI backgrounds FIRST (before simulation, so simulation renders on top)
+        {
+            profile_scope!("Render UI Backgrounds");
+            eprintln!("Simulation Render: About to call ui_renderer.render_backgrounds");
+            if let Some(screen) = ui_manager.get_screen("simulation") {
+                for element in screen.get_elements_mut() {
+                    ui_renderer.render_backgrounds(element, &gpu.device, &gpu.queue, &mut encoder, &view);
+                }
+            }
+            eprintln!("Simulation Render: ui_renderer.render_backgrounds completed");
+        }
+
+        // Render points (simulation cells)
         {
             profile_scope!("Render Pass");
             let timestamp_writes = timestamps.render_timestamp_set.as_ref().map(|ts| {
@@ -124,18 +137,14 @@ impl Renderer {
                 }
             });
 
+            eprintln!("Simulation Render: Starting render pass with {} points", num_points);
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Load,  // Load existing content (UI backgrounds)
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -151,6 +160,7 @@ impl Renderer {
             render_pass.set_bind_group(0, &render_pipelines.render_bind_group, &[]);
             // Render all cells up to capacity (shader will skip free cells)
             render_pass.draw(0..4, 0..(num_points as u32)); // 4 vertices per quad, num_points instances
+            eprintln!("Simulation Render: Draw call completed");
         }
 
         // Render bounds border
@@ -159,17 +169,22 @@ impl Renderer {
             bounds_renderer.render(&mut encoder, &view);
         }
         
-        // Queue text overlays
-        {
-            profile_scope!("Queue Text Overlays");
-            for overlay in text_overlays {
-                text_renderer.queue_text(&gpu.queue, &overlay.text, overlay.position.x, overlay.position.y, overlay.color);
-            }
-        }
-        
+        // Draw text (wgpu_glyph draws directly into the encoder)
         {
             profile_scope!("Draw Text");
             text_renderer.draw(&gpu.device, &gpu.queue, &mut encoder, &view);
+        }
+
+        // Render UI overlays (borders, shadows, etc.) and text on top
+        {
+            profile_scope!("Render UI Overlays");
+            eprintln!("Simulation Render: About to call ui_renderer.render_overlays");
+            if let Some(screen) = ui_manager.get_screen("simulation") {
+                for element in screen.get_elements_mut() {
+                    ui_renderer.render_overlays(element, &gpu.device, &gpu.queue, &mut encoder, &view);
+                }
+            }
+            eprintln!("Simulation Render: ui_renderer.render_overlays completed");
         }
 
         // Handle timestamp queries if supported
@@ -191,13 +206,17 @@ impl Renderer {
         // Submit and present (non-blocking)
         {
             profile_scope!("Submit Commands");
+            eprintln!("Simulation Render: Submitting command buffer");
             let command_buffer = encoder.finish();
             gpu.queue.submit(std::iter::once(command_buffer));
+            eprintln!("Simulation Render: Command buffer submitted");
         }
 
         {
             profile_scope!("Present Frame");
+            eprintln!("Simulation Render: Presenting frame");
             output.present();
+            eprintln!("Simulation Render: Frame presented");
         }
 
         // Update frame count (timestamp reading can happen asynchronously later if needed)

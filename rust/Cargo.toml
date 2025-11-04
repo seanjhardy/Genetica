@@ -2,6 +2,7 @@
 name = "genetica-rust"
 version = "0.1.0"
 edition = "2021"
+resolver = "2"
 
 [dependencies]
 winit = "0.30"
@@ -16,9 +17,11 @@ glyph_brush = "0.7"
 ab_glyph = "0.2"
 rand = "0.8"
 parking_lot = "0.12.5"
+regex = "1.10"
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
+incremental = true
 
