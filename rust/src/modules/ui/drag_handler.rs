@@ -124,9 +124,6 @@ impl DragHandler {
         }
     }
 
-    pub fn is_dragging(&self) -> bool {
-        self.dragging
-    }
 
     pub fn reset(&mut self) {
         self.dragging = false;

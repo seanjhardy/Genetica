@@ -51,9 +51,21 @@
 .bg-transparent { background-color: transparent; }
 .bg-black { background-color: rgba(0, 0, 0, 255); }
 
-.bg-white-50 { background-color: rgba(255, 255, 255, 50); }
+.bg-white-100 { background-color: rgba(255, 255, 255, 100); }
+.bg-white-90 { background-color: rgba(255, 255, 255, 90); }
+.bg-white-80 { background-color: rgba(255, 255, 255, 80); }
 .bg-white-70 { background-color: rgba(255, 255, 255, 70); }
+.bg-white-60 { background-color: rgba(255, 255, 255, 60); }
+.bg-white-50 { background-color: rgba(255, 255, 255, 50); }
+.bg-white-40 { background-color: rgba(255, 255, 255, 40); }
+.bg-white-30 { background-color: rgba(255, 255, 255, 30); }
+.bg-white-20 { background-color: rgba(255, 255, 255, 20); }
+.bg-white-10 { background-color: rgba(255, 255, 255, 10); }
+
+.bg-black-10 { background-color: rgba(0, 0, 0, 10); }
+.bg-black-20 { background-color: rgba(0, 0, 0, 20); }
 .bg-black-30 { background-color: rgba(0, 0, 0, 30); }
+.bg-black-40 { background-color: rgba(0, 0, 0, 40); }
 .bg-black-80 { background-color: rgba(0, 0, 0, 80); }
 .bg-black-100 { background-color: rgba(0, 0, 0, 100); }
 .bg-black-150 { background-color: rgba(0, 0, 0, 150); }
@@ -90,10 +102,11 @@
 
 /* Font Sizes */
 .text-xs { font-size: 12px; }
-.text-sm { font-size: 14px; }
-.text-base { font-size: 15px; }
-.text-md { font-size: 16px; }
-.text-lg { font-size: 25px; }
+.text-sm { font-size: 15px; }
+.text-base { font-size: 20px; }
+.text-md { font-size: 25px; }
+.text-lg { font-size: 35px; }
+.text-large { font-size: 30px; }
 
 /* Text Alignment */
 .text-center { text-align: center; }

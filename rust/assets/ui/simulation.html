@@ -5,39 +5,39 @@
     
     <!-- Show UI button view (hidden by default) -->
     <view id="showUIView" class="absolute flex-row col-start row-end m-20 hidden">
-        <button class="w-25px h-25px bg-transparent col-center row-center rounded-5" on-click="showUI">
+        <view class="w-25px h-25px bg-transparent col-center row-center rounded-5" on-click="showUI">
             Show UI
-        </button>
+        </view>
     </view>
     
     <!-- Main UI container -->
-    <view id="UI" class="absolute flex-col col-end row-center p-5 gap-20 w-full h-full bg-red-100">
+    <view id="UI" class="absolute flex-col col-center row-end p-5 gap-20 w-full h-full">
         <!-- Tabs component -->
         
         <!-- ControlPanel component - positioned at bottom using flex -->
         <view id="controlPanel" class="flex-col gap-5 col-center row-end p-5 bg-red-100">
             <!-- Time and step display -->
-            <view class="flex-row text-sm gap-5 col-center row-center w-200 h-20 bg-red-100 text-white">
+            <view class="flex-row text-large gap-5 col-center row-center w-200 h-20 text-white">
                 <text id="time" class="text-white text-center text-white">00:00:00</text>
                 <text id="step" class="text-white text-center text-white">0</text>
             </view>
             
             <!-- Control buttons -->
-            <view class="w-280 h-50px p-5 flex-row col-center bg-black-100 border-2 border-white-40 rounded-60">
-                <view class="w-50px h-full"></view>
-                <view class="bg-white-70 rounded-20 flex-row h-full flex-1 col-center row-start gap-10 p-5">
-                    <button id="slowDownBtn" class="flex-1 text-base p-3 bg-white-70 border-none 
+            <view class="w-280 h-50px p-5 flex-row col-center bg-black-100 border-2 border-white-40 rounded-15">
+                <view class="w-50px h-full"/>
+                <view class="bg-white-30 rounded-20 flex-row h-full flex-1 col-center row-start gap-10 p-5">
+                    <view id="slowDownBtn" class="flex-1 text-base p-3 bg-white-30 border-none 
                     rounded-15 shadow-sm col-center row-center h-full" on-click="slowDown">
                         -
-                    </button>
-                    <button id="playBtn" class="flex-1 text-base p-3 bg-white-70 border-none rounded-15 
+                    </view>
+                    <view id="playBtn" class="flex-1 text-base p-3 bg-white-30 border-none rounded-15 
                     shadow-sm col-center row-center h-full" on-click="togglePaused">
                         Pause
-                    </button>
-                    <button id="speedUpBtn" class="flex-1 text-base p-3 bg-white-70 border-none rounded-15 
+                    </view>
+                    <view id="speedUpBtn" class="flex-1 text-base p-3 bg-white-30 border-none rounded-15 
                     shadow-sm col-center row-center h-full" on-click="speedUp">
                         +
-                    </button>
+                    </view>
                 </view>
                 <view class="w-50px h-full col-center row-center">
                     <text id="speed" class="text-sm text-white">x1.0</text>

@@ -1,26 +1,18 @@
 // HTML and CSS parser for UI definitions
 
-use super::components::{Component, ComponentType, View, Text, Viewport};
+use super::components::{Component, ComponentType, View, Text};
 use super::styles::{Style, Color, Border, Shadow, Padding, Margin, Size};
-use super::layout::{FlexDirection, Alignment};
+use super::components::view::{FlexDirection, Alignment};
 use std::collections::HashMap;
-
-#[derive(Debug, Clone)]
-pub struct CssRule {
-    pub selector: String,
-    pub properties: HashMap<String, String>,
-}
 
 #[derive(Debug)]
 pub struct UiParser {
-    css_rules: Vec<CssRule>,
     css_classes: HashMap<String, HashMap<String, String>>,
 }
 
 impl UiParser {
     pub fn new() -> Self {
         Self {
-            css_rules: Vec::new(),
             css_classes: HashMap::new(),
         }
     }
@@ -80,12 +72,6 @@ impl UiParser {
                 // CSS class
                 let class_name = selector[1..].trim().to_string();
                 self.css_classes.insert(class_name, properties);
-            } else {
-                // Other selector (for now, just store as-is)
-                self.css_rules.push(CssRule {
-                    selector,
-                    properties,
-                });
             }
         }
 
@@ -191,7 +177,7 @@ impl UiParser {
                 if inner_content.is_empty() {
                 }
                 
-                self.parse_element(&tag_name, &attributes, &inner_content, None)
+                self.parse_element(&tag_name, &attributes, &inner_content, super::inheritance::InheritableProperties::new())
             } else {
                 Err("Could not find root element in HTML body".to_string())
             }
@@ -279,7 +265,7 @@ impl UiParser {
                 if inner_content.is_empty() {
                 }
                 
-                self.parse_element(&tag_name, &attributes, &inner_content, None)
+                self.parse_element(&tag_name, &attributes, &inner_content, super::inheritance::InheritableProperties::new())
             } else {
                 Err("Could not find root element in HTML".to_string())
             }
@@ -291,15 +277,16 @@ impl UiParser {
         let doctype_pattern = regex::Regex::new(r"<!DOCTYPE[^>]*>").unwrap();
         let html = doctype_pattern.replace_all(html, "");
         
-        // Remove HTML comments
-        let comment_pattern = regex::Regex::new(r"<!--.*?-->").unwrap();
+        // Remove HTML comments (including multiline comments)
+        // Use (?s) flag to make . match newlines, or use [\s\S] to match any character
+        let comment_pattern = regex::Regex::new(r"(?s)<!--.*?-->").unwrap();
         let html = comment_pattern.replace_all(&html, "");
         
         // Remove html, head, and body tags (but keep their content)
         let html_tag_pattern = regex::Regex::new(r"<html[^>]*>|</html>").unwrap();
         let html = html_tag_pattern.replace_all(&html, "");
         
-        let head_tag_pattern = regex::Regex::new(r"<head[^>]*>.*?</head>").unwrap();
+        let head_tag_pattern = regex::Regex::new(r"(?s)<head[^>]*>.*?</head>").unwrap();
         let html = head_tag_pattern.replace_all(&html, "");
         
         let body_tag_pattern = regex::Regex::new(r"<body[^>]*>|</body>").unwrap();
@@ -328,7 +315,7 @@ impl UiParser {
         tag_name: &str,
         attributes: &HashMap<String, String>,
         content: &str,
-        parent_text_color: Option<super::styles::Color>,
+        inherited_props: super::inheritance::InheritableProperties,
     ) -> Result<Component, String> {
         let mut component = match tag_name.to_lowercase().as_str() {
             "view" | "div" => Component::new(ComponentType::View(View::new())),
@@ -350,8 +337,8 @@ impl UiParser {
             .map(|c| c.split_whitespace().map(|s| s.to_string()).collect())
             .unwrap_or_else(Vec::new);
 
-        // Track if this component has a text color set (for inheritance)
-        let mut current_text_color = parent_text_color;
+        // Track inheritable properties (start with parent's values)
+        let mut inherited = inherited_props.inherit_from();
         
         // Apply CSS classes
         let mut style = Style::default();
@@ -390,14 +377,23 @@ impl UiParser {
                     }
                 }
                 if let Some(flex_dir) = class_props.get("flex-direction") {
-                    component.layout.flex_direction = match flex_dir.as_str() {
+                    let flex_direction = match flex_dir.as_str() {
                         "row" => FlexDirection::Row,
                         "column" => FlexDirection::Column,
                         _ => FlexDirection::Row,
                     };
+                    // For View components, set View's flex_direction (layout doesn't need it)
+                    if let ComponentType::View(ref mut view) = component.component_type {
+                        view.flex_direction = flex_direction;
+                    }
+                    // Non-View components don't use flex_direction, so we ignore it
                 }
                 if let Some(gap) = class_props.get("gap") {
-                    component.layout.gap = Self::parse_size_value(gap)?.unwrap_or(0.0);
+                    let gap_value = Self::parse_size_value(gap)?.unwrap_or(0.0);
+                    // For View components, set View's gap (layout uses it)
+                    if let ComponentType::View(ref mut view) = component.component_type {
+                        view.gap = gap_value;
+                    }
                 }
                 
                 // Handle text color from CSS classes
@@ -405,14 +401,13 @@ impl UiParser {
                 // For Text/Button, this sets their own text color
                 if let Some(color) = class_props.get("color") {
                     let parsed_color = Self::parse_color_value(color)?;
-                    current_text_color = Some(parsed_color); // Always set for inheritance
+                    inherited.text_color = Some(parsed_color); // Set for inheritance
                     match &mut component.component_type {
                         ComponentType::Text(text) => {
                             text.color = parsed_color;
                         }
                         _ => {
-                            // For View components, just set current_text_color for inheritance
-                            // The color property doesn't apply to Views themselves
+                            // For View components, just set inherited for children
                         }
                     }
                 }
@@ -421,6 +416,7 @@ impl UiParser {
                 if let Some(font_size) = class_props.get("font-size") {
                     if let Ok(size) = Self::parse_size_value(font_size) {
                         if let Some(size_val) = size {
+                            inherited.font_size = Some(size_val); // Set for inheritance
                             match &mut component.component_type {
                                 ComponentType::Text(text) => {
                                     text.font_size = size_val;
@@ -480,40 +476,46 @@ impl UiParser {
         component.style = style;
 
         // Parse layout attributes
+        // Note: flex-direction is only used for View components and is stored in View, not Layout
         if let Some(flex_dir) = attributes.get("flex-direction") {
-            component.layout.flex_direction = match flex_dir.as_str() {
+            let flex_direction = match flex_dir.as_str() {
                 "row" => FlexDirection::Row,
                 "column" => FlexDirection::Column,
                 _ => FlexDirection::Row,
             };
-        }
-
-        if let Some(justify) = attributes.get("justify-content") {
-            component.layout.justify_content = Self::parse_alignment(justify)?;
-        }
-
-        if let Some(align) = attributes.get("align-items") {
-            component.layout.align_items = Self::parse_alignment(align)?;
+            if let ComponentType::View(ref mut view) = component.component_type {
+                view.flex_direction = flex_direction;
+            }
         }
 
         if let Some(gap) = attributes.get("gap") {
-            component.layout.gap = gap.parse::<f32>()
+            let gap_value = gap.parse::<f32>()
                 .map_err(|_| format!("Invalid gap value: {}", gap))?;
+            // For View components, set View's gap
+            if let ComponentType::View(ref mut view) = component.component_type {
+                view.gap = gap_value;
+            }
         }
 
 
         // Parse component-specific attributes
         match &mut component.component_type {
             ComponentType::Text(text) => {
+                // Apply inherited properties if not explicitly set
                 if let Some(font_size) = attributes.get("font-size") {
-                    text.font_size = font_size.parse::<f32>()
+                    let size_val = font_size.parse::<f32>()
                         .map_err(|_| format!("Invalid font-size: {}", font_size))?;
+                    text.font_size = size_val;
+                    inherited.font_size = Some(size_val);
+                } else if let Some(parent_font_size) = inherited.font_size {
+                    // Inherit from parent if not explicitly set
+                    text.font_size = parent_font_size;
                 }
                 if let Some(color) = attributes.get("color") {
                     let parsed_color = Self::parse_color_value(color)?;
                     text.color = parsed_color;
-                    current_text_color = Some(parsed_color);
-                } else if let Some(parent_color) = current_text_color {
+                    inherited.text_color = Some(parsed_color);
+                } else if let Some(parent_color) = inherited.text_color {
                     // Inherit from parent if not explicitly set
                     text.color = parent_color;
                 }
@@ -529,7 +531,7 @@ impl UiParser {
         // Parse children for View components
         if matches!(component.component_type, ComponentType::View(_)) {
             if let ComponentType::View(ref mut view) = component.component_type {
-                view.children = self.parse_children(content, current_text_color)?;
+                view.children = self.parse_children(content, inherited)?;
                 view.rebuild_layers();
             }
         }
@@ -537,7 +539,7 @@ impl UiParser {
         Ok(component)
     }
 
-    fn parse_children(&self, content: &str, parent_text_color: Option<super::styles::Color>) -> Result<Vec<Component>, String> {
+    fn parse_children(&self, content: &str, inherited_props: super::inheritance::InheritableProperties) -> Result<Vec<Component>, String> {
         let mut children = Vec::new();
         let content = content.trim();
         
@@ -545,7 +547,7 @@ impl UiParser {
             return Ok(children);
         }
 
-        // Find all top-level tags (not nested)
+        // Find all top-level tags (not nested) and text nodes
         let mut pos = 0;
         while pos < content.len() {
             // Skip whitespace
@@ -556,9 +558,34 @@ impl UiParser {
                 break;
             }
 
-            // Find opening tag
+            // Check if we're at a tag or text node
             if content.chars().nth(pos) != Some('<') {
-                break;
+                // This is a text node - extract text until next tag
+                let text_start = pos;
+                let next_tag = content[pos..].find('<');
+                let text_end = if let Some(tag_pos) = next_tag {
+                    pos + tag_pos
+                } else {
+                    content.len()
+                };
+                
+                let text_content = content[text_start..text_end].trim();
+                if !text_content.is_empty() {
+                    // Create a text component for this text node
+                    let mut text_component = Component::new(ComponentType::Text(Text::new(text_content.to_string())));
+                    // Inherit text color and font size from parent
+                    if let ComponentType::Text(text) = &mut text_component.component_type {
+                        if let Some(parent_color) = inherited_props.text_color {
+                            text.color = parent_color;
+                        }
+                        if let Some(parent_font_size) = inherited_props.font_size {
+                            text.font_size = parent_font_size;
+                        }
+                    }
+                    children.push(text_component);
+                }
+                pos = text_end;
+                continue;
             }
 
             let tag_start = pos;
@@ -586,7 +613,7 @@ impl UiParser {
             
             // Handle self-closing tags
             if is_self_closing {
-                let child = self.parse_element(tag_name, &attributes, "", parent_text_color)?;
+                let child = self.parse_element(tag_name, &attributes, "", inherited_props.clone())?;
                 children.push(child);
                 pos = tag_end;
                 continue;
@@ -639,7 +666,7 @@ impl UiParser {
                         if depth == 0 {
                             let close_pos = found_pos;
                             let inner_content = &content[tag_end..close_pos];
-                            let child = self.parse_element(tag_name, &attributes, inner_content, parent_text_color)?;
+                            let child = self.parse_element(tag_name, &attributes, inner_content, inherited_props.clone())?;
                             children.push(child);
                             // Advance past the closing tag: </tag_name>
                             pos = close_pos + close_pattern.len();
@@ -657,7 +684,7 @@ impl UiParser {
             if !found_end {
                 // Self-closing or text-only element
                 let inner_content = "";
-                let child = self.parse_element(tag_name, &attributes, inner_content, parent_text_color)?;
+                let child = self.parse_element(tag_name, &attributes, inner_content, inherited_props.clone())?;
                 children.push(child);
                 pos = tag_end;
             }
@@ -723,6 +750,11 @@ impl UiParser {
                 }
                 "height" => {
                     style.height = Self::parse_size_css(value)?;
+                }
+                "z-index" => {
+                    if let Ok(z_index) = value.trim().parse::<i32>() {
+                        style.z_index = z_index;
+                    }
                 }
                 _ => {
                     // Ignore unknown properties
@@ -792,21 +824,6 @@ impl UiParser {
         } else {
             Ok(None)
         }
-    }
-    
-    fn escape_regex(s: &str) -> String {
-        // Escape special regex characters
-        let mut escaped = String::new();
-        for ch in s.chars() {
-            match ch {
-                '.' | '+' | '*' | '?' | '^' | '$' | '|' | '(' | ')' | '[' | ']' | '{' | '}' | '\\' => {
-                    escaped.push('\\');
-                    escaped.push(ch);
-                }
-                _ => escaped.push(ch),
-            }
-        }
-        escaped
     }
 
     fn parse_size_css(value: &str) -> Result<Size, String> {

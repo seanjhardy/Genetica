@@ -2,14 +2,14 @@
 // Similar structure to C++ UI system with Screen and UIManager
 
 pub mod styles;
-pub mod layout;
 pub mod parser;
 pub mod renderer;
 pub mod screen;
 pub mod manager;
 pub mod components;
+pub mod inheritance;
 
-pub use components::{Component, ComponentType, View, Text};
+pub use components::{Component, ComponentType, View};
 pub use styles::{Color, Size};
 pub use parser::UiParser;
 pub use renderer::UiRenderer;

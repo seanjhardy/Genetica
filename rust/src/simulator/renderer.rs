@@ -46,19 +46,19 @@ impl Renderer {
         }
 
         // Prepare viewport textures (compute layout and create textures)
+        let mut viewport_texture_view = None;
         {
             profile_scope!("Prepare Viewports");
             if let Some(screen) = ui_manager.get_screen("simulation") {
                 for element in screen.get_elements_mut() {
                     ui_renderer.compute_layout(element);
                     ui_renderer.ensure_viewport_textures(element, &gpu.device);
+                    
+                    // Get the simulation viewport texture from the component
+                    viewport_texture_view = ui_renderer.get_viewport_texture_view(element, "simulation");
                 }
             }
         }
-
-        // Get the simulation viewport texture
-        // We need to get this after mutable operations are done
-        let viewport_texture_view = ui_renderer.get_viewport_texture_view("simulation");
         
         let viewport_texture_view = match viewport_texture_view {
             Some(view) => view,

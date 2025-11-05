@@ -18,7 +18,6 @@ use crate::modules::ui::{BoundsBorder};
 use crate::ui::{UiParser, UiRenderer, UIManager};
 use puffin::profile_scope;
 use crate::gpu::device::GpuDevice;
-use crate::gpu::text_renderer::TextRenderer;
 use crate::gpu::buffers::GpuBuffers;
 use crate::gpu::pipelines::{ComputePipelines, RenderPipelines};
 use crate::gpu::uniforms::Uniforms;
@@ -119,7 +118,6 @@ impl Simulation {
 /// Application structure - manages rendering at 60 FPS and window events
 pub struct Application {
     simulation: Arc<parking_lot::Mutex<Simulation>>,
-    compute_pipelines: ComputePipelines,
     render_pipelines: RenderPipelines,
     
     // Window and surface
@@ -127,7 +125,6 @@ pub struct Application {
     
     // Rendering resources
     bounds_renderer: BoundsRenderer,
-    text_renderer: TextRenderer,
     ui_renderer: UiRenderer,
     ui_manager: UIManager,
     
@@ -144,11 +141,14 @@ pub struct Application {
     last_render_time: std::time::Instant,
     target_frame_duration: std::time::Duration,
     frame_count: u32,
-    last_profile_print: std::time::Instant,
     last_fps_update: std::time::Instant,
     fps_frames: u32,
     last_cleanup: std::time::Instant,
     cleanup_interval: std::time::Duration,
+    
+    // Simulation time tracking
+    real_time: f32,
+    speed: f32,
     
     // Deferred resize to avoid blocking the event loop
     pending_resize: Option<winit::dpi::PhysicalSize<u32>>,
@@ -159,11 +159,9 @@ impl Application {
     fn new_initialized(
         _window: &Window,
         gpu: GpuDevice,
-        compute_pipelines: ComputePipelines,
         render_pipelines: RenderPipelines,
         buffers: Arc<GpuBuffers>,
         bounds_renderer: BoundsRenderer,
-        text_renderer: TextRenderer,
         ui_renderer: UiRenderer,
         ui_manager: UIManager,
         camera: Camera,
@@ -197,11 +195,9 @@ impl Application {
         
         Self {
             simulation,
-            compute_pipelines,
             render_pipelines,
             gpu,
             bounds_renderer,
-            text_renderer,
             ui_renderer,
             ui_manager,
             camera,
@@ -214,12 +210,13 @@ impl Application {
             last_render_time: std::time::Instant::now(),
             target_frame_duration: std::time::Duration::from_secs_f64(1.0 / 60.0),
             frame_count: 0,
-            last_profile_print: std::time::Instant::now(),
             last_fps_update: std::time::Instant::now(),
             fps_frames: 0,
             last_cleanup: std::time::Instant::now(),
             cleanup_interval: std::time::Duration::from_secs(5),
             pending_resize: None,
+            real_time: 0.0,
+            speed: 1.0,
         }
     }
     
@@ -298,6 +295,10 @@ impl Application {
         // Update bounds border
         self.bounds_border.set_bounds(bounds);
         
+        // Update simulation time (advance only if playing)
+        // TODO: Add paused state tracking
+        self.real_time += delta_time * self.speed;
+        
         // Update uniforms for rendering (use actual render delta time for UI effects)
         // CRITICAL: Only the render thread updates uniforms to avoid race conditions
         // The compute shader uses the same uniform buffer but only reads bounds/capacity
@@ -359,6 +360,7 @@ impl Application {
         });
         
         // Update UI with current state
+        let time_string = self.get_time_string();
         if let Some(screen) = self.ui_manager.get_screen("simulation") {
             if let Some(fps_component) = screen.find_element_by_id("fps") {
                 let fps_text = format!("FPS: {:.1}", self.fps_frames);
@@ -367,8 +369,13 @@ impl Application {
             
             // Update step counter if there's a component with id "step"
             if let Some(step_component) = screen.find_element_by_id("step") {
-                let step_text = format!("Step: {}", current_step);
+                let step_text = format!("{}", current_step);
                 step_component.update_text(&step_text);
+            }
+            
+            // Update time string if there's a component with id "time"
+            if let Some(time_component) = screen.find_element_by_id("time") {
+                time_component.update_text(&time_string);
             }
         }
         
@@ -482,6 +489,14 @@ impl Application {
         environment.get_cursor_hint()
     }
     
+    pub fn get_time_string(&self) -> String {
+        let time = self.real_time as i32;
+        let hours = time / 3600;
+        let minutes = (time % 3600) / 60;
+        let seconds = time % 60;
+        format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+    }
+    
     pub fn set_last_cursor_pos(&mut self, pos: Vec2) {
         self.last_cursor_pos = pos;
     }
@@ -516,6 +531,7 @@ impl ApplicationHandler for Simulator {
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
 
         let window = event_loop.create_window(window_attributes).unwrap();
+        window.set_title("Genetica");
 
         let application = pollster::block_on(Application::new_from_window(&window));
 
@@ -587,10 +603,8 @@ impl ApplicationHandler for Simulator {
                         if time_since_last_render >= application.target_frame_duration {
                             // Render frame only - no simulation
                             if let Err(e) = application.render() {
+                                eprintln!("Error rendering frame: {}", e);
                             }
-
-                            // Display UI info in window title
-                            window.set_title(&format!("Genetica"));
 
                             // Update cursor icon based on drag handle
                             if let Some(cursor_hint) = application.get_cursor_hint() {
@@ -685,14 +699,6 @@ impl Application {
         
         buffers.update_uniforms(&gpu.queue, bytemuck::cast_slice(&[initial_uniforms]));
 
-        // Initialize pipelines
-        let compute_pipelines = ComputePipelines::new(
-            &gpu.device,
-            buffers.cell_buffer(),
-            buffers.lifeform_buffer(),
-            &buffers.uniform_buffer,
-            buffers.cell_free_list_buffer(),
-        );
 
         let render_pipelines = RenderPipelines::new(
             &gpu.device,
@@ -706,9 +712,6 @@ impl Application {
 
         // Initialize bounds renderer
         let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.config);
-
-        // Initialize text renderer
-        let text_renderer = TextRenderer::new(&gpu.device, &gpu.queue, &gpu.config);
 
         // Initialize UI renderer
         let ui_renderer = UiRenderer::new(
@@ -757,11 +760,9 @@ impl Application {
         Self::new_initialized(
             window,
             gpu,
-            compute_pipelines,
             render_pipelines,
             buffers,
             bounds_renderer,
-            text_renderer,
             ui_renderer,
             ui_manager,
             camera,

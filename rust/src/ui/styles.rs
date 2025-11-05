@@ -177,10 +177,7 @@ pub struct Style {
     pub margin: Margin,
     pub width: Size,
     pub height: Size,
-    pub min_width: Option<f32>,
-    pub min_height: Option<f32>,
-    pub max_width: Option<f32>,
-    pub max_height: Option<f32>,
+    pub z_index: i32,
 }
 
 impl Style {
@@ -193,10 +190,7 @@ impl Style {
             margin: Margin::zero(),
             width: Size::Auto,
             height: Size::Auto,
-            min_width: None,
-            min_height: None,
-            max_width: None,
-            max_height: None,
+            z_index: 0,
         }
     }
 

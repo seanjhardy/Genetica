@@ -1,8 +1,32 @@
 // Component system for UI elements - similar to UIElement in C++
 
 use super::styles::{Style, Size};
-use super::layout::Layout;
 use super::components::{View, Text, Viewport};
+
+// Minimal Layout struct - just stores position and size
+// Flexbox layout is handled in View, not here
+#[derive(Debug, Clone)]
+pub struct Layout {
+    pub position_x: f32,
+    pub position_y: f32,
+    pub computed_width: f32,
+    pub computed_height: f32,
+}
+
+impl Layout {
+    pub fn new() -> Self {
+        Self {
+            position_x: 0.0,
+            position_y: 0.0,
+            computed_width: 0.0,
+            computed_height: 0.0,
+        }
+    }
+    
+    pub fn default() -> Self {
+        Self::new()
+    }
+}
 
 
 #[derive(Debug, Clone)]
@@ -45,21 +69,6 @@ impl Component {
         point.1 <= self.layout.position_y + self.layout.computed_height
     }
 
-    pub fn get_computed_width(&self) -> f32 {
-        self.layout.computed_width
-    }
-
-    pub fn get_computed_height(&self) -> f32 {
-        self.layout.computed_height
-    }
-
-    pub fn get_absolute_x(&self) -> f32 {
-        self.layout.position_x
-    }
-
-    pub fn get_absolute_y(&self) -> f32 {
-        self.layout.position_y
-    }
 
     /// Find a component by ID in the component tree
     pub fn find_by_id(&mut self, id: &str) -> Option<&mut Component> {
