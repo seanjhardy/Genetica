@@ -1,31 +1,26 @@
-/* Full screen container */
+
+/* Specific Component Classes */
+/* Full screen */
 .full {
     width: 100%;
     height: 100%;
     background-color: transparent;
 }
 
-/* Simulation viewport - black background, fills screen */
-.simulation-viewport {
-    flex: 1;
-    width: 100%;
-    background-color: #000000;
-}
-
 /* Show UI view */
 .show-ui-view {
     position: absolute;
     flex-direction: row;
-    align-items: flex-start;
-    justify-content: flex-end;
+    align-col: flex-start;
+    align-row: flex-end;
     margin: 20px;
 }
 
 /* Container */
 .container {
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    align-row: center;
+    align-col: center;
     padding: 5px;
     gap: 20px;
 }
@@ -33,8 +28,8 @@
 /* Planet Info */
 .planet-info {
     position: absolute;
-    align-items: flex-start;
-    justify-content: flex-end;
+    align-col: flex-start;
+    align-row: flex-end;
 }
 
 .planet-circle {
@@ -55,7 +50,7 @@
     left: 20px;
     top: -120px;
     flex-direction: column;
-    align-items: center;
+    align-col: center;
 }
 
 .thermometer-icon {
@@ -85,8 +80,8 @@
     width: 120px;
     height: 120px;
     background-color: transparent;
-    align-items: center;
-    justify-content: center;
+    align-col: center;
+    align-row: center;
     border-radius: 60px;
     position: relative;
 }
@@ -109,14 +104,14 @@
 /* Tabs */
 .tabs-container {
     flex-direction: row;
-    align-items: flex-start;
-    justify-content: flex-start;
+    align-col: flex-start;
+    align-row: flex-start;
     gap: 10px;
 }
 
 .tab {
     flex-direction: row;
-    align-items: center;
+    align-col: center;
     gap: 10px;
     height: 30px;
     border: 2px solid #5E5E5E;
@@ -136,13 +131,13 @@
 .stats-tab {
     width: auto;
     flex-direction: column;
-    align-items: center;
+    align-col: center;
     gap: 5px;
 }
 
 .stat-item {
     flex-direction: row;
-    align-items: center;
+    align-col: center;
     gap: 5px;
 }
 
@@ -189,8 +184,8 @@
     width: 25px;
     height: 25px;
     background-color: transparent;
-    align-items: center;
-    justify-content: center;
+    align-col: center;
+    align-row: center;
     border-radius: 5px;
 }
 
@@ -201,8 +196,8 @@
 /* Panel */
 .panel {
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    align-col: center;
+    align-row: center;
     padding: 10px;
     gap: 5px;
     background-color: rgba(0, 0, 0, 80);
@@ -235,17 +230,18 @@
     flex-direction: row;
     width: 100%;
     height: 20px;
-    align-items: flex-start;
-    justify-content: flex-start;
+    align-col: flex-start;
+    align-row: flex-start;
     gap: 10px;
 }
 
 /* Control Panel */
 .control-panel {
+    background-color: rgba(255, 0, 0, 100);
     flex-direction: column;
     gap: 5px;
-    align-items: center;
-    justify-content: flex-end;
+    align-col: center;
+    align-row: flex-end;
     padding: 5px;
 }
 
@@ -253,8 +249,8 @@
     flex-direction: row;
     font-size: 14px;
     gap: 5px;
-    align-items: center;
-    justify-content: center;
+    align-col: center;
+    align-row: center;
     width: 200px;
     height: 20px;
 }
@@ -274,7 +270,7 @@
     height: 50px;
     padding: 5px;
     flex-direction: row;
-    align-items: center;
+    align-col: center;
 }
 
 .control-spacer {
@@ -288,8 +284,8 @@
     flex-direction: row;
     height: 100%;
     flex: 1;
-    align-items: center;
-    justify-content: flex-start;
+    align-col: center;
+    align-row: flex-start;
     gap: 10px;
     padding: 5px;
 }
@@ -302,8 +298,8 @@
     border: 0px;
     border-radius: 15px;
     box-shadow: 0px 2px 3px rgba(0, 0, 0, 50);
-    align-items: center;
-    justify-content: center;
+    align-col: center;
+    align-row: center;
     height: 100%;
 }
 
@@ -315,11 +311,12 @@
 .speed-display {
     width: 50px;
     height: 100%;
-    align-items: center;
-    justify-content: center;
+    align-col: center;
+    align-row: center;
 }
 
 .speed-text {
     font-size: 14px;
     color: #FFFFFF;
 }
+

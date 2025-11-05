@@ -1,7 +1,7 @@
 // Screen - similar to C++ Screen class
 // Manages a collection of UI elements
 
-use super::component::Component;
+use super::components::{Component, ComponentType};
 use std::collections::HashMap;
 
 pub struct Screen {
@@ -44,7 +44,7 @@ impl Screen {
         }
         
         match &mut element.component_type {
-            super::component::ComponentType::View(view) => {
+            ComponentType::View(view) => {
                 for child in &mut view.children {
                     self.add_element_keys(child, parent_index);
                 }
@@ -92,23 +92,14 @@ impl Screen {
             super::styles::Size::Flex(_) | super::styles::Size::Auto => element.layout.computed_height = height,
         }
         
-        // Layout children if this is a View
-        if let super::component::ComponentType::View(ref mut view) = element.component_type {
+        if let ComponentType::View(ref mut view) = element.component_type {
             view.update_layout(0.0, 0.0, element.layout.computed_width, element.layout.computed_height, element.style.padding);
         }
     }
-    
-    pub fn handle_event(&mut self, _event: &winit::event::WindowEvent) -> bool {
-        // Handle events - this is a placeholder
-        // In a real implementation, you'd call handle_event on each element
-        false
-    }
-    
+
     pub fn update(&mut self, _dt: f32, mouse_pos: (f32, f32)) -> bool {
         let mut hovered = false;
         for element in &mut self.elements {
-            // Update elements - placeholder
-            // In a real implementation, you'd check if mouse is over element
             if element.contains(mouse_pos) && element.visible && element.allow_click {
                 hovered = true;
             }

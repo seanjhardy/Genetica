@@ -16,9 +16,10 @@ use crate::modules::math::{Rect, Vec2};
 use crate::modules::camera::{Camera, KeyStates};
 use crate::modules::ui::{BoundsBorder};
 use crate::ui::{UiParser, UiRenderer, UIManager};
+use puffin::profile_scope;
 use crate::gpu::device::GpuDevice;
 use crate::gpu::text_renderer::TextRenderer;
-use crate::gpu::buffers::{GpuBuffers, TimestampBuffers};
+use crate::gpu::buffers::GpuBuffers;
 use crate::gpu::pipelines::{ComputePipelines, RenderPipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
@@ -115,7 +116,7 @@ impl Simulation {
     }
 }
 
-/// Application structure - manages rendering at 60 FPS
+/// Application structure - manages rendering at 60 FPS and window events
 pub struct Application {
     simulation: Arc<parking_lot::Mutex<Simulation>>,
     compute_pipelines: ComputePipelines,
@@ -125,7 +126,6 @@ pub struct Application {
     gpu: GpuDevice,
     
     // Rendering resources
-    timestamps: TimestampBuffers,
     bounds_renderer: BoundsRenderer,
     text_renderer: TextRenderer,
     ui_renderer: UiRenderer,
@@ -155,13 +155,13 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(
+    
+    fn new_initialized(
         _window: &Window,
         gpu: GpuDevice,
         compute_pipelines: ComputePipelines,
         render_pipelines: RenderPipelines,
         buffers: Arc<GpuBuffers>,
-        timestamps: TimestampBuffers,
         bounds_renderer: BoundsRenderer,
         text_renderer: TextRenderer,
         ui_renderer: UiRenderer,
@@ -200,7 +200,6 @@ impl Application {
             compute_pipelines,
             render_pipelines,
             gpu,
-            timestamps,
             bounds_renderer,
             text_renderer,
             ui_renderer,
@@ -285,13 +284,16 @@ impl Application {
         // Update framerate tracking
         self.fps_frames += 1;
         if now.duration_since(self.last_fps_update).as_secs_f32() >= 0.05 {
-            let fps = self.fps_frames as f32 / now.duration_since(self.last_fps_update).as_secs_f32();
+            let _fps = self.fps_frames as f32 / now.duration_since(self.last_fps_update).as_secs_f32();
             self.fps_frames = 0;
             self.last_fps_update = now;
         }
 
         // Update camera (uses actual frame time for smooth camera movement)
         self.camera.update(delta_time, &self.key_states);
+
+        // Update camera scene bounds when environment bounds change
+        self.camera.set_scene_bounds(Some(bounds));
 
         // Update bounds border
         self.bounds_border.set_bounds(bounds);
@@ -365,7 +367,7 @@ impl Application {
             
             // Update step counter if there's a component with id "step"
             if let Some(step_component) = screen.find_element_by_id("step") {
-                let step_text = format!("Step: {}", self.step_count);
+                let step_text = format!("Step: {}", current_step);
                 step_component.update_text(&step_text);
             }
         }
@@ -379,26 +381,61 @@ impl Application {
         // This ensures we only render the cells that actually exist
         let num_cells_to_render = buffers.cell_size();
         
-        if let Err(e) = Renderer::render(
+        // Get surface texture and create encoder
+        let output = {
+            profile_scope!("get_current_texture");
+            self.gpu.surface.get_current_texture()?
+        };
+        
+        let view = {
+            profile_scope!("create_view");
+            output.texture.create_view(&wgpu::TextureViewDescriptor::default())
+        };
+
+        let mut encoder = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Command Encoder"),
+        });
+
+        // STEP 1: Render simulation to viewport texture (if it exists)
+        // This renders cells and bounds to the viewport texture
+        Renderer::render_simulation(
             &mut self.gpu,
-            &self.compute_pipelines, // Not used since simulation_steps is 0, but required by signature
-            &self.render_pipelines,
             &*buffers,
-            &self.timestamps,
+            &self.render_pipelines,
             &mut self.bounds_renderer,
-            &mut self.text_renderer,
             &mut self.ui_renderer,
             &mut self.ui_manager,
             bounds_corners,
             camera_pos,
             zoom,
             num_cells_to_render,
-            &mut self.frame_count,
-            &mut self.last_profile_print,
-            0, // No compute passes in render - simulation runs in separate thread
-        ) {
-            return Err(e);
+            &mut encoder,
+        );
+
+        // STEP 2: Render UI (backgrounds, viewport textures as sprites, overlays, text)
+        // This renders everything in HTML order
+        {
+            profile_scope!("Render UI");
+            if let Some(screen) = self.ui_manager.get_screen("simulation") {
+                for element in screen.get_elements_mut() {
+                    self.ui_renderer.render(element, &self.gpu.device, &self.gpu.queue, &mut encoder, &view);
+                }
+            }
         }
+
+        // Submit and present
+        {
+            profile_scope!("Submit Commands");
+            let command_buffer = encoder.finish();
+            self.gpu.queue.submit(std::iter::once(command_buffer));
+        }
+
+        {
+            profile_scope!("Present Frame");
+            output.present();
+        }
+
+        self.frame_count += 1;
         
         self.last_render_time = now;
         
@@ -448,9 +485,11 @@ impl Application {
     pub fn set_last_cursor_pos(&mut self, pos: Vec2) {
         self.last_cursor_pos = pos;
     }
+    
 }
 
-/// Main simulator that manages window and application
+/// Minimal Simulator wrapper - preserves original behavior exactly
+/// This is the simplest possible wrapper that maintains the original pattern
 pub struct Simulator {
     window: Option<Window>,
     application: Option<Application>,
@@ -548,7 +587,6 @@ impl ApplicationHandler for Simulator {
                         if time_since_last_render >= application.target_frame_duration {
                             // Render frame only - no simulation
                             if let Err(e) = application.render() {
-                                eprintln!("Render error: {:?}", e);
                             }
 
                             // Display UI info in window title
@@ -665,10 +703,12 @@ impl Application {
         );
 
         // Initialize timestamp buffers
-        let timestamps = TimestampBuffers::new(&gpu.device);
 
         // Initialize bounds renderer
         let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.config);
+
+        // Initialize text renderer
+        let text_renderer = TextRenderer::new(&gpu.device, &gpu.queue, &gpu.config);
 
         // Initialize UI renderer
         let ui_renderer = UiRenderer::new(
@@ -685,14 +725,12 @@ impl Application {
             
             let screen = match UiParser::parse_to_screen(
                 "assets/ui/simulation.html",
-                "assets/ui/simulation.css",
+                &["assets/ui/tailwind.css", "assets/ui/simulation.css"],
             ) {
                 Ok(screen) => {
-                    eprintln!("Successfully parsed UI from HTML/CSS files");
                     screen
                 }
-                Err(e) => {
-                    eprintln!("Failed to parse UI files: {}, creating fallback", e);
+                Err(_e) => {
                     // Create a fallback screen with a visible background component
                     let mut fallback = crate::ui::Component::new(crate::ui::ComponentType::View(crate::ui::View::new()));
                     fallback.style.width = crate::ui::Size::Percent(100.0);
@@ -705,6 +743,8 @@ impl Application {
             };
             
             manager.add_screen("simulation".to_string(), screen);
+            // Set current screen to ensure it's active
+            manager.set_current_screen("simulation".to_string());
             manager
         };
 
@@ -714,14 +754,14 @@ impl Application {
         // Wrap environment in Arc for sharing
         let environment = Arc::new(parking_lot::Mutex::new(environment));
 
-        Self::new(
+        Self::new_initialized(
             window,
             gpu,
             compute_pipelines,
             render_pipelines,
             buffers,
-            timestamps,
             bounds_renderer,
+            text_renderer,
             ui_renderer,
             ui_manager,
             camera,

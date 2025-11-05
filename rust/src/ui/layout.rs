@@ -59,9 +59,27 @@ impl Layout {
         let style_width = component.style.width;
         let style_height = component.style.height;
         let flex_dir = self.flex_direction;
-        let justify = self.justify_content;
-        let align = self.align_items;
-        let gap = self.gap;
+        // For View components, determine alignments based on flex direction (matching C++ exactly)
+        // rowAlignment = main axis alignment when flexDirection == Row
+        // columnAlignment = main axis alignment when flexDirection == Column
+        // columnAlignment = cross axis alignment when flexDirection == Row
+        // rowAlignment = cross axis alignment when flexDirection == Column
+        // For View components, use View's properties directly (matching C++ exactly)
+        // For non-View components, use Layout's properties
+        let (main_alignment, cross_alignment, gap) = if matches!(component.component_type, super::component::ComponentType::View(_)) {
+            if let super::component::ComponentType::View(ref view) = component.component_type {
+                let (main, cross) = if flex_dir == FlexDirection::Row {
+                    (view.row_alignment, view.column_alignment)
+                } else {
+                    (view.column_alignment, view.row_alignment)
+                };
+                (main, cross, view.gap)
+            } else {
+                (self.justify_content, self.align_items, self.gap)
+            }
+        } else {
+            (self.justify_content, self.align_items, self.gap)
+        };
 
         // Check component type and compute layout
         let is_view = matches!(component.component_type, super::component::ComponentType::View(_));
@@ -69,18 +87,71 @@ impl Layout {
         if is_view {
             // For View components, we need to access children
             if let super::component::ComponentType::View(ref mut view) = component.component_type {
+                // If width/height is Auto or 0, use calculate_width/calculate_height to get minimum size
+                // This matches the C++ behavior where components only take up minimum space needed
+                let min_width = match style_width {
+                    Size::Auto | Size::Pixels(0.0) => {
+                        match view.calculate_width(padding) {
+                            Size::Pixels(value) => value,
+                            _ => available_content_width,
+                        }
+                    }
+                    _ => available_content_width,
+                };
+                
+                let min_height = match style_height {
+                    Size::Auto | Size::Pixels(0.0) => {
+                        match view.calculate_height(padding) {
+                            Size::Pixels(value) => value,
+                            _ => available_content_height,
+                        }
+                    }
+                    _ => available_content_height,
+                };
+                
+                // Use minimum size for Auto/0, or available size for other sizes
+                let effective_width = match style_width {
+                    Size::Auto | Size::Pixels(0.0) => min_width,
+                    _ => available_content_width,
+                };
+                
+                let effective_height = match style_height {
+                    Size::Auto | Size::Pixels(0.0) => min_height,
+                    _ => available_content_height,
+                };
+                
                 // Compute flex layout with the children
+                // Pass main_alignment as justify_content and cross_alignment as align_items
                 self.compute_flex_layout_with_style(
                     style_width,
                     style_height,
                     flex_dir,
-                    justify,
-                    align,
+                    main_alignment,
+                    cross_alignment,
                     gap,
                     &mut view.children,
-                    available_content_width,
-                    available_content_height,
+                    effective_width,
+                    effective_height,
                 );
+                
+                // If width/height was Auto or 0, use the calculated minimum size
+                // This ensures components only take up minimum space needed (matching C++ behavior)
+                if matches!(style_width, Size::Auto | Size::Pixels(0.0)) {
+                    self.computed_width = min_width;
+                }
+                if matches!(style_height, Size::Auto | Size::Pixels(0.0)) {
+                    self.computed_height = min_height;
+                }
+                
+                // Also handle empty children case - if no children, use minimum size (padding only)
+                if view.children.iter().all(|c| !c.visible || c.absolute) {
+                    if matches!(style_width, Size::Auto | Size::Pixels(0.0)) {
+                        self.computed_width = padding.left + padding.right;
+                    }
+                    if matches!(style_height, Size::Auto | Size::Pixels(0.0)) {
+                        self.computed_height = padding.top + padding.bottom;
+                    }
+                }
             }
         } else {
             // For leaf components (Text, Button), set their size
@@ -365,11 +436,17 @@ impl Layout {
         }
 
         // Set parent size - update self (the layout) instead of parent
+        // Only update if not already set (i.e., if width/height was Auto, it was already set above)
         let parent_main_size = if is_row { available_width } else { available_height };
         let parent_cross_size = if is_row { available_height } else { available_width };
         
-        self.computed_width = if is_row { parent_main_size } else { parent_cross_size };
-        self.computed_height = if is_row { parent_cross_size } else { parent_main_size };
+        // Only update if not already computed (for Auto/0 sizes, we already set it)
+        if self.computed_width == 0.0 {
+            self.computed_width = if is_row { parent_main_size } else { parent_cross_size };
+        }
+        if self.computed_height == 0.0 {
+            self.computed_height = if is_row { parent_cross_size } else { parent_main_size };
+        }
     }
 
 }

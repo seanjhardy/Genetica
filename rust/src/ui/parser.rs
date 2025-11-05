@@ -1,6 +1,6 @@
 // HTML and CSS parser for UI definitions
 
-use super::component::{Component, ComponentType, View, Text, Button};
+use super::components::{Component, ComponentType, View, Text, Viewport};
 use super::styles::{Style, Color, Border, Shadow, Padding, Margin, Size};
 use super::layout::{FlexDirection, Alignment};
 use std::collections::HashMap;
@@ -25,21 +25,26 @@ impl UiParser {
         }
     }
 
-    pub fn parse_from_files(html_path: &str, css_path: &str) -> Result<Component, String> {
+    pub fn parse_from_files(html_path: &str, css_paths: &[&str]) -> Result<Component, String> {
         let html_content = std::fs::read_to_string(html_path)
             .map_err(|e| format!("Failed to read HTML file {}: {}", html_path, e))?;
         
-        let css_content = std::fs::read_to_string(css_path)
-            .map_err(|e| format!("Failed to read CSS file {}: {}", css_path, e))?;
-
         let mut parser = Self::new();
-        parser.parse_css(&css_content)?;
+        
+        // Parse all CSS files in order
+        for css_path in css_paths {
+            let css_content = std::fs::read_to_string(css_path)
+                .map_err(|e| format!("Failed to read CSS file {}: {}", css_path, e))?;
+            parser.parse_css(&css_content)?;
+        }
+        
         parser.parse_html(&html_content)
     }
+
     
     // Parse HTML and create a Screen with the root component
-    pub fn parse_to_screen(html_path: &str, css_path: &str) -> Result<super::screen::Screen, String> {
-        let component = Self::parse_from_files(html_path, css_path)?;
+    pub fn parse_to_screen(html_path: &str, css_paths: &[&str]) -> Result<super::screen::Screen, String> {
+        let component = Self::parse_from_files(html_path, css_paths)?;
         let mut screen = super::screen::Screen::new();
         screen.add_element(component);
         Ok(screen)
@@ -111,20 +116,10 @@ impl UiParser {
             if let Some(root_cap) = root_pattern.captures(&body_content) {
                 let tag_name = root_cap[1].to_string();
                 let attributes = Self::parse_attributes(&root_cap[2]);
-                
-                eprintln!("parse_html: Found root tag '{}' with id={:?}", tag_name, attributes.get("id"));
-                
+               
                 // Find the matching closing tag manually (regex backreferences don't work)
-                let tag_start = root_cap.get(0).unwrap().start();
-                let tag_end = root_cap.get(0).unwrap().end();
-                
-                eprintln!("parse_html: Root tag at position {}..{}, tag_end = {}", tag_start, tag_end, tag_end);
-                
-                // Find the matching closing tag by tracking depth (to handle nested tags with same name)
-                let escaped_tag = Self::escape_regex(&tag_name);
-                let closing_pattern = format!("</{}>", tag_name);  // Don't escape, just use tag name directly
-                
-                eprintln!("parse_html: Looking for closing tag '{}'", closing_pattern);
+                let _tag_start = root_cap.get(0).unwrap().start();
+                let tag_end = root_cap.get(0).unwrap().end(); 
                 
                 // Track depth to find the matching closing tag
                 let mut depth = 1;
@@ -135,13 +130,9 @@ impl UiParser {
                 while search_pos < body_content.len() && depth > 0 {
                     iteration += 1;
                     if iteration > 100 {
-                        eprintln!("parse_html: Too many iterations, breaking");
                         break;
                     }
-                    
-                    eprintln!("parse_html: Iteration {}, search_pos = {}, depth = {}, remaining: '{}'", 
-                             iteration, search_pos, depth, &body_content.chars().skip(search_pos).take(100).collect::<String>());
-                    
+                        
                     // Look for both opening and closing tags
                     let open_tag_pattern = format!("<{}", tag_name);
                     let close_tag_pattern = format!("</{}>", tag_name);
@@ -149,8 +140,6 @@ impl UiParser {
                     // Find the next occurrence of either opening or closing tag
                     let next_open = body_content[search_pos..].find(&open_tag_pattern);
                     let next_close = body_content[search_pos..].find(&close_tag_pattern);
-                    
-                    eprintln!("parse_html: next_open = {:?}, next_close = {:?}", next_open, next_close);
                     
                     let next_pos = match (next_open, next_close) {
                         (Some(open_pos), Some(close_pos)) => {
@@ -172,15 +161,12 @@ impl UiParser {
                             let tag_end_pos = body_content[tag_start_pos..].find('>');
                             if let Some(end_pos) = tag_end_pos {
                                 let tag_str = &body_content[tag_start_pos..tag_start_pos + end_pos + 1];
-                                eprintln!("parse_html: Found potential opening tag: '{}'", tag_str);
                                 // Make sure it's not a self-closing tag or closing tag
                                 if !tag_str.contains('/') && tag_str.trim().starts_with(&format!("<{}", tag_name)) {
                                     depth += 1;
-                                    eprintln!("parse_html: Confirmed opening tag at pos {}, depth now {}", pos, depth);
                                     search_pos = tag_start_pos + end_pos + 1;
                                     continue;
                                 } else {
-                                    eprintln!("parse_html: Not an opening tag (contains / or doesn't match), skipping");
                                     search_pos = tag_start_pos + end_pos + 1;
                                     continue;
                                 }
@@ -189,41 +175,29 @@ impl UiParser {
                         } else {
                             // Found a closing tag
                             depth -= 1;
-                            eprintln!("parse_html: Found closing tag at pos {}, depth now {}", pos, depth);
                             if depth == 0 {
                                 // Found the matching closing tag
                                 inner_content = body_content[tag_end..pos].to_string();
-                                eprintln!("parse_html: Found matching closing tag! inner_content length = {}", inner_content.len());
-                                eprintln!("parse_html: inner_content preview (first 500 chars): {}", 
-                                         &inner_content.chars().take(500).collect::<String>());
                                 break;
                             }
                             search_pos = pos + close_tag_pattern.len();
                         }
                     } else {
                         // No more tags found
-                        eprintln!("parse_html: No more tags found, depth = {}, search_pos = {}, body_content length = {}", 
-                                 depth, search_pos, body_content.len());
                         break;
                     }
                 }
                 
                 if inner_content.is_empty() {
-                    eprintln!("parse_html: WARNING: inner_content is empty after depth tracking!");
-                    eprintln!("parse_html: body_content from tag_end ({}) to end: '{}'", 
-                             tag_end, &body_content.chars().skip(tag_end).take(200).collect::<String>());
                 }
                 
-                self.parse_element(&tag_name, &attributes, &inner_content)
+                self.parse_element(&tag_name, &attributes, &inner_content, None)
             } else {
                 Err("Could not find root element in HTML body".to_string())
             }
         } else {
             // No body tag found, normalize and try to find root element directly
-            eprintln!("parse_html: No body tag found, normalizing and searching for root element directly");
             let html_content = Self::normalize_html(html_content);
-            eprintln!("parse_html: After normalization, html_content length = {}, preview: {}", 
-                     html_content.len(), &html_content.chars().take(500).collect::<String>());
             
             // Find the first opening tag
             let root_pattern = regex::Regex::new(r"<(\w+)([^>]*)>")
@@ -233,11 +207,7 @@ impl UiParser {
                 let tag_name = root_cap[1].to_string();
                 let attributes = Self::parse_attributes(&root_cap[2]);
                 
-                eprintln!("parse_html (no body): Found root tag '{}' with id={:?}", tag_name, attributes.get("id"));
-                
                 let tag_end = root_cap.get(0).unwrap().end();
-                eprintln!("parse_html (no body): Root tag at position {}..{}, tag_end = {}", 
-                         root_cap.get(0).unwrap().start(), tag_end, tag_end);
                 
                 // Track depth to find the matching closing tag
                 let mut depth = 1;
@@ -248,12 +218,8 @@ impl UiParser {
                 while search_pos < html_content.len() && depth > 0 {
                     iteration += 1;
                     if iteration > 100 {
-                        eprintln!("parse_html (no body): Too many iterations, breaking");
                         break;
                     }
-                    
-                    eprintln!("parse_html (no body): Iteration {}, search_pos = {}, depth = {}, remaining: '{}'", 
-                             iteration, search_pos, depth, &html_content.chars().skip(search_pos).take(100).collect::<String>());
                     
                     // Look for both opening and closing tags
                     let open_tag_pattern = format!("<{}", tag_name);
@@ -262,8 +228,6 @@ impl UiParser {
                     // Find the next occurrence of either opening or closing tag
                     let next_open = html_content[search_pos..].find(&open_tag_pattern);
                     let next_close = html_content[search_pos..].find(&close_tag_pattern);
-                    
-                    eprintln!("parse_html (no body): next_open = {:?}, next_close = {:?}", next_open, next_close);
                     
                     let next_pos = match (next_open, next_close) {
                         (Some(open_pos), Some(close_pos)) => {
@@ -285,15 +249,12 @@ impl UiParser {
                             let tag_end_pos = html_content[tag_start_pos..].find('>');
                             if let Some(end_pos) = tag_end_pos {
                                 let tag_str = &html_content[tag_start_pos..tag_start_pos + end_pos + 1];
-                                eprintln!("parse_html (no body): Found potential opening tag: '{}'", tag_str);
                                 // Make sure it's not a self-closing tag or closing tag
                                 if !tag_str.contains('/') && tag_str.trim().starts_with(&format!("<{}", tag_name)) {
                                     depth += 1;
-                                    eprintln!("parse_html (no body): Confirmed opening tag at pos {}, depth now {}", pos, depth);
                                     search_pos = tag_start_pos + end_pos + 1;
                                     continue;
                                 } else {
-                                    eprintln!("parse_html (no body): Not an opening tag (contains / or doesn't match), skipping");
                                     search_pos = tag_start_pos + end_pos + 1;
                                     continue;
                                 }
@@ -302,32 +263,23 @@ impl UiParser {
                         } else {
                             // Found a closing tag
                             depth -= 1;
-                            eprintln!("parse_html (no body): Found closing tag at pos {}, depth now {}", pos, depth);
                             if depth == 0 {
                                 // Found the matching closing tag
                                 inner_content = html_content[tag_end..pos].to_string();
-                                eprintln!("parse_html (no body): Found matching closing tag! inner_content length = {}", inner_content.len());
-                                eprintln!("parse_html (no body): inner_content preview (first 500 chars): {}", 
-                                         &inner_content.chars().take(500).collect::<String>());
                                 break;
                             }
                             search_pos = pos + close_tag_pattern.len();
                         }
                     } else {
                         // No more tags found
-                        eprintln!("parse_html (no body): No more tags found, depth = {}, search_pos = {}, html_content length = {}", 
-                                 depth, search_pos, html_content.len());
                         break;
                     }
                 }
                 
                 if inner_content.is_empty() {
-                    eprintln!("parse_html (no body): WARNING: inner_content is empty after depth tracking!");
-                    eprintln!("parse_html (no body): html_content from tag_end ({}) to end: '{}'", 
-                             tag_end, &html_content.chars().skip(tag_end).take(200).collect::<String>());
                 }
                 
-                self.parse_element(&tag_name, &attributes, &inner_content)
+                self.parse_element(&tag_name, &attributes, &inner_content, None)
             } else {
                 Err("Could not find root element in HTML".to_string())
             }
@@ -376,6 +328,7 @@ impl UiParser {
         tag_name: &str,
         attributes: &HashMap<String, String>,
         content: &str,
+        parent_text_color: Option<super::styles::Color>,
     ) -> Result<Component, String> {
         let mut component = match tag_name.to_lowercase().as_str() {
             "view" | "div" => Component::new(ComponentType::View(View::new())),
@@ -383,10 +336,7 @@ impl UiParser {
                 let text_content = Self::extract_text_content(content);
                 Component::new(ComponentType::Text(Text::new(text_content)))
             }
-            "button" => {
-                let label = Self::extract_text_content(content);
-                Component::new(ComponentType::Button(Button::new(label)))
-            }
+            "viewport" => Component::new(ComponentType::Viewport(super::components::Viewport::new())),
             _ => return Err(format!("Unknown HTML tag: {}", tag_name)),
         };
 
@@ -400,24 +350,44 @@ impl UiParser {
             .map(|c| c.split_whitespace().map(|s| s.to_string()).collect())
             .unwrap_or_else(Vec::new);
 
+        // Track if this component has a text color set (for inheritance)
+        let mut current_text_color = parent_text_color;
+        
         // Apply CSS classes
         let mut style = Style::default();
         for class_name in &classes {
             if let Some(class_props) = self.css_classes.get(class_name) {
-                style = Self::apply_css_properties_to_style(style, class_props)?;
+                style = Self::apply_css_properties(style, class_props)?;
+                
+                // Handle position: absolute from CSS classes
+                if let Some(position) = class_props.get("position") {
+                    if position == "absolute" {
+                        component.absolute = true;
+                    }
+                }
                 
                 // Handle layout properties from CSS classes
+                // Use align-row and align-col (old style names) instead of justify-content/align-items
                 if let Some(align_row) = class_props.get("align-row") {
-                    component.layout.justify_content = Self::parse_alignment(align_row)?;
-                }
-                if let Some(justify) = class_props.get("justify-content") {
-                    component.layout.justify_content = Self::parse_alignment(justify)?;
+                    if let ComponentType::View(ref mut view) = component.component_type {
+                        view.row_alignment = Self::parse_alignment(align_row)?;
+                    }
                 }
                 if let Some(align_col) = class_props.get("align-col") {
-                    component.layout.align_items = Self::parse_alignment(align_col)?;
+                    if let ComponentType::View(ref mut view) = component.component_type {
+                        view.column_alignment = Self::parse_alignment(align_col)?;
+                    }
+                }
+                // Also support justify-content/align-items for compatibility
+                if let Some(justify) = class_props.get("justify-content") {
+                    if let ComponentType::View(ref mut view) = component.component_type {
+                        view.row_alignment = Self::parse_alignment(justify)?;
+                    }
                 }
                 if let Some(align) = class_props.get("align-items") {
-                    component.layout.align_items = Self::parse_alignment(align)?;
+                    if let ComponentType::View(ref mut view) = component.component_type {
+                        view.column_alignment = Self::parse_alignment(align)?;
+                    }
                 }
                 if let Some(flex_dir) = class_props.get("flex-direction") {
                     component.layout.flex_direction = match flex_dir.as_str() {
@@ -429,13 +399,44 @@ impl UiParser {
                 if let Some(gap) = class_props.get("gap") {
                     component.layout.gap = Self::parse_size_value(gap)?.unwrap_or(0.0);
                 }
+                
+                // Handle text color from CSS classes
+                // For Views, this sets the inherited text color for children
+                // For Text/Button, this sets their own text color
+                if let Some(color) = class_props.get("color") {
+                    let parsed_color = Self::parse_color_value(color)?;
+                    current_text_color = Some(parsed_color); // Always set for inheritance
+                    match &mut component.component_type {
+                        ComponentType::Text(text) => {
+                            text.color = parsed_color;
+                        }
+                        _ => {
+                            // For View components, just set current_text_color for inheritance
+                            // The color property doesn't apply to Views themselves
+                        }
+                    }
+                }
+                
+                // Handle font-size from CSS classes
+                if let Some(font_size) = class_props.get("font-size") {
+                    if let Ok(size) = Self::parse_size_value(font_size) {
+                        if let Some(size_val) = size {
+                            match &mut component.component_type {
+                                ComponentType::Text(text) => {
+                                    text.font_size = size_val;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
             }
         }
 
         // Apply inline style
         if let Some(inline_style) = attributes.get("style") {
             let inline_props = Self::parse_inline_style(inline_style);
-            style = Self::apply_css_properties_to_style(style, &inline_props)?;
+            style = Self::apply_css_properties(style, &inline_props)?;
             
             // Handle display: none for visibility
             if let Some(display) = inline_props.get("display") {
@@ -444,18 +445,35 @@ impl UiParser {
                 }
             }
             
-            // Handle layout properties from inline style
-            if let Some(align_row) = inline_props.get("align-row") {
-                component.layout.justify_content = Self::parse_alignment(align_row)?;
+            // Handle position: absolute
+            if let Some(position) = inline_props.get("position") {
+                if position == "absolute" {
+                    component.absolute = true;
+                }
             }
-            if let Some(justify) = inline_props.get("justify-content") {
-                component.layout.justify_content = Self::parse_alignment(justify)?;
+            
+            // Handle layout properties from inline style
+            // Use align-row and align-col (old style names) instead of justify-content/align-items
+            if let Some(align_row) = inline_props.get("align-row") {
+                if let ComponentType::View(ref mut view) = component.component_type {
+                    view.row_alignment = Self::parse_alignment(align_row)?;
+                }
             }
             if let Some(align_col) = inline_props.get("align-col") {
-                component.layout.align_items = Self::parse_alignment(align_col)?;
+                if let ComponentType::View(ref mut view) = component.component_type {
+                    view.column_alignment = Self::parse_alignment(align_col)?;
+                }
+            }
+            // Also support justify-content/align-items for compatibility
+            if let Some(justify) = inline_props.get("justify-content") {
+                if let ComponentType::View(ref mut view) = component.component_type {
+                    view.row_alignment = Self::parse_alignment(justify)?;
+                }
             }
             if let Some(align) = inline_props.get("align-items") {
-                component.layout.align_items = Self::parse_alignment(align)?;
+                if let ComponentType::View(ref mut view) = component.component_type {
+                    view.column_alignment = Self::parse_alignment(align)?;
+                }
             }
         }
 
@@ -483,14 +501,8 @@ impl UiParser {
                 .map_err(|_| format!("Invalid gap value: {}", gap))?;
         }
 
-        // Parse children for View components
-        if matches!(component.component_type, ComponentType::View(_)) {
-            if let ComponentType::View(ref mut view) = component.component_type {
-                view.children = self.parse_children(content)?;
-            }
-        }
 
-        // Parse text-specific attributes
+        // Parse component-specific attributes
         match &mut component.component_type {
             ComponentType::Text(text) => {
                 if let Some(font_size) = attributes.get("font-size") {
@@ -498,28 +510,34 @@ impl UiParser {
                         .map_err(|_| format!("Invalid font-size: {}", font_size))?;
                 }
                 if let Some(color) = attributes.get("color") {
-                    text.color = Self::parse_color_value(color)?;
+                    let parsed_color = Self::parse_color_value(color)?;
+                    text.color = parsed_color;
+                    current_text_color = Some(parsed_color);
+                } else if let Some(parent_color) = current_text_color {
+                    // Inherit from parent if not explicitly set
+                    text.color = parent_color;
                 }
             }
-            ComponentType::Button(button) => {
-                if let Some(font_size) = attributes.get("font-size") {
-                    button.font_size = font_size.parse::<f32>()
-                        .map_err(|_| format!("Invalid font-size: {}", font_size))?;
-                }
-                if let Some(color) = attributes.get("text-color") {
-                    button.text_color = Self::parse_color_value(color)?;
-                }
+            ComponentType::View(view) => {
                 if let Some(on_click) = attributes.get("on-click") {
-                    button.on_click = Some(on_click.clone());
+                    view.on_click = Some(on_click.clone());
                 }
             }
             _ => {}
         }
 
+        // Parse children for View components
+        if matches!(component.component_type, ComponentType::View(_)) {
+            if let ComponentType::View(ref mut view) = component.component_type {
+                view.children = self.parse_children(content, current_text_color)?;
+                view.rebuild_layers();
+            }
+        }
+
         Ok(component)
     }
 
-    fn parse_children(&self, content: &str) -> Result<Vec<Component>, String> {
+    fn parse_children(&self, content: &str, parent_text_color: Option<super::styles::Color>) -> Result<Vec<Component>, String> {
         let mut children = Vec::new();
         let content = content.trim();
         
@@ -529,9 +547,7 @@ impl UiParser {
 
         // Find all top-level tags (not nested)
         let mut pos = 0;
-        let mut iteration = 0;
         while pos < content.len() {
-            iteration += 1;
             // Skip whitespace
             while pos < content.len() && content.chars().nth(pos).unwrap().is_whitespace() {
                 pos += 1;
@@ -570,7 +586,7 @@ impl UiParser {
             
             // Handle self-closing tags
             if is_self_closing {
-                let child = self.parse_element(tag_name, &attributes, "")?;
+                let child = self.parse_element(tag_name, &attributes, "", parent_text_color)?;
                 children.push(child);
                 pos = tag_end;
                 continue;
@@ -623,7 +639,7 @@ impl UiParser {
                         if depth == 0 {
                             let close_pos = found_pos;
                             let inner_content = &content[tag_end..close_pos];
-                            let child = self.parse_element(tag_name, &attributes, inner_content)?;
+                            let child = self.parse_element(tag_name, &attributes, inner_content, parent_text_color)?;
                             children.push(child);
                             // Advance past the closing tag: </tag_name>
                             pos = close_pos + close_pattern.len();
@@ -640,9 +656,8 @@ impl UiParser {
             
             if !found_end {
                 // Self-closing or text-only element
-                eprintln!("parse_children: No closing tag found for '{}', treating as self-closing", tag_name);
                 let inner_content = "";
-                let child = self.parse_element(tag_name, &attributes, inner_content)?;
+                let child = self.parse_element(tag_name, &attributes, inner_content, parent_text_color)?;
                 children.push(child);
                 pos = tag_end;
             }
@@ -672,17 +687,8 @@ impl UiParser {
         }
         props
     }
-
-    fn apply_css_properties(
-        mut style: Style,
-        properties: &HashMap<String, String>,
-    ) -> Result<Style, String> {
-        // Note: This function doesn't have access to component, so layout properties
-        // need to be handled in parse_element where we have the component
-        Self::apply_css_properties_to_style(style, properties)
-    }
     
-    fn apply_css_properties_to_style(
+    fn apply_css_properties(
         mut style: Style,
         properties: &HashMap<String, String>,
     ) -> Result<Style, String> {
@@ -718,15 +724,6 @@ impl UiParser {
                 "height" => {
                     style.height = Self::parse_size_css(value)?;
                 }
-                "font-size" => {
-                    // Font size is handled per-component, but we can parse it here for consistency
-                }
-                "display" => {
-                    // Handle display: none for visibility - this is handled in parse_element
-                }
-                "align-row" | "justify-content" | "align-col" | "align-items" | "flex-direction" | "gap" => {
-                    // Layout properties are handled in parse_element where we have access to component
-                }
                 _ => {
                     // Ignore unknown properties
                 }
@@ -751,7 +748,7 @@ impl UiParser {
                 let b = parts[2].parse::<f32>()
                     .map_err(|_| format!("Invalid rgba blue value: {}", parts[2]))? / 255.0;
                 let a = parts[3].parse::<f32>()
-                    .map_err(|_| format!("Invalid rgba alpha value: {}", parts[3]))?;
+                    .map_err(|_| format!("Invalid rgba alpha value: {}", parts[3]))? / 255.0;
                 Ok(Color::new(r, g, b, a))
             } else {
                 Err(format!("Invalid rgba format: {}", value))
@@ -1046,9 +1043,9 @@ impl UiParser {
 
     fn parse_alignment(s: &str) -> Result<Alignment, String> {
         match s {
-            "start" | "flex-start" => Ok(Alignment::Start),
+            "left" | "top" | "start" | "flex-start" => Ok(Alignment::Start),
             "center" => Ok(Alignment::Center),
-            "end" | "flex-end" => Ok(Alignment::End),
+            "right" | "bottom" | "end" | "flex-end" => Ok(Alignment::End),
             "stretch" => Ok(Alignment::Stretch),
             "space-between" => Ok(Alignment::SpaceBetween),
             "space-around" => Ok(Alignment::SpaceAround),

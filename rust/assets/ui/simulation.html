@@ -1,113 +1,46 @@
 <!-- Root view - full screen -->
-<view id="root" class="full" style="flex-direction: column; align-items: flex-end;">
+<view id="root" class="w-full h-full bg-transparent flex-col col-end">
     <!-- Simulation viewport - black background, fills screen -->
-    <view id="simulation" class="simulation-viewport"/>
+    <viewport id="simulation" class="bg-black flex-1 w-full h-full"/>
     
     <!-- Show UI button view (hidden by default) -->
-    <view id="showUIView" class="show-ui-view" style="display: none;">
-        <button class="miniBtn" on-click="showUI">
+    <view id="showUIView" class="absolute flex-row col-start row-end m-20 hidden">
+        <button class="w-25px h-25px bg-transparent col-center row-center rounded-5" on-click="showUI">
             Show UI
         </button>
     </view>
     
     <!-- Main UI container -->
-    <view id="UI" class="container" style="position: absolute; flex-direction: column; width: 100%; height: 100%;">
-        
-        <!-- PlanetInfo component -->
-        <view id="planetInfo" class="planet-info">
-            <!-- Circular background -->
-            <view class="planet-circle"></view>
-            
-            <!-- Thermometer and temperature -->
-            <view class="thermometer-container">
-                <view class="thermometer-icon"></view>
-                <text id="temperature" class="temperature-text">-5°</text>
-            </view>
-            
-            <!-- Planet button -->
-            <view id="planetSettings" class="planet-settings">
-                <button class="planetBtn" on-click="randomPlanet">
-                    <view class="planet-icon"></view>
-                    <text id="planetBtnName" class="planet-name">Delune</text>
-                </button>
-            </view>
-        </view>
-        
+    <view id="UI" class="absolute flex-col col-end row-center p-5 gap-20 w-full h-full bg-red-100">
         <!-- Tabs component -->
-        <view id="tabs" class="tabs-container">
-            <!-- Hide UI button tab -->
-            <view class="tab" style="width: 60px;">
-                <button class="miniBtn" on-click="hideUI">
-                    Hide UI
-                </button>
-            </view>
-            
-            <!-- Stats tab -->
-            <view class="tab stats-tab">
-                <view class="stat-item">
-                    <view class="stat-icon dna-icon"></view>
-                    <text id="species" class="stat-text">0</text>
-                </view>
-                <view class="stat-item">
-                    <view class="stat-icon paw-icon"></view>
-                    <text id="lifeforms" class="stat-text">0</text>
-                </view>
-                <view class="stat-item">
-                    <view class="stat-icon cells-icon"></view>
-                    <text id="cells" class="stat-text">0</text>
-                </view>
-            </view>
-            
-            <!-- Genome tab -->
-            <view id="genomeTab" class="tab tabHover" style="display: none;" on-click="toggleGenomeTab">
-                <view class="tab-icon dna-icon"></view>
-                <text class="tab-text">Genome</text>
-                <!-- Genome panel (hidden by default) -->
-                <view id="genomePanel" class="panel genome-panel" style="display: none;">
-                    <view id="genomePanelViewport" class="viewport" style="width: 100%; flex: 1; background: transparent;"></view>
-                    <view class="genome-controls">
-                        <button class="miniBtn" on-click="copyGenome">
-                            Copy
-                        </button>
-                    </view>
-                </view>
-            </view>
-            
-            <!-- GRN tab -->
-            <view id="grnTab" class="tab tabHover" style="display: none;" on-click="toggleGRNTab">
-                <view class="tab-icon grn-icon"></view>
-                <text class="tab-text">Gene Regulatory Network</text>
-                <!-- GRN panel (hidden by default) -->
-                <view id="grnPanel" class="panel grn-panel" style="display: none;">
-                    <view id="geneRegulatoryNetwork" class="viewport" style="width: 100%; height: 100%; background: transparent;"></view>
-                </view>
-            </view>
-        </view>
         
-        <!-- ControlPanel component -->
-        <view id="controlPanel" class="control-panel">
+        <!-- ControlPanel component - positioned at bottom using flex -->
+        <view id="controlPanel" class="flex-col gap-5 col-center row-end p-5 bg-red-100">
             <!-- Time and step display -->
-            <view class="time-step-display">
-                <text id="time" class="time-text">00:00:00</text>
-                <text id="step" class="step-text">0</text>
+            <view class="flex-row text-sm gap-5 col-center row-center w-200 h-20 bg-red-100 text-white">
+                <text id="time" class="text-white text-center text-white">00:00:00</text>
+                <text id="step" class="text-white text-center text-white">0</text>
             </view>
             
             <!-- Control buttons -->
-            <view class="control-buttons">
-                <view class="control-spacer"></view>
-                <view class="button-group">
-                    <button id="slowDownBtn" class="mainBtn" on-click="slowDown">
+            <view class="w-280 h-50px p-5 flex-row col-center bg-black-100 border-2 border-white-40 rounded-60">
+                <view class="w-50px h-full"></view>
+                <view class="bg-white-70 rounded-20 flex-row h-full flex-1 col-center row-start gap-10 p-5">
+                    <button id="slowDownBtn" class="flex-1 text-base p-3 bg-white-70 border-none 
+                    rounded-15 shadow-sm col-center row-center h-full" on-click="slowDown">
                         -
                     </button>
-                    <button id="playBtn" class="mainBtn" on-click="togglePaused">
+                    <button id="playBtn" class="flex-1 text-base p-3 bg-white-70 border-none rounded-15 
+                    shadow-sm col-center row-center h-full" on-click="togglePaused">
                         Pause
                     </button>
-                    <button id="speedUpBtn" class="mainBtn" on-click="speedUp">
+                    <button id="speedUpBtn" class="flex-1 text-base p-3 bg-white-70 border-none rounded-15 
+                    shadow-sm col-center row-center h-full" on-click="speedUp">
                         +
                     </button>
                 </view>
-                <view class="speed-display">
-                    <text id="speed" class="speed-text">x1.0</text>
+                <view class="w-50px h-full col-center row-center">
+                    <text id="speed" class="text-sm text-white">x1.0</text>
                 </view>
             </view>
         </view>

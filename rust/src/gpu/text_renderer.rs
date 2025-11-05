@@ -43,7 +43,7 @@ impl TextRenderer {
         surface_config: &wgpu::SurfaceConfiguration,
     ) -> Self {
         // Load font
-        let font_data = include_bytes!("../../../assets/fonts/russoone-regular.ttf");
+        let font_data = include_bytes!("../../assets/fonts/russoone-regular.ttf");
         let font = FontArc::try_from_slice(font_data).unwrap();
         
         // Create glyph brush

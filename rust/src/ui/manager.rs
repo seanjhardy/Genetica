@@ -31,47 +31,6 @@ impl UIManager {
         }
     }
     
-    pub fn draw(&self, _renderer: &mut super::renderer::UiRenderer) {
-        if let Some(ref _screen_name) = self.current_screen {
-            if let Some(_screen) = self.screens.get(_screen_name) {
-                // Draw screen elements
-                // This will be handled by the renderer
-            }
-        }
-    }
-    
-    pub fn handle_event(&mut self, event: &winit::event::WindowEvent) -> bool {
-        // Handle window resize
-        if let winit::event::WindowEvent::Resized(physical_size) = event {
-            self.window_width = physical_size.width as f32;
-            self.window_height = physical_size.height as f32;
-            
-            if let Some(ref screen_name) = self.current_screen {
-                if let Some(screen) = self.screens.get_mut(screen_name) {
-                    screen.resize(self.window_width, self.window_height);
-                }
-            }
-        }
-        
-        // Forward event to current screen
-        if let Some(ref screen_name) = self.current_screen {
-            if let Some(screen) = self.screens.get_mut(screen_name) {
-                return screen.handle_event(event);
-            }
-        }
-        
-        false
-    }
-    
-    pub fn update(&mut self, dt: f32, mouse_pos: (f32, f32)) -> bool {
-        if let Some(ref screen_name) = self.current_screen {
-            if let Some(screen) = self.screens.get_mut(screen_name) {
-                return screen.update(dt, mouse_pos);
-            }
-        }
-        false
-    }
-    
     pub fn set_current_screen(&mut self, screen_name: String) {
         if self.screens.contains_key(&screen_name) {
             self.current_screen = Some(screen_name.clone());

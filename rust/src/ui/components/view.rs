@@ -1,115 +1,7 @@
-// Component system for UI elements - similar to UIElement in C++
-
-use super::styles::{Style, Size};
-use super::layout::Layout;
-
-#[derive(Debug, Clone)]
-pub enum ComponentType {
-    View(View),
-    Text(Text),
-    Button(Button),
-}
-
-#[derive(Debug, Clone)]
-pub struct Component {
-    pub component_type: ComponentType,
-    pub style: Style,
-    pub layout: Layout,
-    pub visible: bool,
-    pub allow_click: bool,
-    pub absolute: bool,
-    pub id: Option<String>,
-    pub key: Option<String>,
-}
-
-impl Component {
-    pub fn new(component_type: ComponentType) -> Self {
-        Self {
-            component_type,
-            style: Style::default(),
-            layout: Layout::default(),
-            visible: true,
-            allow_click: true,
-            absolute: false,
-            id: None,
-            key: None,
-        }
-    }
-    
-    pub fn contains(&self, point: (f32, f32)) -> bool {
-        point.0 >= self.layout.position_x && 
-        point.0 <= self.layout.position_x + self.layout.computed_width &&
-        point.1 >= self.layout.position_y && 
-        point.1 <= self.layout.position_y + self.layout.computed_height
-    }
-
-    pub fn get_computed_width(&self) -> f32 {
-        self.layout.computed_width
-    }
-
-    pub fn get_computed_height(&self) -> f32 {
-        self.layout.computed_height
-    }
-
-    pub fn get_absolute_x(&self) -> f32 {
-        self.layout.position_x
-    }
-
-    pub fn get_absolute_y(&self) -> f32 {
-        self.layout.position_y
-    }
-
-    /// Find a component by ID in the component tree
-    pub fn find_by_id(&mut self, id: &str) -> Option<&mut Component> {
-        if let Some(component_id) = &self.id {
-            if component_id == id {
-                return Some(self);
-            }
-        }
-
-        match &mut self.component_type {
-            ComponentType::View(view) => {
-                for child in &mut view.children {
-                    if let Some(found) = child.find_by_id(id) {
-                        return Some(found);
-                    }
-                }
-            }
-            _ => {}
-        }
-
-        None
-    }
-
-    /// Update text content if this is a Text component
-    pub fn update_text(&mut self, new_text: &str) {
-        if let ComponentType::Text(text) = &mut self.component_type {
-            text.content = new_text.to_string();
-        } else if let ComponentType::Button(button) = &mut self.component_type {
-            button.label = new_text.to_string();
-        }
-    }
-    
-    pub fn calculate_width(&self) -> Size {
-        match &self.component_type {
-            ComponentType::View(view) => view.calculate_width(),
-            ComponentType::Text(text) => Size::Pixels(text.font_size * text.content.len() as f32 * 0.6), // Approximate
-            ComponentType::Button(button) => Size::Pixels(button.font_size * button.label.len() as f32 * 0.6),
-        }
-    }
-    
-    pub fn calculate_height(&self) -> Size {
-        match &self.component_type {
-            ComponentType::View(view) => view.calculate_height(),
-            ComponentType::Text(text) => Size::Pixels(text.font_size),
-            ComponentType::Button(button) => Size::Pixels(button.font_size),
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct View {
-    pub children: Vec<Component>,
+    pub children: Vec<super::Component>,
     // View-specific layout properties (moved from Layout for clarity)
     pub flex_direction: super::layout::FlexDirection,
     pub row_alignment: super::layout::Alignment,
@@ -138,64 +30,71 @@ impl View {
         }
     }
 
-    pub fn with_children(mut self, children: Vec<Component>) -> Self {
-        // Organize children into layers (absolute vs normal)
+    // Constructs layers to render where absolute children are rendered on top of non-absolute children
+    pub fn rebuild_layers(&mut self) {
+        self.layers.clear();
         let mut base_layer = Vec::new();
-        for (i, child) in children.iter().enumerate() {
+        for (i, child) in self.children.iter().enumerate() {
             if child.absolute {
                 self.layers.push(vec![i]);
             } else {
                 base_layer.push(i);
             }
         }
+        // Add base layer to the front so it is rendered first
         if !base_layer.is_empty() {
-            self.layers.push(base_layer);
+            self.layers.insert(0, base_layer);
         }
-        self.children = children;
-        self
     }
     
-    pub fn calculate_width(&self) -> Size {
-        let mut total = 0.0;
+    pub fn calculate_width(&self, padding: super::styles::Padding) -> super::Size {
+        let mut max_width: f32 = 0.0;
         for layer in &self.layers {
+            let mut layer_width = padding.left + padding.right;
+            let mut visible_children = 0;
             for &idx in layer {
                 if idx < self.children.len() {
                     let child = &self.children[idx];
                     if !child.visible || child.absolute {
                         continue;
                     }
-                    match child.calculate_width() {
-                        Size::Pixels(value) => total += value,
-                        _ => {}
+                    visible_children += 1;
+                    if let super::Size::Pixels(value) = child.calculate_width() {
+                        layer_width += value;
                     }
-                    total += self.gap;
-                }
+                } 
             }
+            layer_width += self.gap * (visible_children - 1) as f32;
+            max_width = max_width.max(layer_width);
         }
-        Size::Pixels(total.max(0.0) - self.gap)
+        super::Size::Pixels(max_width)
     }
     
-    pub fn calculate_height(&self) -> Size {
-        let mut total = 0.0;
+    // Calculate minimum height needed to fit children (including padding)
+    // This matches the C++ View::calculateHeight() implementation exactly
+    pub fn calculate_height(&self, padding: super::styles::Padding) -> super::Size {
+        let mut max_height: f32 = 0.0;
         for layer in &self.layers {
+            let mut layer_height = padding.top + padding.bottom;
+            let mut visible_children = 0;
             for &idx in layer {
                 if idx < self.children.len() {
                     let child = &self.children[idx];
                     if !child.visible || child.absolute {
                         continue;
                     }
-                    match child.calculate_height() {
-                        Size::Pixels(value) => total += value,
-                        _ => {}
+                    visible_children += 1;
+                    if let super::Size::Pixels(value) = child.calculate_height() {
+                        layer_height += value;
                     }
-                    total += self.gap;
                 }
             }
+            layer_height += self.gap * (visible_children - 1) as f32;
+            max_height = max_height.max(layer_height);
         }
-        Size::Pixels(total.max(0.0) - self.gap)
+        super::Size::Pixels(max_height)
     }
     
-    // Layout update method - similar to C++ View::updateLayout()
     pub fn update_layout(&mut self, parent_x: f32, parent_y: f32, parent_width: f32, parent_height: f32, parent_padding: super::styles::Padding) {
         for layer in &self.layers.clone() {
             self.update_layer_layout(layer, parent_x, parent_y, parent_width, parent_height, parent_padding);
@@ -213,7 +112,97 @@ impl View {
             return;
         }
         
-        // Calculate available space (accounting for padding)
+        // Check if this layer contains absolute children
+        // If the first child is absolute, all children in this layer are absolute
+        let is_absolute_layer = visible_indices.first()
+            .map(|&idx| idx < self.children.len() && self.children[idx].absolute)
+            .unwrap_or(false);
+        
+        // For absolute children, position them relative to parent, not in flex flow
+        if is_absolute_layer {
+            // Position absolute children relative to parent
+            for &idx in &visible_indices {
+                if idx >= self.children.len() {
+                    continue;
+                }
+                let child = &mut self.children[idx];
+                
+                // Calculate size (same as normal flow)
+                let main_size = if self.flex_direction == super::layout::FlexDirection::Row {
+                    &child.style.width
+                } else {
+                    &child.style.height
+                };
+                
+                let item_main_size = match main_size {
+                    super::Size::Pixels(value) => *value,
+                    super::Size::Percent(value) => parent_width * value / 100.0,
+                    super::Size::Flex(_) | super::Size::Auto => {
+                        // For absolute, use parent width/height if not specified
+                        if self.flex_direction == super::layout::FlexDirection::Row {
+                            parent_width
+                        } else {
+                            parent_height
+                        }
+                    }
+                };
+                
+                let cross_size = if self.flex_direction == super::layout::FlexDirection::Row {
+                    &child.style.height
+                } else {
+                    &child.style.width
+                };
+                
+                let item_cross_size = match cross_size {
+                    super::Size::Pixels(value) => *value,
+                    super::Size::Percent(value) => {
+                        if self.flex_direction == super::layout::FlexDirection::Row {
+                            parent_height * value / 100.0
+                        } else {
+                            parent_width * value / 100.0
+                        }
+                    }
+                    super::Size::Flex(_) | super::Size::Auto => {
+                        if self.flex_direction == super::layout::FlexDirection::Row {
+                            parent_height
+                        } else {
+                            parent_width
+                        }
+                    }
+                };
+                
+                // Set component size
+                if self.flex_direction == super::layout::FlexDirection::Row {
+                    child.layout.computed_width = item_main_size;
+                    child.layout.computed_height = item_cross_size;
+                } else {
+                    child.layout.computed_width = item_cross_size;
+                    child.layout.computed_height = item_main_size;
+                }
+                
+                child.layout.position_x = 0.0; // Relative to parent
+                child.layout.position_y = 0.0; // Relative to parent
+                
+                // Recursively layout child if it's a View
+                // For absolute children, pass the parent's position plus the relative position
+                // This ensures children of absolute elements are positioned correctly
+                match &mut child.component_type {
+                    super::ComponentType::View(ref mut view) => {
+                        view.update_layout(
+                            parent_x + child.layout.position_x,
+                            parent_y + child.layout.position_y,
+                            item_main_size,
+                            item_cross_size,
+                            child.style.padding
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            return; // Absolute layer is done, don't process flex layout
+        }
+        
+        // Calculate available space (accounting for padding) for non-absolute children
         let padding = parent_padding;
         
         let container_width = parent_width - padding.left - padding.right;
@@ -249,13 +238,13 @@ impl View {
             };
             
             match main_size {
-                Size::Pixels(value) => total_fixed_main += value,
-                Size::Percent(value) => total_fixed_main += available_main * value / 100.0,
-                Size::Flex(value) => {
+                super::Size::Pixels(value) => total_fixed_main += value,
+                super::Size::Percent(value) => total_fixed_main += available_main * value / 100.0,
+                super::Size::Flex(value) => {
                     flex_item_count += 1;
                     total_flex_grow += value.max(0.0);
                 }
-                Size::Auto => {
+                super::Size::Auto => {
                     flex_item_count += 1;
                     total_flex_grow += 1.0;
                 }
@@ -283,30 +272,48 @@ impl View {
             let child = &mut self.children[idx];
             
             // Calculate main axis size
+            // In C++: Size childWidth = child->width.getValue() == 0 ? child->calculateWidth() : child->width;
             let main_size = if self.flex_direction == super::layout::FlexDirection::Row {
-                &child.style.width
+                match &child.style.width {
+                    super::Size::Auto => child.calculate_width(),
+                    super::Size::Pixels(0.0) => child.calculate_width(),
+                    _ => child.style.width.clone(),
+                }
             } else {
-                &child.style.height
+                match &child.style.height {
+                    super::Size::Auto => child.calculate_height(),
+                    super::Size::Pixels(0.0) => child.calculate_height(),
+                    _ => child.style.height.clone(),
+                }
             };
             
-            let item_main_size = match main_size {
-                Size::Pixels(value) => *value,
-                Size::Percent(value) => available_main * value / 100.0,
-                Size::Flex(value) => flex_unit * value.max(0.0),
-                Size::Auto => flex_unit * 1.0,
+            let item_main_size = match &main_size {
+                super::Size::Pixels(value) => *value,
+                super::Size::Percent(value) => available_main * value / 100.0,
+                super::Size::Flex(value) => flex_unit * value.max(0.0),
+                super::Size::Auto => flex_unit * 1.0,
             };
             
             // Calculate cross axis size
+            // In C++: Size childHeight = child->height.getValue() == 0 ? child->calculateHeight() : child->height;
             let cross_size = if self.flex_direction == super::layout::FlexDirection::Row {
-                &child.style.height
+                match &child.style.height {
+                    super::Size::Auto => child.calculate_height(),
+                    super::Size::Pixels(0.0) => child.calculate_height(),
+                    _ => child.style.height.clone(),
+                }
             } else {
-                &child.style.width
+                match &child.style.width {
+                    super::Size::Auto => child.calculate_width(),
+                    super::Size::Pixels(0.0) => child.calculate_width(),
+                    _ => child.style.width.clone(),
+                }
             };
             
-            let item_cross_size = match cross_size {
-                Size::Pixels(value) => *value,
-                Size::Percent(value) => available_cross * value / 100.0,
-                Size::Flex(_) | Size::Auto => available_cross,
+            let item_cross_size = match &cross_size {
+                super::Size::Pixels(value) => *value,
+                super::Size::Percent(value) => available_cross * value / 100.0,
+                super::Size::Flex(_) | super::Size::Auto => available_cross,
             };
             
             // Set component size
@@ -354,7 +361,7 @@ impl View {
             
             // Recursively layout child if it's a View
             match &mut child.component_type {
-                ComponentType::View(ref mut view) => {
+                super::ComponentType::View(ref mut view) => {
                     view.update_layout(
                         child.layout.position_x,
                         child.layout.position_y,
@@ -450,66 +457,5 @@ impl View {
 impl Default for View {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Text {
-    pub content: String,
-    pub font_size: f32,
-    pub color: super::styles::Color,
-}
-
-impl Text {
-    pub fn new(content: String) -> Self {
-        Self {
-            content,
-            font_size: 16.0,
-            color: super::styles::Color::black(),
-        }
-    }
-
-    pub fn with_font_size(mut self, size: f32) -> Self {
-        self.font_size = size;
-        self
-    }
-
-    pub fn with_color(mut self, color: super::styles::Color) -> Self {
-        self.color = color;
-        self
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Button {
-    pub label: String,
-    pub font_size: f32,
-    pub text_color: super::styles::Color,
-    pub on_click: Option<String>, // Event handler name
-}
-
-impl Button {
-    pub fn new(label: String) -> Self {
-        Self {
-            label,
-            font_size: 16.0,
-            text_color: super::styles::Color::black(),
-            on_click: None,
-        }
-    }
-
-    pub fn with_font_size(mut self, size: f32) -> Self {
-        self.font_size = size;
-        self
-    }
-
-    pub fn with_text_color(mut self, color: super::styles::Color) -> Self {
-        self.text_color = color;
-        self
-    }
-
-    pub fn with_on_click(mut self, handler: String) -> Self {
-        self.on_click = Some(handler);
-        self
     }
 }

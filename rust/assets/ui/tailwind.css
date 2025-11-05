@@ -1,0 +1,105 @@
+/* Tailwind Utility Classes - Mapping from existing CSS */
+
+/* Layout & Flexbox */
+.flex { flex-direction: row; }
+.flex-col { flex-direction: column; }
+.flex-row { flex-direction: row; }
+
+/* Alignment */
+.col-start { align-col: flex-start;  }
+.col-center { align-col: center;}
+.col-end { align-col: flex-end; }
+.row-start { align-row: flex-start;  }
+.row-center { align-row: center; }
+.row-end { align-row: flex-end; }
+
+/* Sizing */
+.w-full { width: 100%; }
+.w-50 { width: 50%; }
+.w-200 { width: 200px; }
+.w-280 { width: 280px; }
+.w-50px { width: 50px; }
+.w-25px { width: 25px; }
+.h-full { height: 100%; }
+.h-50 { height: 50%; }
+.h-20 { height: 20px; }
+.h-50px { height: 50px; }
+.h-25px { height: 25px; }
+.w-auto { width: auto; }
+.h-auto { height: auto; }
+.flex-1 { flex: 1; }
+
+/* Spacing */
+.gap-5 { gap: 5px; }
+.gap-10 { gap: 10px; }
+.gap-20 { gap: 20px; }
+.p-5 { padding: 5px; }
+.p-10 { padding: 10px; }
+.px-17 { padding: 0px 17px; }
+.py-15 { padding: 15px 0px; }
+.m-20 { margin: 20px; }
+
+/* Position */
+.absolute { position: absolute; }
+.relative { position: relative; }
+
+/* Display */
+.hidden { display: none; }
+.block { display: block; }
+
+/* Colors - Background */
+.bg-transparent { background-color: transparent; }
+.bg-black { background-color: rgba(0, 0, 0, 255); }
+
+.bg-white-50 { background-color: rgba(255, 255, 255, 50); }
+.bg-white-70 { background-color: rgba(255, 255, 255, 70); }
+.bg-black-30 { background-color: rgba(0, 0, 0, 30); }
+.bg-black-80 { background-color: rgba(0, 0, 0, 80); }
+.bg-black-100 { background-color: rgba(0, 0, 0, 100); }
+.bg-black-150 { background-color: rgba(0, 0, 0, 150); }
+.bg-black-204 { background-color: rgba(0, 0, 0, 204); }
+.bg-red-100 { background-color: rgba(255, 0, 0, 100); }
+.bg-blue-140 { background-color: rgba(59, 190, 255, 140); }
+.bg-teal-hover { background-color: #20868a; }
+
+/* Colors - Text */
+.text-white { color: #FFFFFF; }
+
+/* Borders */
+.border-none { border: 0px; }
+.border-2 { border-width: 2px; }
+.border-gray { border-color: #5E5E5E; }
+.border-teal { border-color: #38c4c9; }
+.border-white-40 { border-color: rgba(255, 255, 255, 40); }
+.border-white-80 { border-color: rgba(255, 255, 255, 80); }
+
+/* Border Radius */
+.rounded-5 { border-radius: 5px; }
+.rounded-15 { border-radius: 15px; }
+.rounded-20 { border-radius: 20px; }
+.rounded-50 { border-radius: 50px; }
+.rounded-60 { border-radius: 60px; }
+.rounded-full { border-radius: 1000px; }
+
+/* Shadows */
+.shadow-sm { box-shadow: 0px 2px 3px rgba(0, 0, 0, 50); }
+.shadow-md { box-shadow: 0px 5px 5px rgba(0, 0, 0, 80); }
+.shadow-lg { box-shadow: 0px 5px 5px rgba(0, 0, 0, 120); }
+.shadow-hover { box-shadow: 0px 2px 3px rgba(20, 31, 38, 60); }
+.text-shadow { text-shadow: 0px 0px 3px rgba(0, 0, 0, 255); }
+
+/* Font Sizes */
+.text-xs { font-size: 12px; }
+.text-sm { font-size: 14px; }
+.text-base { font-size: 15px; }
+.text-md { font-size: 16px; }
+.text-lg { font-size: 25px; }
+
+/* Text Alignment */
+.text-center { text-align: center; }
+
+/* Specific positioning utilities */
+.bottom-0 { bottom: 0px; }
+.right-0 { right: 0px; }
+.left-0 { left: 0px; }
+.top-0 { top: 0px; }
