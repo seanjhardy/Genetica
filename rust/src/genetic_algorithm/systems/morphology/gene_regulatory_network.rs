@@ -1,73 +1,206 @@
-// Gene regulatory network - network of genes that activate and deactivate one another
+pub const EMBEDDING_DIMENSIONS: usize = 3;
+pub const BINDING_DISTANCE_THRESHOLD: f32 = 0.2;
 
-use super::{Gene, Promoter, Effector, RegulatoryUnit};
-
-/// Gene Regulatory Network (GRN)
-/// A network where:
-/// - Factors represent levels of proteins in the cell (inputs)
-/// - Effectors produce effects (outputs)
-/// - Promoters bind to factors and promote production
-/// - Regulatory units combine promoters and produce factors
-#[derive(Clone)]
 pub struct GeneRegulatoryNetwork {
-    /// Genes which represent levels of proteins
-    pub factors: Vec<Gene>,
-    /// Promoters that bind to factors
-    pub promoters: Vec<Promoter>,
-    /// Output genes that produce effects
-    pub effectors: Vec<Effector>,
-    /// Regulatory units (nodes in the network)
-    pub regulatory_units: Vec<RegulatoryUnit>,
-    
-    /// Affinities between promoters and factors (flat matrix)
-    pub promoter_factor_affinities: Vec<f32>,
-    /// Affinities between factors and effectors (flat matrix)
-    pub factor_effector_affinities: Vec<f32>,
-    /// Affinities between factors and receptors (flat matrix)
-    pub factor_receptor_affinities: Vec<f32>,
-    
-    /// Distances between each pair of cells (triangular matrix)
-    pub cell_distances: Vec<f32>,
+  // Inputs
+  pub receptors: Vec<Receptor>,
+  // hidden units
+  pub regulatory_units: Vec<RegulatoryUnit>,
+  // Outputs
+  pub effectors: Vec<Effector>,
 }
 
 impl GeneRegulatoryNetwork {
     pub fn new() -> Self {
         Self {
-            factors: Vec::new(),
-            promoters: Vec::new(),
-            effectors: Vec::new(),
-            regulatory_units: Vec::new(),
-            promoter_factor_affinities: Vec::new(),
-            factor_effector_affinities: Vec::new(),
-            factor_receptor_affinities: Vec::new(),
-            cell_distances: Vec::new(),
+          receptors: Vec::new(),
+          regulatory_units: Vec::new(),
+          effectors: Vec::new(),
         }
-    }
-
-    pub fn calculate_affinities(&mut self) {
-        // Calculate promoter-factor affinities based on embedding distances
-        self.promoter_factor_affinities.clear();
-        
-        for promoter in &self.promoters {
-            for factor in &self.factors {
-                let dist = self.embedding_distance(promoter.genetic_unit.embedding, factor.genetic_unit.embedding);
-                let affinity = 1.0 / (1.0 + dist);
-                self.promoter_factor_affinities.push(affinity);
-            }
-        }
-    }
-
-    fn embedding_distance(&self, a: [f32; 3], b: [f32; 3]) -> f32 {
-        let dx = a[0] - b[0];
-        let dy = a[1] - b[1];
-        let dz = a[2] - b[2];
-        (dx * dx + dy * dy + dz * dz).sqrt()
     }
 }
 
-impl Default for GeneRegulatoryNetwork {
-    fn default() -> Self {
-        Self::new()
-    }
+
+pub trait Embedded {
+  fn embedding(&self) -> [f32; EMBEDDING_DIMENSIONS];
+  fn sign(&self) -> bool;
+  fn modifier(&self) -> f32;
 }
 
+#[derive(Clone, Copy)]
+pub enum ReceptorType {
+  MaternalFactor,
+  Crowding,
+  Constant,
+  Generation,
+  Energy,
+  Time,
+}
+
+#[derive(Clone, Copy)]
+pub enum FactorType {
+  ExternalMorphogen,
+  InternalMorphogen,
+  Orientant,
+}
+
+#[derive(Clone, Copy)]
+pub enum PromoterType {
+  Additive,
+  Multiplicative,
+}
+
+#[derive(Clone, Copy)]
+pub enum EffectorType {
+  Die,
+  Divide,
+  Freeze,
+  Distance,
+  Radius,
+  Red,
+  Green,
+  Blue,
+}
+
+
+pub struct Receptor {
+    pub receptor_type: ReceptorType,
+    pub sign: bool,
+    pub modifier: f32,
+    pub embedding: [f32; EMBEDDING_DIMENSIONS],
+    pub extra: [f32; 2],
+}
+
+impl Receptor {
+  pub fn new(receptor_type: ReceptorType, sign: bool, modifier: f32, embedding: [f32; EMBEDDING_DIMENSIONS], extra: [f32; 2]) -> Self {
+    Self {
+      receptor_type,
+      sign,
+      modifier,
+      embedding,
+      extra,
+    }
+  }
+}
+
+impl Embedded for Receptor {
+  fn embedding(&self) -> [f32; EMBEDDING_DIMENSIONS] {
+    self.embedding
+  }
+  fn sign(&self) -> bool {
+    self.sign
+  }
+  fn modifier(&self) -> f32 {
+    self.modifier
+  }
+}
+
+#[derive(Clone)]
+pub struct Factor {
+  pub factor_type: FactorType,
+  pub sign: bool,
+  pub modifier: f32,
+  pub embedding: [f32; EMBEDDING_DIMENSIONS],
+}
+
+impl Factor {
+  pub fn new(factor_type: FactorType, sign: bool, modifier: f32, embedding: [f32; EMBEDDING_DIMENSIONS]) -> Self {
+    Self {
+      factor_type,
+      sign,
+      modifier,
+      embedding,
+    }
+  }
+}
+
+
+impl Embedded for Factor {
+  fn embedding(&self) -> [f32; EMBEDDING_DIMENSIONS] {
+    self.embedding
+  }
+  fn sign(&self) -> bool {
+    self.sign
+  }
+  fn modifier(&self) -> f32 {
+    self.modifier
+  }
+}
+
+#[derive(Clone)]
+pub struct Promoter {
+  pub promoter_type: PromoterType,
+  pub sign: bool,
+  pub modifier: f32,
+  pub embedding: [f32; EMBEDDING_DIMENSIONS],
+}
+
+
+impl Promoter {
+  pub fn new(promoter_type: PromoterType, sign: bool, modifier: f32, embedding: [f32; EMBEDDING_DIMENSIONS]) -> Self {
+    Self {
+      promoter_type,
+      sign,
+      modifier,
+      embedding,
+    }
+  }
+}
+
+
+impl Embedded for Promoter {
+  fn embedding(&self) -> [f32; EMBEDDING_DIMENSIONS] {
+    self.embedding
+  }
+  fn sign(&self) -> bool {
+    self.sign
+  }
+  fn modifier(&self) -> f32 {
+    self.modifier
+  }
+}
+
+#[derive(Clone)]
+pub struct Effector {
+  pub effector_type: EffectorType,
+  pub sign: bool,
+  pub modifier: f32,
+  pub embedding: [f32; EMBEDDING_DIMENSIONS],
+}
+
+impl Effector {
+  pub fn new(effector_type: EffectorType, sign: bool, modifier: f32, embedding: [f32; EMBEDDING_DIMENSIONS]) -> Self {
+    Self {
+      effector_type,
+      sign,
+      modifier,
+      embedding,
+    }
+  }
+}
+
+impl Embedded for Effector {
+  fn embedding(&self) -> [f32; EMBEDDING_DIMENSIONS] {
+    self.embedding
+  }
+  fn sign(&self) -> bool {
+    self.sign
+  }
+  fn modifier(&self) -> f32 {
+    self.modifier
+  }
+}
+
+pub struct RegulatoryUnit {
+  pub promoters: Vec<Promoter>,
+  pub factors: Vec<Factor>,
+}
+
+impl RegulatoryUnit {
+  pub fn new() -> Self {
+    Self {
+      promoters: Vec::new(),
+      factors: Vec::new(),
+    }
+  }
+}

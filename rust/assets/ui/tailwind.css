@@ -15,16 +15,7 @@
 
 /* Sizing */
 .w-full { width: 100%; }
-.w-50 { width: 50%; }
-.w-200 { width: 200px; }
-.w-280 { width: 280px; }
-.w-50px { width: 50px; }
-.w-25px { width: 25px; }
 .h-full { height: 100%; }
-.h-50 { height: 50%; }
-.h-20 { height: 20px; }
-.h-50px { height: 50px; }
-.h-25px { height: 25px; }
 .w-auto { width: auto; }
 .h-auto { height: auto; }
 .flex-1 { flex: 1; }
@@ -51,29 +42,6 @@
 .bg-transparent { background-color: transparent; }
 .bg-black { background-color: rgba(0, 0, 0, 255); }
 
-.bg-white-100 { background-color: rgba(255, 255, 255, 100); }
-.bg-white-90 { background-color: rgba(255, 255, 255, 90); }
-.bg-white-80 { background-color: rgba(255, 255, 255, 80); }
-.bg-white-70 { background-color: rgba(255, 255, 255, 70); }
-.bg-white-60 { background-color: rgba(255, 255, 255, 60); }
-.bg-white-50 { background-color: rgba(255, 255, 255, 50); }
-.bg-white-40 { background-color: rgba(255, 255, 255, 40); }
-.bg-white-30 { background-color: rgba(255, 255, 255, 30); }
-.bg-white-20 { background-color: rgba(255, 255, 255, 20); }
-.bg-white-10 { background-color: rgba(255, 255, 255, 10); }
-
-.bg-black-10 { background-color: rgba(0, 0, 0, 10); }
-.bg-black-20 { background-color: rgba(0, 0, 0, 20); }
-.bg-black-30 { background-color: rgba(0, 0, 0, 30); }
-.bg-black-40 { background-color: rgba(0, 0, 0, 40); }
-.bg-black-80 { background-color: rgba(0, 0, 0, 80); }
-.bg-black-100 { background-color: rgba(0, 0, 0, 100); }
-.bg-black-150 { background-color: rgba(0, 0, 0, 150); }
-.bg-black-204 { background-color: rgba(0, 0, 0, 204); }
-.bg-red-100 { background-color: rgba(255, 0, 0, 100); }
-.bg-blue-140 { background-color: rgba(59, 190, 255, 140); }
-.bg-teal-hover { background-color: #20868a; }
-
 /* Colors - Text */
 .text-white { color: #FFFFFF; }
 
@@ -82,13 +50,14 @@
 .border-2 { border-width: 2px; }
 .border-gray { border-color: #5E5E5E; }
 .border-teal { border-color: #38c4c9; }
-.border-white-40 { border-color: rgba(255, 255, 255, 40); }
+.border-white-40 { border-color: rgba(255, 255, 255, 10); }
 .border-white-80 { border-color: rgba(255, 255, 255, 80); }
 
 /* Border Radius */
 .rounded-5 { border-radius: 5px; }
 .rounded-15 { border-radius: 15px; }
 .rounded-20 { border-radius: 20px; }
+.rounded-25 { border-radius: 25px; }
 .rounded-50 { border-radius: 50px; }
 .rounded-60 { border-radius: 60px; }
 .rounded-full { border-radius: 1000px; }
@@ -105,8 +74,7 @@
 .text-sm { font-size: 15px; }
 .text-base { font-size: 20px; }
 .text-md { font-size: 25px; }
-.text-lg { font-size: 35px; }
-.text-large { font-size: 30px; }
+.text-lg { font-size: 40px; }
 
 /* Text Alignment */
 .text-center { text-align: center; }

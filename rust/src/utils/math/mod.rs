@@ -145,3 +145,12 @@ impl std::ops::Add<Rect> for Rect {
     }
 }
 
+
+pub fn length(a: &[f32], b: &[f32]) -> f32 {
+    assert_eq!(a.len(), b.len());
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| (x - y).powi(2))
+        .sum::<f32>()
+        .sqrt()
+}

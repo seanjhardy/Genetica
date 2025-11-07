@@ -14,14 +14,4 @@ impl Text {
             color: super::Color::black(),
         }
     }
-
-    pub fn with_font_size(mut self, size: f32) -> Self {
-        self.font_size = size;
-        self
-    }
-
-    pub fn with_color(mut self, color: super::Color) -> Self {
-        self.color = color;
-        self
-    }
 }

@@ -1,6 +1,6 @@
 // Camera controller module
 
-use crate::modules::math::{Rect, Vec2};
+use crate::utils::math::{Rect, Vec2};
 
 pub struct Camera {
     position: Vec2,

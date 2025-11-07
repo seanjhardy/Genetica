@@ -34,11 +34,6 @@ Or run the compiled binary:
 
 ## Architecture
 
-- **winit**: Window management
-- **wgpu**: GPU compute and rendering (cross-platform graphics API)
-- **Compute Shader** (`compute.wgsl`): Handles Verlet integration physics on the GPU
-- **Render Shader** (`render.wgsl`): Renders points directly from GPU buffers
-
 The simulation runs entirely on the GPU - points are stored in GPU buffers, updated via compute shaders, and rendered without any CPU-GPU data transfer during the simulation loop.
 
 

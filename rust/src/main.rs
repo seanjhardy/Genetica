@@ -1,7 +1,7 @@
 // Main entry point for the Genetica Rust simulation
 // This file should be minimal - just initialization and event loop setup
 
-mod modules;
+mod utils;
 mod simulator;
 mod gpu;
 mod genetic_algorithm;

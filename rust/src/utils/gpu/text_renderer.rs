@@ -1,7 +1,7 @@
 // Text renderer using glyph_brush directly for simple on-screen text rendering
 
 use wgpu;
-use glyph_brush::{GlyphBrush, GlyphBrushBuilder, Section, Text};
+use glyph_brush::{GlyphBrush, GlyphBrushBuilder, Section, Text, OwnedSection, OwnedText, Layout};
 use ab_glyph::FontArc;
 use wgpu::util::DeviceExt;
 
@@ -26,6 +26,7 @@ pub struct TextRenderer {
     uniform_buffer: wgpu::Buffer,
     texture_bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
+    section_id: f32, // Unique ID for each section to prevent hash collisions
 }
 
 #[repr(C)]
@@ -43,7 +44,7 @@ impl TextRenderer {
         surface_config: &wgpu::SurfaceConfiguration,
     ) -> Self {
         // Load font
-        let font_data = include_bytes!("../../assets/fonts/russoone-regular.ttf");
+        let font_data = include_bytes!("../../../assets/fonts/russoone-regular.ttf");
         let font = FontArc::try_from_slice(font_data).unwrap();
         
         // Create glyph brush
@@ -149,7 +150,7 @@ impl TextRenderer {
         // Create shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Text Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/text.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/text.wgsl").into()),
         });
         
         // Create render pipeline
@@ -231,21 +232,34 @@ impl TextRenderer {
             uniform_buffer,
             texture_bind_group,
             pipeline,
+            section_id: 0.0,
         }
     }
 
-    pub fn queue_text(&mut self, _queue: &wgpu::Queue, text: &str, x: f32, y: f32, color: [f32; 4]) {
-        self.queue_text_with_size(_queue, text, x, y, color, 24.0);
-    }
 
     pub fn queue_text_with_size(&mut self, _queue: &wgpu::Queue, text: &str, x: f32, y: f32, color: [f32; 4], font_size: f32) {
-        let section = Section::default()
-            .add_text(Text::new(text)
-                .with_scale(font_size)
-                .with_color([color[0], color[1], color[2], color[3]]))
-            .with_screen_position((x, y));
+        // Round positions to pixel boundaries to prevent sub-pixel jitter
+        // This ensures the glyph brush cache works properly
+        let x_rounded = x.round();
+        let y_rounded = y.round();
         
-        self.glyph_brush.queue(section);
+        let section = OwnedSection {
+            screen_position: (x_rounded, y_rounded),
+            bounds: (f32::INFINITY, f32::INFINITY), // No clipping
+            text: vec![OwnedText {
+                text: text.to_string(),
+                scale: font_size.into(),
+                font_id: glyph_brush::FontId(0),
+                extra: glyph_brush::Extra {
+                    color: color,
+                    z: self.section_id, // Unique z makes each section's hash unique
+                },
+            }],
+            layout: Layout::default(), // Default single-line layout
+        };
+        
+        self.section_id += 1.0; // Increment for next section
+        self.glyph_brush.queue(&section);
     }
 
     pub fn draw(
@@ -255,6 +269,9 @@ impl TextRenderer {
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
     ) -> Option<wgpu::CommandBuffer> {
+        // Reset section ID for next frame
+        self.section_id = 0.0;
+        
         // Update uniform buffer
         let uniforms = Uniforms {
             screen_width: self.screen_width as f32,
@@ -263,6 +280,13 @@ impl TextRenderer {
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
         use glyph_brush::BrushAction;
         use std::cell::RefCell;
+        
+        // BUG FIX: Invalidate the glyph brush's internal section hash cache
+        // This forces it to regenerate all vertices every frame, preventing 
+        // sections from disappearing when their text doesn't change
+        // Without this, sections with unchanged text get ReDraw but aren't included
+        // in the vertex output, causing them to flicker/disappear
+        self.glyph_brush.resize_texture(self.texture_size, self.texture_size);
         
         // Clear previous frame's data (but keep buffers if ReDraw)
         let vertices = RefCell::new(Vec::new());
@@ -368,9 +392,9 @@ impl TextRenderer {
                 self.indices = indices.into_inner();
             }
             Ok(BrushAction::ReDraw) => {
-                // Reuse last frame's vertices - don't update self.vertices/indices
-                // The vertices are already in self.vertices from previous frame
-                // We'll use them below when creating buffers
+                // BUG FIX: The glyph brush returns ReDraw when the text/position hasn't changed.
+                // In this case, we keep using the cached vertices from the previous Draw.
+                // The glyph brush maintains its internal texture atlas across frames.
             }
             Err(e) => {
                 eprintln!("Glyph brush error: {:?}", e);
@@ -378,7 +402,8 @@ impl TextRenderer {
             }
         }
         
-        // Create/update vertex and index buffers
+        // Create vertex/index buffers from current cached geometry
+        // Note: Even on ReDraw, we must recreate buffers as they're consumed by the render pass
         if !self.vertices.is_empty() && !self.indices.is_empty() {
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Text Vertex Buffer"),

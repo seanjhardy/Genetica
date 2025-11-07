@@ -1,6 +1,6 @@
 // HTML and CSS parser for UI definitions
 
-use super::components::{Component, ComponentType, View, Text};
+use super::components::{Component, ComponentType, View, Text, Image};
 use super::styles::{Style, Color, Border, Shadow, Padding, Margin, Size};
 use super::components::view::{FlexDirection, Alignment};
 use std::collections::HashMap;
@@ -301,13 +301,219 @@ impl UiParser {
     fn parse_attributes(attr_str: &str) -> HashMap<String, String> {
         let mut attrs = HashMap::new();
         // Use regular string instead of raw string to allow escaped quotes
-        let attr_pattern = regex::Regex::new(r#"(\w+)="([^"]+)""#).unwrap();
+        let attr_pattern = regex::Regex::new(r#"([A-Za-z0-9_-]+)="([^"]+)""#).unwrap();
         
         for cap in attr_pattern.captures_iter(attr_str) {
             attrs.insert(cap[1].to_string(), cap[2].to_string());
         }
         
         attrs
+    }
+
+    /// Parse dynamic Tailwind-style utility classes (e.g., w-50, bg-white-50, p-10, etc.)
+    fn parse_dynamic_class(class_name: &str) -> Option<HashMap<String, String>> {
+        let mut props = HashMap::new();
+        
+        // Width: w-{number} or w-{number}px
+        if class_name.starts_with("w-") {
+            let value = &class_name[2..];
+            if let Ok(num) = value.parse::<f32>() {
+                props.insert("width".to_string(), format!("{}px", num));
+                return Some(props);
+            }
+        }
+        
+        // Height: h-{number} or h-{number}px
+        if class_name.starts_with("h-") {
+            let value = &class_name[2..];
+            if let Ok(num) = value.parse::<f32>() {
+                props.insert("height".to_string(), format!("{}px", num));
+                return Some(props);
+            }
+        }
+        
+        // Padding: p-{number}, pt-{number}, pr-{number}, pb-{number}, pl-{number}
+        // px-{number} (horizontal), py-{number} (vertical)
+        if class_name.starts_with("p-") || class_name.starts_with("pt-") || 
+           class_name.starts_with("pr-") || class_name.starts_with("pb-") || 
+           class_name.starts_with("pl-") || class_name.starts_with("px-") || 
+           class_name.starts_with("py-") {
+            if let Some(dash_pos) = class_name.rfind('-') {
+                let value = &class_name[dash_pos + 1..];
+                if let Ok(num) = value.parse::<f32>() {
+                    let prefix = &class_name[..dash_pos];
+                    let padding_value = match prefix {
+                        "p" => format!("{}px", num),
+                        "pt" => format!("{}px 0px 0px 0px", num),
+                        "pr" => format!("0px {}px 0px 0px", num),
+                        "pb" => format!("0px 0px {}px 0px", num),
+                        "pl" => format!("0px 0px 0px {}px", num),
+                        "px" => format!("0px {}px", num),
+                        "py" => format!("{}px 0px", num),
+                        _ => return None,
+                    };
+                    props.insert("padding".to_string(), padding_value);
+                    return Some(props);
+                }
+            }
+        }
+        
+        // Margin: m-{number}, mt-{number}, mr-{number}, mb-{number}, ml-{number}
+        // mx-{number} (horizontal), my-{number} (vertical)
+        if class_name.starts_with("m-") || class_name.starts_with("mt-") || 
+           class_name.starts_with("mr-") || class_name.starts_with("mb-") || 
+           class_name.starts_with("ml-") || class_name.starts_with("mx-") || 
+           class_name.starts_with("my-") {
+            if let Some(dash_pos) = class_name.rfind('-') {
+                let value = &class_name[dash_pos + 1..];
+                if let Ok(num) = value.parse::<f32>() {
+                    let prefix = &class_name[..dash_pos];
+                    match prefix {
+                        "m" => props.insert("margin".to_string(), format!("{}px", num)),
+                        "mt" => props.insert("margin".to_string(), format!("{}px 0px 0px 0px", num)),
+                        "mr" => props.insert("margin".to_string(), format!("0px {}px 0px 0px", num)),
+                        "mb" => props.insert("margin".to_string(), format!("0px 0px {}px 0px", num)),
+                        "ml" => props.insert("margin".to_string(), format!("0px 0px 0px {}px", num)),
+                        "mx" => props.insert("margin".to_string(), format!("0px {}px", num)),
+                        "my" => props.insert("margin".to_string(), format!("{}px 0px", num)),
+                        _ => None,
+                    };
+                    return Some(props);
+                }
+            }
+        }
+        
+        // Border radius: rounded-{number}, rounded-l-{number}, rounded-r-{number},
+        // rounded-t-{number}, rounded-b-{number}, rounded-tl-{number}, rounded-tr-{number}, 
+        // rounded-bl-{number}, rounded-br-{number}
+        if class_name.starts_with("rounded-") {
+            let after_rounded = &class_name[8..]; // Everything after "rounded-"
+            
+            // Try to find a second dash (e.g., "l-200" has dash at position 1)
+            if let Some(dash_pos) = after_rounded.find('-') {
+                // Case: rounded-{prefix}-{number} (e.g., rounded-l-200)
+                let prefix = &after_rounded[..dash_pos];
+                let value = &after_rounded[dash_pos + 1..];
+                if let Ok(num) = value.parse::<f32>() {
+                    let px_value = format!("{}px", num);
+                    
+                    match prefix {
+                        "l" => {
+                            // rounded-l-{n} - left side (tl, bl)
+                            props.insert("border-radius-tl".to_string(), px_value.clone());
+                            props.insert("border-radius-bl".to_string(), px_value);
+                        }
+                        "r" => {
+                            // rounded-r-{n} - right side (tr, br)
+                            props.insert("border-radius-tr".to_string(), px_value.clone());
+                            props.insert("border-radius-br".to_string(), px_value);
+                        }
+                        "t" => {
+                            // rounded-t-{n} - top side (tl, tr)
+                            props.insert("border-radius-tl".to_string(), px_value.clone());
+                            props.insert("border-radius-tr".to_string(), px_value);
+                        }
+                        "b" => {
+                            // rounded-b-{n} - bottom side (bl, br)
+                            props.insert("border-radius-bl".to_string(), px_value.clone());
+                            props.insert("border-radius-br".to_string(), px_value);
+                        }
+                        "tl" => {
+                            // rounded-tl-{n} - top-left corner
+                            props.insert("border-radius-tl".to_string(), px_value);
+                        }
+                        "tr" => {
+                            // rounded-tr-{n} - top-right corner
+                            props.insert("border-radius-tr".to_string(), px_value);
+                        }
+                        "bl" => {
+                            // rounded-bl-{n} - bottom-left corner
+                            props.insert("border-radius-bl".to_string(), px_value);
+                        }
+                        "br" => {
+                            // rounded-br-{n} - bottom-right corner
+                            props.insert("border-radius-br".to_string(), px_value);
+                        }
+                        _ => {
+                            // Unknown variant, set all corners
+                            props.insert("border-radius".to_string(), px_value);
+                        }
+                    }
+                    return Some(props);
+                }
+            } else {
+                // Case: rounded-{number} (e.g., rounded-10) - no second dash
+                if let Ok(num) = after_rounded.parse::<f32>() {
+                    props.insert("border-radius".to_string(), format!("{}px", num));
+                    return Some(props);
+                }
+            }
+        }
+        
+        // Gap: gap-{number}
+        if class_name.starts_with("gap-") {
+            let value = &class_name[4..];
+            if let Ok(num) = value.parse::<f32>() {
+                props.insert("gap".to_string(), format!("{}px", num));
+                return Some(props);
+            }
+        }
+        
+        // Background color with alpha: bg-{color}-{alpha}
+        // E.g., bg-white-50, bg-black-100, bg-red-75
+        if class_name.starts_with("bg-") {
+            let parts: Vec<&str> = class_name[3..].split('-').collect();
+            if parts.len() == 2 {
+                let color_name = parts[0];
+                if let Ok(alpha) = parts[1].parse::<u8>() {
+                    let alpha_f = alpha as f32 / 100.0;
+                    let color_value = match color_name {
+                        "white" => format!("rgba(255, 255, 255, {})", alpha_f),
+                        "black" => format!("rgba(0, 0, 0, {})", alpha_f),
+                        "red" => format!("rgba(255, 0, 0, {})", alpha_f),
+                        "green" => format!("rgba(0, 255, 0, {})", alpha_f),
+                        "blue" => format!("rgba(0, 0, 255, {})", alpha_f),
+                        "gray" | "grey" => format!("rgba(128, 128, 128, {})", alpha_f),
+                        "teal" => format!("rgba(84, 184, 255, {})", alpha_f),
+                        _ => return None,
+                    };
+                    props.insert("background-color".to_string(), color_value);
+                    return Some(props);
+                }
+            }
+        }
+        
+        // Text color with alpha: text-{color}-{alpha}
+        if class_name.starts_with("text-") {
+            let parts: Vec<&str> = class_name[5..].split('-').collect();
+            if parts.len() == 2 {
+                let color_name = parts[0];
+                if let Ok(alpha) = parts[1].parse::<u8>() {
+                    let alpha_f = alpha as f32 / 100.0;
+                    let color_value = match color_name {
+                        "white" => format!("rgba(255, 255, 255, {})", alpha_f),
+                        "black" => format!("rgba(0, 0, 0, {})", alpha_f),
+                        "red" => format!("rgba(255, 0, 0, {})", alpha_f),
+                        "green" => format!("rgba(0, 255, 0, {})", alpha_f),
+                        "blue" => format!("rgba(0, 0, 255, {})", alpha_f),
+                        "gray" | "grey" => format!("rgba(128, 128, 128, {})", alpha_f),
+                        "teal" => format!("rgba(84, 184, 255, {})", alpha_f),
+                        _ => return None,
+                    };
+                    props.insert("color".to_string(), color_value);
+                    return Some(props);
+                }
+            }
+        }
+        
+        // Image: icon-{name} (e.g., icon-pause, icon-play)
+        if class_name.starts_with("icon-") {
+            let image_name = &class_name[5..]; // Everything after "icon-"
+            props.insert("image".to_string(), image_name.to_string());
+            return Some(props);
+        }
+        
+        None
     }
 
     fn parse_element(
@@ -324,6 +530,7 @@ impl UiParser {
                 Component::new(ComponentType::Text(Text::new(text_content)))
             }
             "viewport" => Component::new(ComponentType::Viewport(super::components::Viewport::new())),
+            "image" | "img" => Component::new(ComponentType::Image(Image::new())),
             _ => return Err(format!("Unknown HTML tag: {}", tag_name)),
         };
 
@@ -342,8 +549,45 @@ impl UiParser {
         
         // Apply CSS classes
         let mut style = Style::default();
+        let mut gap_value: Option<f32> = None;
+        let mut hover_classes: Vec<String> = Vec::new();
+        let mut group_hover_classes: Vec<String> = Vec::new();
+        let mut is_group = false;
+        
         for class_name in &classes {
-            if let Some(class_props) = self.css_classes.get(class_name) {
+            // Check for "group" class
+            if class_name == "group" {
+                is_group = true;
+                continue;
+            }
+            
+            // Check for Tailwind-style group-hover prefix (e.g., group-hover:bg-white-50)
+            if class_name.starts_with("group-hover:") {
+                group_hover_classes.push(class_name[12..].to_string());
+                continue;
+            }
+            
+            // Check for Tailwind-style hover prefix (e.g., hover:bg-white-50)
+            if class_name.starts_with("hover:") {
+                hover_classes.push(class_name[6..].to_string());
+                continue;
+            }
+            
+            // Try dynamic class parsing first (e.g., w-50, bg-white-50, etc.)
+            if let Some(dynamic_props) = Self::parse_dynamic_class(class_name) {
+                // Check if this has a gap property
+                if let Some(gap_str) = dynamic_props.get("gap") {
+                    gap_value = Self::parse_size_value(gap_str)?;
+                }
+                // Apply style properties
+                style = Self::apply_css_properties(style, &dynamic_props)?;
+                // Apply image properties (e.g., icon-{name})
+                for (key, value) in dynamic_props.iter() {
+                    if key == "image" || key == "src" {
+                        Self::apply_image_property(&mut component, key, value)?;
+                    }
+                }
+            } else if let Some(class_props) = self.css_classes.get(class_name) {
                 style = Self::apply_css_properties(style, class_props)?;
                 
                 // Handle position: absolute from CSS classes
@@ -426,6 +670,17 @@ impl UiParser {
                         }
                     }
                 }
+
+                for (key, value) in class_props.iter() {
+                    Self::apply_image_property(&mut component, key, value)?;
+                }
+            }
+        }
+        
+        // Apply gap from dynamic classes
+        if let Some(gap) = gap_value {
+            if let ComponentType::View(ref mut view) = component.component_type {
+                view.gap = gap;
             }
         }
 
@@ -471,9 +726,109 @@ impl UiParser {
                     view.column_alignment = Self::parse_alignment(align)?;
                 }
             }
+
+            for (key, value) in inline_props.iter() {
+                Self::apply_image_property(&mut component, key, value)?;
+            }
         }
 
-        component.style = style;
+        if let Some(image_src) = attributes.get("image") {
+            Self::apply_image_property(&mut component, "image", image_src)?;
+        }
+        if let Some(src) = attributes.get("src") {
+            Self::apply_image_property(&mut component, "src", src)?;
+        }
+        if let Some(resize) = attributes.get("resize-mode") {
+            Self::apply_image_property(&mut component, "resize-mode", resize)?;
+        }
+        if let Some(resize) = attributes.get("resize") {
+            Self::apply_image_property(&mut component, "resize-mode", resize)?;
+        }
+        if let Some(tint) = attributes.get("tint") {
+            Self::apply_image_property(&mut component, "tint", tint)?;
+        }
+        if let Some(tint) = attributes.get("tint-color") {
+            Self::apply_image_property(&mut component, "tint", tint)?;
+        }
+
+        component.style = style.clone();
+        component.base_style = style.clone();
+        
+        // Parse hover styles from both CSS :hover and Tailwind hover: prefix
+        let mut hover_style = None;
+        
+        // First, check for CSS class:hover styles
+        for class_name in &classes {
+            let hover_class = format!("{}:hover", class_name);
+            if let Some(hover_props) = self.css_classes.get(&hover_class) {
+                let mut h_style = style.clone();
+                h_style = Self::apply_css_properties(h_style, hover_props)?;
+                
+                // Apply hover-specific image properties
+                for (key, value) in hover_props.iter() {
+                    Self::apply_image_hover_property(&mut component, key, value)?;
+                }
+                
+                hover_style = Some(h_style);
+            }
+        }
+        
+        // Then, apply Tailwind-style hover: classes
+        if !hover_classes.is_empty() {
+            let mut h_style = hover_style.unwrap_or_else(|| style.clone());
+            
+            for hover_class_name in &hover_classes {
+                // Try dynamic class parsing
+                if let Some(dynamic_props) = Self::parse_dynamic_class(hover_class_name) {
+                    h_style = Self::apply_css_properties(h_style, &dynamic_props)?;
+                    // Apply hover image properties (e.g., hover:icon-pause-highlighted)
+                    for (key, value) in dynamic_props.iter() {
+                        if key == "image" || key == "src" {
+                            Self::apply_image_hover_property(&mut component, key, value)?;
+                        }
+                    }
+                } else if let Some(class_props) = self.css_classes.get(hover_class_name) {
+                    h_style = Self::apply_css_properties(h_style, class_props)?;
+                }
+            }
+            
+            hover_style = Some(h_style);
+        }
+        
+        component.hover_style = hover_style;
+        
+        // Set group flag
+        component.is_group = is_group;
+        
+        // Parse group-hover styles (styles to apply when parent group is hovered)
+        let mut group_hover_style = None;
+        if !group_hover_classes.is_empty() {
+            let mut gh_style = style.clone();
+            
+            for group_hover_class_name in &group_hover_classes {
+                // Try dynamic class parsing
+                if let Some(dynamic_props) = Self::parse_dynamic_class(group_hover_class_name) {
+                    gh_style = Self::apply_css_properties(gh_style, &dynamic_props)?;
+                    // Apply group-hover image properties (e.g., group-hover:icon-pause-highlighted)
+                    for (key, value) in dynamic_props.iter() {
+                        if key == "image" || key == "src" {
+                            Self::apply_image_group_hover_property(&mut component, key, value)?;
+                        }
+                    }
+                } else if let Some(class_props) = self.css_classes.get(group_hover_class_name) {
+                    gh_style = Self::apply_css_properties(gh_style, class_props)?;
+                    
+                    // Apply group-hover-specific image properties
+                    for (key, value) in class_props.iter() {
+                        Self::apply_image_group_hover_property(&mut component, key, value)?;
+                    }
+                }
+            }
+            
+            group_hover_style = Some(gh_style);
+        }
+        
+        component.group_hover_style = group_hover_style;
 
         // Parse layout attributes
         // Note: flex-direction is only used for View components and is stored in View, not Layout
@@ -521,7 +876,10 @@ impl UiParser {
                 }
             }
             ComponentType::View(view) => {
-                if let Some(on_click) = attributes.get("on-click") {
+                if let Some(on_click) = attributes
+                    .get("on-click")
+                    .or_else(|| attributes.get("onclick"))
+                {
                     view.on_click = Some(on_click.clone());
                 }
             }
@@ -734,7 +1092,36 @@ impl UiParser {
                     style.border.color = Self::parse_color_value(value)?;
                 }
                 "border-radius" => {
-                    style.border.radius = Self::parse_size_value(value)?.unwrap_or(0.0);
+                    let radius = Self::parse_size_value(value)?.unwrap_or(0.0);
+                    style.border.radius = radius;
+                    style.border.radius_tl = radius;
+                    style.border.radius_tr = radius;
+                    style.border.radius_br = radius;
+                    style.border.radius_bl = radius;
+                }
+                "border-radius-tl" => {
+                    style.border.radius_tl = Self::parse_size_value(value)?.unwrap_or(0.0);
+                    // Update main radius to max of all corners
+                    style.border.radius = style.border.radius_tl.max(style.border.radius_tr)
+                        .max(style.border.radius_br).max(style.border.radius_bl);
+                }
+                "border-radius-tr" => {
+                    style.border.radius_tr = Self::parse_size_value(value)?.unwrap_or(0.0);
+                    // Update main radius to max of all corners
+                    style.border.radius = style.border.radius_tl.max(style.border.radius_tr)
+                        .max(style.border.radius_br).max(style.border.radius_bl);
+                }
+                "border-radius-br" => {
+                    style.border.radius_br = Self::parse_size_value(value)?.unwrap_or(0.0);
+                    // Update main radius to max of all corners
+                    style.border.radius = style.border.radius_tl.max(style.border.radius_tr)
+                        .max(style.border.radius_br).max(style.border.radius_bl);
+                }
+                "border-radius-bl" => {
+                    style.border.radius_bl = Self::parse_size_value(value)?.unwrap_or(0.0);
+                    // Update main radius to max of all corners
+                    style.border.radius = style.border.radius_tl.max(style.border.radius_tr)
+                        .max(style.border.radius_br).max(style.border.radius_bl);
                 }
                 "shadow" | "box-shadow" => {
                     style.shadow = Self::parse_shadow_value(value)?;
@@ -751,6 +1138,14 @@ impl UiParser {
                 "height" => {
                     style.height = Self::parse_size_css(value)?;
                 }
+                "flex" => {
+                    // Parse flex shorthand (e.g., "flex: 1" means flex-grow: 1)
+                    if let Ok(flex_value) = value.trim().parse::<f32>() {
+                        // Set both width and height to flex (will be used depending on flex direction)
+                        style.width = Size::Flex(flex_value);
+                        style.height = Size::Flex(flex_value);
+                    }
+                }
                 "z-index" => {
                     if let Ok(z_index) = value.trim().parse::<i32>() {
                         style.z_index = z_index;
@@ -762,6 +1157,69 @@ impl UiParser {
             }
         }
         Ok(style)
+    }
+
+    fn apply_image_property(component: &mut Component, key: &str, value: &str) -> Result<(), String> {
+        if let ComponentType::Image(ref mut image) = component.component_type {
+            let normalized_key = key.trim().to_lowercase();
+            let trimmed_value = value.trim();
+
+            match normalized_key.as_str() {
+                "image" | "src" => {
+                    image.set_source(trimmed_value);
+                }
+                "resize-mode" | "resize" => {
+                    image.set_resize_mode(trimmed_value);
+                }
+                "tint" | "tint-color" => {
+                    let color = Self::parse_color_value(trimmed_value)?;
+                    image.set_tint(color);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    fn apply_image_hover_property(component: &mut Component, key: &str, value: &str) -> Result<(), String> {
+        if let ComponentType::Image(ref mut image) = component.component_type {
+            let normalized_key = key.trim().to_lowercase();
+            let trimmed_value = value.trim();
+
+            match normalized_key.as_str() {
+                "image" | "src" => {
+                    image.set_hover_source(trimmed_value);
+                }
+                "tint" | "tint-color" => {
+                    let color = Self::parse_color_value(trimmed_value)?;
+                    image.set_hover_tint(color);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+    
+    fn apply_image_group_hover_property(component: &mut Component, key: &str, value: &str) -> Result<(), String> {
+        if let ComponentType::Image(ref mut image) = component.component_type {
+            let normalized_key = key.trim().to_lowercase();
+            let trimmed_value = value.trim();
+
+            match normalized_key.as_str() {
+                "image" | "src" => {
+                    image.set_group_hover_source(trimmed_value);
+                }
+                "tint" | "tint-color" => {
+                    let color = Self::parse_color_value(trimmed_value)?;
+                    image.set_group_hover_tint(color);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
     }
 
     fn parse_color_value(value: &str) -> Result<Color, String> {
@@ -779,9 +1237,16 @@ impl UiParser {
                     .map_err(|_| format!("Invalid rgba green value: {}", parts[1]))? / 255.0;
                 let b = parts[2].parse::<f32>()
                     .map_err(|_| format!("Invalid rgba blue value: {}", parts[2]))? / 255.0;
-                let a = parts[3].parse::<f32>()
-                    .map_err(|_| format!("Invalid rgba alpha value: {}", parts[3]))? / 255.0;
-                Ok(Color::new(r, g, b, a))
+                let mut a = parts[3].parse::<f32>()
+                    .map_err(|_| format!("Invalid rgba alpha value: {}", parts[3]))?;
+                
+                // Auto-detect alpha format: if > 1.0, assume it's 0-255 range and divide by 255
+                if a > 1.0 {
+                    a = a / 255.0;
+                }
+                
+                let color = Color::new(r, g, b, a);
+                Ok(color)
             } else {
                 Err(format!("Invalid rgba format: {}", value))
             }
@@ -808,6 +1273,7 @@ impl UiParser {
                 "red" => Ok(Color::rgb(1.0, 0.0, 0.0)),
                 "green" => Ok(Color::rgb(0.0, 1.0, 0.0)),
                 "blue" => Ok(Color::rgb(0.0, 0.0, 1.0)),
+                "teal" => Ok(Color::rgb(0.33, 0.72, 1.0)),
                 _ => Err(format!("Unknown color: {}", value)),
             }
         }

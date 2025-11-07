@@ -12,14 +12,13 @@ impl ComputePipelines {
     pub fn new(
         device: &wgpu::Device,
         cell_buffer: &wgpu::Buffer,
-        lifeform_buffer: &wgpu::Buffer,
         uniform_buffer: &wgpu::Buffer,
         cell_free_list_buffer: &wgpu::Buffer,
     ) -> Self {
         // Create shader module
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Compute Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/compute.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("kernels/cells.wgsl").into()),
         });
 
         // Create bind group layout
@@ -30,7 +29,7 @@ impl ComputePipelines {
                     binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -48,16 +47,6 @@ impl ComputePipelines {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -90,18 +79,14 @@ impl ComputePipelines {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: cell_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: lifeform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
                     resource: uniform_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 3,
+                    binding: 1,
+                    resource: cell_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
                     resource: cell_free_list_buffer.as_entire_binding(),
                 },
             ],
@@ -129,8 +114,8 @@ impl RenderPipelines {
         cell_free_list_buffer: &wgpu::Buffer,
     ) -> Self {
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Render Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/render.wgsl").into()),
+            label: Some("Cells Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/cells.wgsl").into()),
         });
 
         let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -140,7 +125,7 @@ impl RenderPipelines {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -150,7 +135,7 @@ impl RenderPipelines {
                     binding: 1,
                     visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -219,11 +204,11 @@ impl RenderPipelines {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: cell_buffer.as_entire_binding(),
+                    resource: uniform_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: uniform_buffer.as_entire_binding(),
+                    resource: cell_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,

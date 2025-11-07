@@ -3,8 +3,8 @@
 use wgpu;
 use puffin::profile_scope;
 
-use crate::modules::math::Vec2;
-use crate::gpu::device::GpuDevice;
+use crate::utils::math::Vec2;
+use crate::utils::gpu::device::GpuDevice;
 use crate::gpu::buffers::GpuBuffers;
 use crate::gpu::pipelines::RenderPipelines;
 use crate::gpu::bounds_renderer::BoundsRenderer;
@@ -21,6 +21,7 @@ impl Renderer {
         buffers: &GpuBuffers,
         render_pipelines: &RenderPipelines,
         bounds_renderer: &mut BoundsRenderer,
+        environment: &mut crate::simulator::environment::Environment,
         ui_renderer: &mut UiRenderer,
         ui_manager: &mut crate::ui::UIManager,
         bounds_corners: [Vec2; 4],
@@ -70,21 +71,49 @@ impl Renderer {
         // Update bounds renderer with viewport dimensions
         {
             profile_scope!("Update Bounds");
+            let bounds = environment.get_bounds();
             // Get viewport dimensions from the viewport texture
             // For now, use screen dimensions - we can get actual viewport size later if needed
             let view_size = Vec2::new(gpu.config.width as f32, gpu.config.height as f32);
             bounds_renderer.update_bounds(
                 &gpu.queue,
                 bounds_corners,
+                bounds,
                 camera_pos,
                 zoom,
                 view_size.x,
                 view_size.y,
-                [0.0, 1.0, 0.0, 1.0], // Green color
+                [1.0, 1.0, 1.0, 1.0], // White border
             );
         }
 
-        // Render simulation cells to viewport texture
+        // Update planet texture if bounds changed
+        {
+            profile_scope!("Update Planet");
+            environment.planet_mut().update(&gpu.device, &gpu.queue, gpu.config.format);
+        }
+        
+        // Render planet background and bounds border to viewport texture
+        {
+            profile_scope!("Render Planet Background & Bounds");
+            let bounds = environment.get_bounds();
+            let view_size = Vec2::new(gpu.config.width as f32, gpu.config.height as f32);
+            let planet_texture_view = environment.planet().texture_view();
+            
+            bounds_renderer.render(
+                encoder,
+                &gpu.device,
+                &gpu.queue,
+                viewport_texture_view,
+                planet_texture_view,
+                camera_pos,
+                zoom,
+                view_size,
+                bounds,
+            );
+        }
+        
+        // Render simulation cells to viewport texture (on top of planet background)
         {
             profile_scope!("Render Cells");
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -93,7 +122,7 @@ impl Renderer {
                     view: viewport_texture_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),  // Clear viewport
+                        load: wgpu::LoadOp::Load,  // Load existing planet background
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -106,12 +135,6 @@ impl Renderer {
             render_pass.set_pipeline(&render_pipelines.points);
             render_pass.set_bind_group(0, &render_pipelines.render_bind_group, &[]);
             render_pass.draw(0..4, 0..(num_points as u32)); // 4 vertices per quad, num_points instances
-        }
-
-        // Render bounds to viewport texture
-        {
-            profile_scope!("Render Bounds");
-            bounds_renderer.render(encoder, viewport_texture_view);
         }
 
         true

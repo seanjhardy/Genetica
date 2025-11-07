@@ -1,18 +1,12 @@
-// Compute shader for cell and lifeform updates
+// Compute shader for cell updates
 
 struct Cell {
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
     energy: f32,
+    cell_wall_thickness: f32,
     lifeform_idx: u32,
     random_force: vec2<f32>, // Random force vector that changes over time
-}
-
-struct Lifeform {
-    first_cell_idx: u32,
-    cell_count: u32,
-    is_alive: u32,
-    _padding: u32,
 }
 
 // Uniforms struct must match Rust struct layout exactly (including padding)
@@ -27,22 +21,19 @@ struct Uniforms {
     bounds: vec4<f32>,
     view_size: vec2<f32>,
     cell_capacity: u32,
-    num_lifeforms: u32,
-    _padding4: vec2<f32>,
-    _final_padding: vec2<f32>,
+    free_cells_count: u32,
 }
 
+
 @group(0) @binding(0)
-var<storage, read_write> cells: array<Cell>;
-
-@group(0) @binding(1)
-var<storage, read_write> lifeforms: array<Lifeform>;
-
-@group(0) @binding(2)
 var<uniform> uniforms: Uniforms;
 
-@group(0) @binding(3)
+@group(0) @binding(1)
+var<storage, read_write> cells: array<Cell>;
+
+@group(0) @binding(2)
 var<storage, read_write> cell_free_list: array<atomic<u32>>;
+
 
 fn rand(seed: vec2<u32>) -> f32 {
     var x = seed.x * 1664525u + 1013904223u;
@@ -63,48 +54,35 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Check if this cell index is in the free list first
     // cell_free_list[0] is the count, cell_free_list[1..] are the free indices
-    /*let free_count = atomicLoad(&cell_free_list[0]);
-    for (var i: u32 = 1u; i <= free_count; i++) {
+    for (var i: u32 = 0u; i < uniforms.free_cells_count; i++) {
         if atomicLoad(&cell_free_list[i]) == index {
             return;
         }
-    }*/
+    }
 
     var cell = cells[index];
     
-    // Check if the lifeform is alive
-    /*let lifeform_idx = cell.lifeform_idx;
-    if lifeform_idx >= uniforms.num_lifeforms {
-        return;
-    }
-    
-    let lifeform = lifeforms[lifeform_idx];
-    if lifeform.is_alive == 0u {
-        return;
-    }*/
-    
     // Decrease energy over time (metabolic rate)
-    // TEMPORARILY DISABLED - cells are dying too fast
-    // let energy_decay_rate = 0.1; // Energy units per second (slower decay)
-    // cell.energy -= energy_decay_rate * uniforms.delta_time;
+    let energy_decay_rate = 0.1; // Energy units per second (slower decay)
+    cell.energy -= energy_decay_rate * uniforms.delta_time;
     
     // Remove cell if energy reaches 0
     // TEMPORARILY DISABLED - don't remove cells based on energy
-    /*if cell.energy <= 0.0 {
+    if cell.energy <= 0.0 {
         cell.energy = 0.0;
         cells[index] = cell;
         
         // Add this cell's index to the free list atomically
         // cell_free_list[0] is the count, cell_free_list[1..] are the free indices
-        let free_index = atomicAdd(&cell_free_list[0], 1u);
+        let free_index = uniforms.free_cells_count;
         // Write the index at position (free_index + 1) since index 0 is the count
         // Use atomicStore to ensure thread-safe write
-        atomicStore(&cell_free_list[free_index + 1u], index);
+        //atomicStore(&cell_free_list[free_index], index);
         
         // Update lifeform cell count (atomic operation not available in WGSL,
         // so we'll handle this on CPU side after reading back results)
-        return;
-    }*/
+        //return;
+    }
     
     // Generate random position offset for this timestep
     // Use cell index + current position as seed - this ensures each cell gets different randomness

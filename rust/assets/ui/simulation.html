@@ -4,10 +4,14 @@
     <viewport id="simulation" class="bg-black flex-1 w-full h-full"/>
     
     <!-- Show UI button view (hidden by default) -->
-    <view id="showUIView" class="absolute flex-row col-start row-end m-20 hidden">
-        <view class="w-25px h-25px bg-transparent col-center row-center rounded-5" on-click="showUI">
-            Show UI
+    <view id="showUIView" class="absolute w-full h-full flex-row col-start row-start hidden text-white">
+        <view class="w-80 h-80 m-10 bg-transparent col-center row-center rounded-5 group" on-click="showUI">
+            <image id="showUIIcon" class="w-60 h-60 icon-eye group-hover:icon-eyeHighlighted"/>
         </view>
+    </view>
+
+    <view class="absolute top-0 right-0 text-white pt-10 text-center text-lg">
+        <text id="fps" class="text-center">59.9fps</text>
     </view>
     
     <!-- Main UI container -->
@@ -15,32 +19,31 @@
         <!-- Tabs component -->
         
         <!-- ControlPanel component - positioned at bottom using flex -->
-        <view id="controlPanel" class="flex-col gap-5 col-center row-end p-5 bg-red-100">
+        <view id="controlPanel" class="w-full flex-col gap-15 col-center row-end p-5">
             <!-- Time and step display -->
-            <view class="flex-row text-large gap-5 col-center row-center w-200 h-20 text-white">
+            <view class="flex-row text-lg gap-5 col-center row-center h-20 text-white">
                 <text id="time" class="text-white text-center text-white">00:00:00</text>
                 <text id="step" class="text-white text-center text-white">0</text>
             </view>
             
             <!-- Control buttons -->
-            <view class="w-280 h-50px p-5 flex-row col-center bg-black-100 border-2 border-white-40 rounded-15">
-                <view class="w-50px h-full"/>
-                <view class="bg-white-30 rounded-20 flex-row h-full flex-1 col-center row-start gap-10 p-5">
-                    <view id="slowDownBtn" class="flex-1 text-base p-3 bg-white-30 border-none 
-                    rounded-15 shadow-sm col-center row-center h-full" on-click="slowDown">
-                        -
+            <view class="w-400 h-80 p-10 gap-20 flex-row col-center bg-black-50 border-2 border-white-40 rounded-full">
+                <view class="bg-white-30 rounded-full bg-white-10 flex-row h-full flex-1 col-center row-start gap-10 p-8">
+                    <view id="slowDownBtn" class="flex-1 text-base p-3 bg-white-10 hover:bg-teal-50 border-none 
+                    rounded-10 shadow-lg col-center row-center h-full rounded-l-200 group" on-click="slowDown">
+                        <image id="slowDownBtnIcon" class="w-40 h-40 icon-slowDown group-hover:icon-slowDownHighlighted"/>
                     </view>
-                    <view id="playBtn" class="flex-1 text-base p-3 bg-white-30 border-none rounded-15 
-                    shadow-sm col-center row-center h-full" on-click="togglePaused">
-                        Pause
+                    <view id="playBtn" class="flex-1 text-base p-3 bg-white-10 hover:bg-teal-50 border-none rounded-10 
+                    shadow-lg col-center row-center h-full group" on-click="togglePaused">
+                        <image id="playBtnIcon" class="w-40 h-40 icon-pause group-hover:icon-pauseHighlighted"/>
                     </view>
-                    <view id="speedUpBtn" class="flex-1 text-base p-3 bg-white-30 border-none rounded-15 
-                    shadow-sm col-center row-center h-full" on-click="speedUp">
-                        +
+                    <view id="speedUpBtn" class="flex-1 text-base p-3 bg-white-10 hover:bg-teal-50 border-none rounded-10 
+                    shadow-lg col-center row-center h-full rounded-r-200 group" on-click="speedUp">
+                        <image id="speedUpBtnIcon" class="w-40 h-40 icon-speedUp group-hover:icon-speedUpHighlighted"/>
                     </view>
                 </view>
-                <view class="w-50px h-full col-center row-center">
-                    <text id="speed" class="text-sm text-white">x1.0</text>
+                <view class="h-full col-center row-center text-lg w-120">
+                    <text id="speed" class="text-white">x1.000</text>
                 </view>
             </view>
         </view>

@@ -15,7 +15,7 @@ pub struct Genome {
 }
 
 impl Genome {
-    pub const HOX_SIZE: usize = 100;
+    pub const INITIAL_HOX_SIZE: usize = 20;
 
     /// Create a new empty genome
     pub fn new() -> Self {

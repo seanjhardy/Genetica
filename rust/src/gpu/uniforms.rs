@@ -15,9 +15,7 @@ pub struct Uniforms {
     pub bounds: [f32; 4], // 16 bytes at offset 32
     pub view_size: [f32; 2], // 8 bytes at offset 48
     pub cell_capacity: u32, // 4 bytes at offset 56 (fixed buffer capacity)
-    pub num_lifeforms: u32, // 4 bytes at offset 60
-    _padding4: [f32; 2], // 8 bytes at offset 64 to reach 72 bytes
-    _final_padding: [f32; 2], // 8 bytes at offset 72 to reach 80 bytes (maintain 80 byte alignment)
+    free_cells_count: u32, // 4 bytes at offset 60
 }
 
 // Manually implement Pod and Zeroable since we have explicit padding
@@ -39,9 +37,7 @@ impl Uniforms {
             bounds: [0.0, 0.0, 0.0, 0.0],
             view_size: [0.0, 0.0],
             cell_capacity: 0,
-            num_lifeforms: 0,
-            _padding4: [0.0, 0.0],
-            _final_padding: [0.0, 0.0],
+            free_cells_count: 0,
         }
     }
 }
@@ -59,7 +55,7 @@ impl Uniforms {
         view_width: f32,
         view_height: f32,
         cell_capacity: u32,
-        num_lifeforms: u32,
+        free_cells_count: u32,
     ) -> Self {
         Self {
             delta_time,
@@ -72,9 +68,7 @@ impl Uniforms {
             bounds: [left, top, right, bottom],
             view_size: [view_width, view_height],
             cell_capacity,
-            num_lifeforms,
-            _padding4: [0.0, 0.0],
-            _final_padding: [0.0, 0.0],
+            free_cells_count,
         }
     }
 }

@@ -45,7 +45,17 @@ impl UIManager {
     pub fn get_screen(&mut self, name: &str) -> Option<&mut Screen> {
         self.screens.get_mut(name)
     }
-    
+
+    /// Handle mouse click on the current screen - returns handler name if triggered
+    pub fn handle_click(&mut self, mouse_pos: (f32, f32)) -> Option<String> {
+        if let Some(screen_name) = self.current_screen.clone() {
+            if let Some(screen) = self.screens.get_mut(&screen_name) {
+                return screen.handle_click(mouse_pos);
+            }
+        }
+        None
+    }
+
     pub fn resize(&mut self, width: f32, height: f32) {
         self.window_width = width;
         self.window_height = height;

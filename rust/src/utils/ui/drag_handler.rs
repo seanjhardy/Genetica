@@ -1,6 +1,6 @@
 // Drag handler for resizing bounding boxes
 
-use crate::modules::math::{Rect, Vec2};
+use crate::utils::math::{Rect, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DragHandle {

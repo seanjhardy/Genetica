@@ -187,7 +187,7 @@ void Environment::reset() {
     planet->setBounds(bounds.hostData());
 
     // Spawn test points after reset
-    spawnTestPoints(6000);
+    spawnTestPoints(100);
 };
 
 void Environment::cleanup() {

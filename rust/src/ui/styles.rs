@@ -60,16 +60,40 @@ impl Color {
 pub struct Border {
     pub width: f32,
     pub color: Color,
-    pub radius: f32,
+    pub radius: f32, // Legacy: uniform radius for all corners
+    pub radius_tl: f32, // Top-left
+    pub radius_tr: f32, // Top-right
+    pub radius_br: f32, // Bottom-right
+    pub radius_bl: f32, // Bottom-left
 }
 
 impl Border {
     pub fn new(width: f32, color: Color, radius: f32) -> Self {
-        Self { width, color, radius }
+        Self { 
+            width, 
+            color, 
+            radius,
+            radius_tl: radius,
+            radius_tr: radius,
+            radius_br: radius,
+            radius_bl: radius,
+        }
+    }
+    
+    pub fn with_corner_radii(width: f32, color: Color, tl: f32, tr: f32, br: f32, bl: f32) -> Self {
+        Self {
+            width,
+            color,
+            radius: tl.max(tr).max(br).max(bl), // Use max for legacy compatibility
+            radius_tl: tl,
+            radius_tr: tr,
+            radius_br: br,
+            radius_bl: bl,
+        }
     }
 
     pub fn none() -> Self {
-        Self { width: 0.0, color: Color::transparent(), radius: 0.0 }
+        Self::new(0.0, Color::transparent(), 0.0)
     }
 }
 
