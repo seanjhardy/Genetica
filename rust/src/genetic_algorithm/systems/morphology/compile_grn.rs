@@ -14,8 +14,9 @@ pub struct CompiledGRN {
   pub inputs: Vec<GRNInput>,
 
   // Dimensions
-  pub w_inh_h_dim: (usize, usize),
-  pub w_h_out_dim: (usize, usize),
+  pub input_size: usize,
+  pub hidden_size: usize,
+  pub output_size: usize,
 
   // GPU Buffers for inputs and outputs
   // Previous states hidden nodes are included in input buffer
@@ -50,7 +51,7 @@ impl CompiledGRN {
     });
 
     // Set up gpu-side weight matrices
-    let w_inh_h_dim = (inputs.len(), grn.regulatory_units.len());
+    let w_inh_h_dim = (inputs.len() + grn.regulatory_units.len(), grn.regulatory_units.len());
     let w_h_out_dim = (grn.regulatory_units.len(), grn.effectors.len());
 
     // Set up matrices using values from affinities of genes
@@ -74,19 +75,36 @@ impl CompiledGRN {
         }
       }
     }
-    let w_in_h = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let w_inh_h = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
       label: Some("W In H Buffer"),
       contents: bytemuck::cast_slice(&w_inh_h_cpu),
       usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
     });
 
+
+    // h -> out weight matrix
+    let mut w_h_out_cpu = vec![0.0f32; w_h_out_dim.0 * w_h_out_dim.1];
+    for (i, regulatory_unit) in grn.regulatory_units.iter().enumerate() {
+      for (j, effector) in grn.effectors.iter().enumerate() {
+        for factor in regulatory_unit.factors.iter() {
+          w_h_out_cpu[i * w_h_out_dim.1 + j] += calculate_affinity(factor, effector);
+        }
+      }
+    }
+    let w_h_out = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+      label: Some("W H Out Buffer"),
+      contents: bytemuck::cast_slice(&w_h_out_cpu),
+      usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    });
+
     Self {
       inputs,
-      in_state
+      in_state,
       out_state,
-      w_in_h_dim,
-      w_h_out_dim,
-      w_in_h,
+      input_size: grn.receptors.len(),
+      hidden_size: grn.regulatory_units.len(),
+      output_size: grn.effectors.len(),
+      w_inh_h,
       w_h_out,
     }
   }

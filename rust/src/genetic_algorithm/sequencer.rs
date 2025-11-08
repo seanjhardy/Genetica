@@ -1,5 +1,7 @@
 // Sequencer - reads genome and builds gene regulatory network
 
+use std::collections::VecDeque;
+
 use crate::genetic_algorithm::genome::Genome;
 use crate::genetic_algorithm::systems::{GeneRegulatoryNetwork, Receptor, Factor, Promoter, Effector,
      RegulatoryUnit, ReceptorType, FactorType, PromoterType, EffectorType, EMBEDDING_DIMENSIONS};
@@ -22,10 +24,12 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
     let mut reading_promoters = true;
     
     // Process each gene in the genome
-    for (_gene_id, sequence) in genome.hox_gene_order.iter()
+    for (_gene_id, sequence) in genome
+        .hox_gene_order
+        .iter()
         .filter_map(|id| genome.hox_genes.get(id).map(|seq| (*id, seq.clone())))
     {
-        let mut rna = sequence.clone();
+        let mut rna: VecDeque<u8> = VecDeque::from(sequence.clone());
         
         // Process genes until RNA is exhausted or we can't read more
         while rna.len() >= 20 { // Minimum required bases for a gene (2 + 1 + 1 + 8 + 8*3 = 20)
@@ -167,8 +171,6 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
     grn.receptors = receptors;
     grn.effectors = effectors;
     grn.regulatory_units = regulatory_units;
-    //grn.calculate_affinities();
-    
     grn
 }
 

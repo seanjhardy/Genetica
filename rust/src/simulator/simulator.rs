@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use winit::{
     application::ApplicationHandler,
@@ -37,7 +38,6 @@ pub struct Simulation {
     queue: Arc<wgpu::Queue>,
     compute_pipelines: ComputePipelines,
     buffers: Arc<GpuBuffers>,
-    environment: Arc<parking_lot::Mutex<Environment>>,
     paused: bool,
     speed: Arc<parking_lot::Mutex<f32>>, // Shared speed for thread-safe access
     
@@ -46,6 +46,12 @@ pub struct Simulation {
     
     // Step counter (atomic for thread-safe access)
     step_count: Arc<AtomicU64>,
+
+    // Batched command submission
+    pending_command_buffers: Vec<wgpu::CommandBuffer>,
+    submission_batch_size: usize,
+    max_submission_delay: Duration,
+    last_submission: Instant,
 }
 
 impl Simulation {
@@ -54,7 +60,6 @@ impl Simulation {
         queue: Arc<wgpu::Queue>,
         compute_pipelines: ComputePipelines,
         buffers: Arc<GpuBuffers>,
-        environment: Arc<parking_lot::Mutex<Environment>>,
         speed: Arc<parking_lot::Mutex<f32>>,
     ) -> Self {
         Self {
@@ -62,11 +67,14 @@ impl Simulation {
             queue,
             compute_pipelines,
             buffers,
-            environment,
             paused: false,
             speed,
-            workgroup_size: 128, // Match compute shader workgroup size
+            workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
+            pending_command_buffers: Vec::with_capacity(4),
+            submission_batch_size: 4,
+            max_submission_delay: Duration::from_micros(500),
+            last_submission: Instant::now(),
         }
     }
     
@@ -80,9 +88,12 @@ impl Simulation {
     
     // Run a single simulation step (called as fast as possible)
     pub fn step(&mut self) {
+        profile_scope!("Simulation Step");
+        
         // Skip simulation if paused
         if self.paused {
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            self.flush_pending_submissions();
+            thread::sleep(Duration::from_millis(10));
             return;
         }
         
@@ -91,51 +102,25 @@ impl Simulation {
         // At speed 1.0, we sleep 100us per step
         // At speed 0.5, we sleep 200us per step (half speed)
         // At speed 2.0, we sleep 50us per step (double speed)
-        let speed = *self.speed.lock();
-        if speed > 0.0 {
-            let base_sleep_micros = 100.0;
-            let adjusted_sleep = (base_sleep_micros / speed) as u64;
-            std::thread::sleep(std::time::Duration::from_micros(adjusted_sleep));
-        }
-        
-        // DON'T update uniforms here - the render thread handles uniform updates
-        // This prevents race conditions where both threads write to uniforms simultaneously
-        // The compute shader doesn't need camera/view info anyway, just physics bounds
-        
-        // Get bounds for compute (but don't update uniforms - render thread does that)
-        let environment = self.environment.lock();
-        let _bounds = environment.get_bounds();
-        drop(environment);
-        
-        // Submit simulation compute pass (non-blocking - GPU operations are async)
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Simulation Encoder"),
-        });
-        
-        // Compute always reads and writes to the write buffer
-        // The bind group was created pointing to the write buffer and never changes
-        // After compute finishes, the render thread will copy write->read
-        let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("Update Compute Pass"),
-            timestamp_writes: None,
-        });
+        let speed = {
+            profile_scope!("Simulation Rate Control");
+            let speed = (*self.speed.lock()).max(0.0);
+            if speed > 0.0 && speed < 1.0 {
+                let base_sleep_micros = 100.0;
+                let adjusted_sleep = (base_sleep_micros / speed.max(0.01)) as u64;
+                if adjusted_sleep > 0 {
+                    self.flush_pending_submissions();
+                    thread::sleep(Duration::from_micros(adjusted_sleep));
+                }
+            } else if speed == 0.0 {
+                self.flush_pending_submissions();
+                thread::sleep(Duration::from_millis(5));
+            }
+            speed
+        };
 
-        compute_pass.set_pipeline(&self.compute_pipelines.update);
-        compute_pass.set_bind_group(0, &self.compute_pipelines.compute_bind_group, &[]);
-
-        // Dispatch for actual cell count (but uniforms.cell_capacity bounds the shader loop)
-        let num_cells = self.buffers.cell_size() as u32;
-        compute_pass.dispatch_workgroups((num_cells + self.workgroup_size - 1) / self.workgroup_size, 1, 1);
-        
-        drop(compute_pass);
-        let command_buffer = encoder.finish();
-        
-        // Submit compute work - GPU will execute asynchronously
-        // The render thread's uniform updates will ensure correct camera/bounds for rendering
-        self.queue.submit(std::iter::once(command_buffer));
-        
-        // Increment step counter
-        self.step_count.fetch_add(1, Ordering::Relaxed);
+        let iterations = (speed.max(1.0).floor() as u32).max(1);
+        self.run_compute_batch(iterations);
     }
     
     pub fn get_step_count(&self) -> u64 {
@@ -144,6 +129,68 @@ impl Simulation {
     
     pub fn get_buffers(&self) -> Arc<GpuBuffers> {
         self.buffers.clone()
+    }
+
+    pub fn flush_pending(&mut self) {
+        self.flush_pending_submissions();
+    }
+
+    fn flush_pending_submissions(&mut self) {
+        if self.pending_command_buffers.is_empty() {
+            return;
+        }
+
+        self.queue
+            .submit(self.pending_command_buffers.drain(..));
+        self.last_submission = Instant::now();
+    }
+
+    fn run_compute_batch(&mut self, iterations: u32) {
+        if iterations == 0 {
+            return;
+        }
+
+        // Submit simulation compute pass (non-blocking - GPU operations are async)
+        let command_buffer = {
+            profile_scope!("Encode Cell Simulation");
+            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Simulation Encoder"),
+            });
+
+            {
+                profile_scope!("Dispatch Cell Simulation Compute Batch");
+                let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("Update Compute Pass"),
+                    timestamp_writes: None,
+                });
+
+                compute_pass.set_pipeline(&self.compute_pipelines.update);
+                compute_pass.set_bind_group(0, &self.compute_pipelines.compute_bind_group, &[]);
+
+                let num_cells = self.buffers.cell_size() as u32;
+                let workgroups = (num_cells + self.workgroup_size - 1) / self.workgroup_size;
+
+                for _ in 0..iterations {
+                    compute_pass.dispatch_workgroups(workgroups, 1, 1);
+                }
+            }
+
+            encoder.finish()
+        };
+
+        {
+            profile_scope!("Submit Simulation Commands");
+            self.pending_command_buffers.push(command_buffer);
+            if self.pending_command_buffers.len() >= self.submission_batch_size
+                || self.last_submission.elapsed() >= self.max_submission_delay
+            {
+                self.flush_pending_submissions();
+            }
+        }
+
+        // Increment step counter
+        self.step_count
+            .fetch_add(iterations as u64, Ordering::Relaxed);
     }
 }
 
@@ -185,6 +232,9 @@ pub struct Application {
     
     // Deferred resize to avoid blocking the event loop
     pending_resize: Option<winit::dpi::PhysicalSize<u32>>,
+
+    // Rendering control
+    rendering_enabled: bool,
 }
 
 impl Application {
@@ -224,7 +274,6 @@ impl Application {
             queue,
             compute_pipelines_for_sim,
             buffers,
-            environment.clone(),
             speed.clone(),
         )));
         
@@ -253,6 +302,7 @@ impl Application {
             pending_resize: None,
             real_time: 0.0,
             speed,
+            rendering_enabled: true,
         }
     }
     
@@ -272,19 +322,23 @@ impl Application {
     
     // Render at 60fps (called from main event loop)
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        profile_scope!("Render Frame");
         let now = std::time::Instant::now();
         
         // Handle pending resize at the start of the render frame (avoids blocking event loop)
-        if let Some(new_size) = self.pending_resize.take() {
-            self.gpu.resize(new_size);
-            
-            // Update camera view size
-            self.camera
-                .set_view_size(Vec2::new(new_size.width as f32, new_size.height as f32));
-            
-            self.ui_renderer.resize(new_size, &self.gpu.device, &self.gpu.config, &self.gpu.queue);
-            // Update UI manager size
-            self.ui_manager.resize(new_size.width as f32, new_size.height as f32);
+        {
+            profile_scope!("Handle Pending Resize");
+            if let Some(new_size) = self.pending_resize.take() {
+                self.gpu.resize(new_size);
+                
+                // Update camera view size
+                self.camera
+                    .set_view_size(Vec2::new(new_size.width as f32, new_size.height as f32));
+                
+                self.ui_renderer.resize(new_size, &self.gpu.device, &self.gpu.config, &self.gpu.queue);
+                // Update UI manager size
+                self.ui_manager.resize(new_size.width as f32, new_size.height as f32);
+            }
         }
         
         // Periodically collect free indices from dead cells (do this in render, not simulation update)
@@ -298,12 +352,21 @@ impl Application {
         // Update camera and UI (happens every render frame)
         let delta_time = now.duration_since(self.last_frame_time).as_secs_f32();
         self.last_frame_time = now;
+
+        if !self.rendering_enabled {
+            self.last_render_time = now;
+            return Ok(());
+        }
         
         // Get current simulation state and clone buffers
         let (current_step, buffers, bounds) = {
-            let simulation = self.simulation.lock();
+            profile_scope!("Sync Simulation State");
+            let mut simulation = self.simulation.lock();
+            simulation.flush_pending();
             let current_step = simulation.get_step_count();
             let buffers = simulation.get_buffers();
+            drop(simulation);
+
             let environment = self.environment.lock();
             let bounds = environment.get_bounds();
             (current_step, buffers, bounds)
@@ -331,13 +394,16 @@ impl Application {
         self.bounds = bounds;
         
         // Update simulation time (advance only if playing)
-        let simulation = self.simulation.lock();
-        let is_paused = simulation.is_paused();
-        drop(simulation);
-        
-        if !is_paused {
-            let speed = *self.speed.lock();
-            self.real_time += delta_time * speed;
+        {
+            profile_scope!("Advance Simulation Clock");
+            let simulation = self.simulation.lock();
+            let is_paused = simulation.is_paused();
+            drop(simulation);
+            
+            if !is_paused {
+                let speed = *self.speed.lock();
+                self.real_time += delta_time * speed;
+            }
         }
         
         // Update uniforms for rendering (use actual render delta time for UI effects)
@@ -369,47 +435,31 @@ impl Application {
 
         // Update uniforms on the buffers (this updates the uniform buffer for both compute and render)
         // This happens on the render thread before rendering to ensure consistency
-        buffers.update_uniforms(&self.gpu.queue, bytemuck::cast_slice(&[uniforms]));
-
-        // Recreate render bind group to point to the read buffer (always the same, but recreate for safety)
-        // This is necessary because bind groups reference buffers directly
-        let render_bind_group_layout = self.render_pipelines.points.get_bind_group_layout(0);
-        self.render_pipelines.render_bind_group = self.gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Render Bind Group"),
-            layout: &render_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: buffers.uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: buffers.cell_buffer_read().as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: buffers.cell_free_list_buffer_read().as_entire_binding(),
-                },
-            ],
-        });
-        
-        // Update UI with current state
-        let time_string = self.get_time_string(current_step);
-        if let Some(screen) = self.ui_manager.get_screen("simulation") {
-            if let Some(fps_component) = screen.find_element_by_id("fps") {
-                let fps_text = format!("{}fps", self.fps);
-                fps_component.update_text(&fps_text);
-            }
-            if let Some(step_component) = screen.find_element_by_id("step") {
-                let step_text = format_number(format!("{}", current_step));
-                step_component.update_text(&step_text);
-            }
-            
-            // Update time string if there's a component with id "time"
-            if let Some(time_component) = screen.find_element_by_id("time") {
-                time_component.update_text(&time_string);
-            }
+        {
+            profile_scope!("Update Uniform Buffer");
+            buffers.update_uniforms(&self.gpu.queue, bytemuck::cast_slice(&[uniforms]));
         }
+
+        // Update UI with current state
+        {
+            profile_scope!("Update UI State");
+            let time_string = self.get_time_string(current_step);
+            if let Some(screen) = self.ui_manager.get_screen("simulation") {
+                if let Some(fps_component) = screen.find_element_by_id("fps") {
+                    let fps_text = format!("{}fps", self.fps);
+                    fps_component.update_text(&fps_text);
+                }
+                if let Some(step_component) = screen.find_element_by_id("step") {
+                    let step_text = format_number(format!("{}", current_step));
+                    step_component.update_text(&step_text);
+                }
+                
+                // Update time string if there's a component with id "time"
+                if let Some(time_component) = screen.find_element_by_id("time") {
+                    time_component.update_text(&time_string);
+                }
+            }
+        };
         
         // Render frame
         let bounds_corners: [Vec2; 4] = [
@@ -442,39 +492,47 @@ impl Application {
 
         // STEP 1: Render simulation to viewport texture (if it exists)
         // This renders cells and bounds to the viewport texture
-        let mut environment = self.environment.lock();
-        Renderer::render_simulation(
-            &mut self.gpu,
-            &*buffers,
-            &self.render_pipelines,
-            &mut self.bounds_renderer,
-            &mut *environment,
-            &mut self.ui_renderer,
-            &mut self.ui_manager,
-            bounds_corners,
-            camera_pos,
-            zoom,
-            num_cells_to_render,
-            &mut encoder,
-        );
-        drop(environment);
+        {
+            profile_scope!("Render Simulation Viewport");
+            let mut environment = self.environment.lock();
+            Renderer::render_simulation(
+                &mut self.gpu,
+                &*buffers,
+                &self.render_pipelines,
+                &mut self.bounds_renderer,
+                &mut *environment,
+                &mut self.ui_renderer,
+                &mut self.ui_manager,
+                bounds_corners,
+                camera_pos,
+                zoom,
+                num_cells_to_render,
+                &mut encoder,
+            );
+        }
 
         // STEP 2: Render UI (backgrounds, viewport textures as sprites, overlays, text)
         // This renders everything in HTML order
-        if let Some(screen) = self.ui_manager.get_screen("simulation") {
-            // Render all UI elements (queues text but doesn't draw it yet)
-            for element in screen.get_elements_mut() {
-                self.ui_renderer.render(element, &self.gpu.device, &self.gpu.queue, &mut encoder, &view);
+        {
+            profile_scope!("Render UI");
+            if let Some(screen) = self.ui_manager.get_screen("simulation") {
+                // Render all UI elements (queues text but doesn't draw it yet)
+                for element in screen.get_elements_mut() {
+                    self.ui_renderer.render(element, &self.gpu.device, &self.gpu.queue, &mut encoder, &view);
+                }
+                
+                // Now render all queued text in a single batch
+                self.ui_renderer.render_text(&self.gpu.device, &self.gpu.queue, &mut encoder, &view);
             }
-            
-            // Now render all queued text in a single batch
-            self.ui_renderer.render_text(&self.gpu.device, &self.gpu.queue, &mut encoder, &view);
         }
 
         // Submit and present
-        let command_buffer = encoder.finish();
-        self.gpu.queue.submit(std::iter::once(command_buffer));
-        output.present();
+        {
+            profile_scope!("Submit Frame");
+            let command_buffer = encoder.finish();
+            self.gpu.queue.submit(std::iter::once(command_buffer));
+            output.present();
+        }
 
         self.frame_count += 1;
         
@@ -514,6 +572,11 @@ impl Application {
     }
     
     pub fn handle_mouse_press(&mut self, pressed: bool) {
+        if pressed && !self.rendering_enabled {
+            self.set_ui_visibility(true);
+            return;
+        }
+
         let mut environment = self.environment.lock();
         environment.handle_mouse_press(pressed);
     }
@@ -578,26 +641,17 @@ impl Application {
     }
 
     pub fn toggle_ui(&mut self) {
-        if let Some(screen) = self.ui_manager.get_screen("simulation") {
-            if let Some(ui_element) = screen.find_element_by_id("UI") {
-                let visible = ui_element.is_visible();
-                ui_element.set_visible(!visible);
-
-                if let Some(show_ui_icon) = screen.find_element_by_id("showUIIcon") {
-                    use crate::ui::components::ComponentType;
-                    if let ComponentType::Image(ref mut image) = show_ui_icon.component_type {
-                        if visible {
-                            image.set_source("noEye");
-                            image.base_source = Some("noEye".to_string());
-                            image.set_group_hover_source("noEyeHighlighted");
-                        } else {
-                            image.set_source("eye");
-                            image.base_source = Some("eye".to_string());
-                            image.set_group_hover_source("eyeHighlighted");
-                        }
-                    }
+        let mut target_visibility = None;
+        {
+            if let Some(screen) = self.ui_manager.get_screen("simulation") {
+                if let Some(ui_element) = screen.find_element_by_id("UI") {
+                    target_visibility = Some(!ui_element.is_visible());
                 }
             }
+        }
+
+        if let Some(visible) = target_visibility {
+            self.set_ui_visibility(visible);
         }
     }
     
@@ -624,6 +678,33 @@ impl Application {
         }
     }
     
+}
+
+impl Application {
+    fn set_ui_visibility(&mut self, visible: bool) {
+        self.rendering_enabled = visible;
+
+        if let Some(screen) = self.ui_manager.get_screen("simulation") {
+            if let Some(ui_element) = screen.find_element_by_id("UI") {
+                ui_element.set_visible(visible);
+            }
+
+            if let Some(show_ui_icon) = screen.find_element_by_id("showUIIcon") {
+                use crate::ui::components::ComponentType;
+                if let ComponentType::Image(ref mut image) = show_ui_icon.component_type {
+                    if visible {
+                        image.set_source("eye");
+                        image.base_source = Some("eye".to_string());
+                        image.set_group_hover_source("eyeHighlighted");
+                    } else {
+                        image.set_source("noEye");
+                        image.base_source = Some("noEye".to_string());
+                        image.set_group_hover_source("noEyeHighlighted");
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Minimal Simulator wrapper - preserves original behavior exactly
@@ -848,7 +929,7 @@ impl Application {
         // Initialize timestamp buffers
 
         // Initialize bounds renderer (includes planet background)
-        let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.config);
+        let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.queue, &gpu.config);
         
         // Initialize planet GPU resources
         environment.planet_mut().initialize(&gpu.device, gpu.config.format);

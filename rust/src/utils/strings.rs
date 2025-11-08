@@ -1,3 +1,5 @@
+use puffin::profile_scope;
+
 pub fn format_number<T: ToString>(value: T) -> String {
     let s = value.to_string();
     let mut chars: Vec<char> = s.chars().rev().collect();

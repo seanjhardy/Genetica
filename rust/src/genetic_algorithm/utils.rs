@@ -12,19 +12,17 @@ impl std::fmt::Display for RnaExhaustedException {
 
 impl std::error::Error for RnaExhaustedException {}
 
-/// Reads the first base from the RNA string and removes it
+use std::collections::VecDeque;
+
+/// Reads the first base from the RNA sequence and removes it
 /// Returns the base as an integer (0-3)
-pub fn read_base(rna: &mut String) -> Result<u8, RnaExhaustedException> {
-    if rna.is_empty() {
-        return Err(RnaExhaustedException);
-    }
-    let base_char = rna.remove(0);
-    Ok(base_char as u8 - b'0')
+pub fn read_base(rna: &mut VecDeque<u8>) -> Result<u8, RnaExhaustedException> {
+    rna.pop_front().ok_or(RnaExhaustedException)
 }
 
 /// Reads a range of bases linearly, adding up each base's contribution
 /// Returns a normalized value [0, 1]
-pub fn read_base_range(rna: &mut String, length: usize) -> Result<f32, RnaExhaustedException> {
+pub fn read_base_range(rna: &mut VecDeque<u8>, length: usize) -> Result<f32, RnaExhaustedException> {
     let mut result = 0.0f32;
     for _ in 0..length {
         let base = read_base(rna)? as f32;
@@ -36,7 +34,7 @@ pub fn read_base_range(rna: &mut String, length: usize) -> Result<f32, RnaExhaus
 /// Reads a range of bases to create a unique number
 /// Uses formula: 0.25 * first + 0.25^2 * second + 0.25^3 * third + ...
 /// Returns a uniformly distributed value [0, 1]
-pub fn read_unique_base_range(rna: &mut String, length: usize) -> Result<f32, RnaExhaustedException> {
+pub fn read_unique_base_range(rna: &mut VecDeque<u8>, length: usize) -> Result<f32, RnaExhaustedException> {
     let mut result = 0.0f32;
     for i in 0..length {
         let base = read_base(rna)? as f32;
@@ -47,7 +45,7 @@ pub fn read_unique_base_range(rna: &mut String, length: usize) -> Result<f32, Rn
 
 /// Reads a range of bases exponentially
 /// Creates exponential tail ends of the distribution
-pub fn read_exp_base_range(rna: &mut String, length: usize) -> Result<f32, RnaExhaustedException> {
+pub fn read_exp_base_range(rna: &mut VecDeque<u8>, length: usize) -> Result<f32, RnaExhaustedException> {
     let result = read_base_range(rna, length)?;
     Ok((1.45 * result - 0.6).powi(3) + result / 5.0 + 0.25)
 }

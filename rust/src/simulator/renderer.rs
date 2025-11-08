@@ -96,8 +96,6 @@ impl Renderer {
         // Render planet background and bounds border to viewport texture
         {
             profile_scope!("Render Planet Background & Bounds");
-            let bounds = environment.get_bounds();
-            let view_size = Vec2::new(gpu.config.width as f32, gpu.config.height as f32);
             let planet_texture_view = environment.planet().texture_view();
             
             bounds_renderer.render(
@@ -106,10 +104,6 @@ impl Renderer {
                 &gpu.queue,
                 viewport_texture_view,
                 planet_texture_view,
-                camera_pos,
-                zoom,
-                view_size,
-                bounds,
             );
         }
         

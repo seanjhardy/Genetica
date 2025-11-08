@@ -1,16 +1,18 @@
+use std::sync::atomic::{AtomicU32, Ordering};
+
 // Genetic algorithm module - manages genomes, lifeforms, and gene regulatory networks
 use crate::gpu::structures::{Cell, Lifeform};
 use crate::utils::math::Rect;
 use crate::genetic_algorithm::{Genome, Species, sequence_grn};
 
+static GENE_ID: AtomicU32 = AtomicU32::new(0);
+static LIFEFORM_ID: AtomicU32 = AtomicU32::new(0);
+static SPECIES_ID: AtomicU32 = AtomicU32::new(0);
 pub struct GeneticAlgorithm {
     //lifeform_id -> (genome, grn)
     lifeforms: Vec<Lifeform>,
     // Other data
     species: Vec<Species>,
-    gene_id: u32,
-    lifeform_id: u32,
-    species_id: u32,
 }
 
 impl GeneticAlgorithm {
@@ -18,46 +20,40 @@ impl GeneticAlgorithm {
     pub const BASE_DIFFERENCE_SCALAR: f32 = 0.1;
     pub const COMPATABILITY_DISTANCE_THRESHOLD: f32 = 5.0;
 
-    pub const INSERT_GENE_CHANCE: f32 = 0.00005;
+    pub const INSERT_GENE_CHANCE: f32 = 0.0005;
     pub const CLONE_GENE_CHANCE: f32 = 0.0001;
     pub const DELETE_GENE_CHANCE: f32 = 0.0005;
+    pub const CROSSOVER_GENE_CHANCE: f32 = 0.2;
 
     pub const MUTATE_BASE_CHANCE: f32 = 0.0005;
     pub const INSERT_BASE_CHANCE: f32 = 0.00003;
     pub const DELETE_BASE_CHANCE: f32 = 0.00005;
-    pub const CROSSOVER_CELL_DATA_CHANCE: f32 = 0.2;
 
     pub fn new() -> Self {
         Self {
             lifeforms: Vec::new(),
             species: Vec::new(),
-            gene_id: 0,
-            lifeform_id: 0,
-            species_id: 0,
         }
     }
 
-    pub fn next_gene_id(&mut self) -> u32 {
-        self.gene_id += 1;
-        self.gene_id
+    pub fn next_gene_id() -> u32 {
+        GENE_ID.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub fn next_lifeform_id(&mut self) -> u32 {
-        self.lifeform_id += 1;
-        self.lifeform_id
+    pub fn next_lifeform_id() -> u32 {
+        LIFEFORM_ID.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub fn next_species_id(&mut self) -> u32 {
-        self.species_id += 1;
-        self.species_id
+    pub fn next_species_id() -> u32 {
+        SPECIES_ID.fetch_add(1, Ordering::Relaxed)
     }
 
     pub fn init(&mut self, num_lifeforms: u32, bounds: Rect) -> Vec<Cell>{
         use rand::Rng;
         
-        self.lifeform_id = 0;
-        self.species_id = 0;
-        self.gene_id = 0;
+        LIFEFORM_ID.store(0, Ordering::Relaxed);
+        SPECIES_ID.store(0, Ordering::Relaxed);
+        GENE_ID.store(0, Ordering::Relaxed);
         self.lifeforms.clear();
 
         let mut rng = rand::thread_rng();
@@ -65,7 +61,7 @@ impl GeneticAlgorithm {
 
         for i in 0..num_lifeforms {
             // Create random genome for this lifeformss
-            let lifeform_id = self.next_lifeform_id();
+            let lifeform_id = GeneticAlgorithm::next_lifeform_id();
             let num_genes = rng.gen_range(20..100);
             let gene_length = 100;
             let genome = Genome::init_random(&mut rng, num_genes, gene_length);
@@ -88,7 +84,7 @@ impl GeneticAlgorithm {
             self.lifeforms.push(lifeform);
         }
 
-        (cells)
+        cells
     }
 
     /// Get number of lifeforms (from genomes/GRNs count)

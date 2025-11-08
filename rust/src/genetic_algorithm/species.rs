@@ -1,17 +1,17 @@
 pub struct Species {
-  mascotId: usize,
-  members: Vec<usize>,
-  originTime: usize,
-  deathTime: usize,
+  mascot_id: u32,
+  members: Vec<u32>,
+  origin_time: u32,
+  death_time: u32,
 }
 
 impl Species {
-  pub fn new(mascotId: usize, originTime: usize) -> Self {
+  pub fn new(mascot_id: u32, origin_time: u32) -> Self {
     Self {
-      mascotId,
+      mascot_id,
       members: Vec::new(),
-      originTime,
-      deathTime: 0,
+      origin_time,
+      death_time: 0,
     }
   }
 }
