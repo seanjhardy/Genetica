@@ -9,18 +9,22 @@ use crate::genetic_algorithm::genome::Genome;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Cell {
-    pub pos: [f32; 2],           // offset 0, size 8
-    pub prev_pos: [f32; 2],      // offset 8, size 8
-    pub radius: f32,             // offset 16, size 4
-    pub energy: f32,             // offset 20, size 4
-    pub cell_wall_thickness: f32, // offset 24, size 4
-    pub lifeform_idx: u32,       // offset 28, size 4
+    pub is_alive: u32,           // offset 0, size 4
+    pub _padding: u32,           // offset 4, size 4
+    pub pos: [f32; 2],           // offset 8, size 8
+    pub prev_pos: [f32; 2],      // offset 16, size 8
+    pub radius: f32,             // offset 24, size 4
+    pub energy: f32,             // offset 28, size 4
+    pub cell_wall_thickness: f32, // offset 32, size 4
+    pub lifeform_idx: u32,       // offset 36, size 4
     pub random_force: [f32; 2],  // offset 40, size 8 (8-byte aligned)
 }
 
 impl Cell {
     pub fn new(pos: [f32; 2], radius: f32, lifeform_idx: u32, initial_energy: f32) -> Self {
         Self {
+            is_alive: 1,
+            _padding: 0,
             pos,
             prev_pos: pos,
             radius,

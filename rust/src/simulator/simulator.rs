@@ -1,7 +1,7 @@
 // Simulator module - main simulation loop and window management
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -43,8 +43,10 @@ pub struct Simulation {
     speed: Arc<parking_lot::Mutex<f32>>, // Shared speed for thread-safe access
     min_cells: usize,
     max_spawns_per_step: usize,
-    active_cells_estimate: usize,
-    active_cell_counter: Arc<AtomicU32>,
+    last_alive_count: u32,
+    predicted_alive_count: u32,
+    alive_counter_pending: bool,
+    spawn_capacity: usize,
     
     // Simulation parameters
     workgroup_size: u32,
@@ -70,8 +72,8 @@ impl Simulation {
         min_cells: usize,
         max_spawns_per_step: usize,
     ) -> Self {
-        let initial_cells = buffers.cell_size() as u32;
-        let active_cell_counter = Arc::new(AtomicU32::new(initial_cells));
+        let initial_alive = buffers.cell_size() as u32;
+        let spawn_capacity = buffers.spawn_capacity();
         Self {
             device,
             queue,
@@ -82,8 +84,10 @@ impl Simulation {
             speed,
             min_cells,
             max_spawns_per_step,
-            active_cells_estimate: initial_cells as usize,
-            active_cell_counter,
+            last_alive_count: initial_alive,
+            predicted_alive_count: initial_alive,
+            alive_counter_pending: false,
+            spawn_capacity,
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
             pending_command_buffers: Vec::with_capacity(4),
@@ -146,8 +150,8 @@ impl Simulation {
         self.buffers.clone()
     }
 
-    pub fn active_cell_counter(&self) -> Arc<AtomicU32> {
-        self.active_cell_counter.clone()
+    pub fn last_alive_count(&self) -> u32 {
+        self.last_alive_count
     }
 
     pub fn flush_pending(&mut self) {
@@ -186,12 +190,18 @@ impl Simulation {
                 compute_pass.set_pipeline(&self.compute_pipelines.update);
                 compute_pass.set_bind_group(0, &self.compute_pipelines.compute_bind_group, &[]);
 
-                let num_cells = self.buffers.cell_size() as u32;
+                let num_cells = self.buffers.cell_capacity() as u32;
                 let workgroups = (num_cells + self.workgroup_size - 1) / self.workgroup_size;
 
                 for _ in 0..iterations {
                     compute_pass.dispatch_workgroups(workgroups, 1, 1);
                 }
+            }
+
+            if !self.alive_counter_pending {
+                self.buffers
+                    .schedule_alive_counter_copy(&mut encoder);
+                self.alive_counter_pending = true;
             }
 
             encoder.finish()
@@ -210,31 +220,36 @@ impl Simulation {
         // Increment step counter
         self.step_count
             .fetch_add(iterations as u64, Ordering::Relaxed);
+
     }
 
     pub fn maintain_minimum_cell_population(&mut self) {
-        // Submit any pending work so the free-list readback sees the most recent state
         if !self.pending_command_buffers.is_empty() {
             self.flush_pending_submissions();
         }
 
-        let death_count = self
-            .buffers
-            .drain_cell_death_event_count(&self.device, &self.queue);
-        if death_count > 0 {
-            self.active_cells_estimate = self
-                .active_cells_estimate
-                .saturating_sub(death_count);
-            self.active_cell_counter
-                .store(self.active_cells_estimate as u32, Ordering::Relaxed);
+        if self.alive_counter_pending {
+            self.buffers.begin_alive_counter_map();
+            if let Some(value) = self.buffers.try_consume_alive_counter(&self.device) {
+                self.last_alive_count = value;
+                self.predicted_alive_count = value;
+                self.alive_counter_pending = false;
+            }
         }
 
-        if self.active_cells_estimate >= self.min_cells {
+        let alive_estimate = self.predicted_alive_count as usize;
+        if alive_estimate >= self.min_cells {
             return;
         }
 
-        let deficit = self.min_cells - self.active_cells_estimate;
-        let spawn_attempts = deficit.min(self.max_spawns_per_step);
+        let deficit = self.min_cells - alive_estimate;
+        let desired_spawns = deficit
+            .min(self.max_spawns_per_step)
+            .min(self.spawn_capacity);
+
+        if desired_spawns == 0 {
+            return;
+        }
 
         let bounds = {
             let env = self.environment.lock();
@@ -242,27 +257,25 @@ impl Simulation {
         };
 
         let mut rng = rand::thread_rng();
+        let mut new_cells = Vec::with_capacity(desired_spawns);
 
-        for _ in 0..spawn_attempts {
+        for _ in 0..desired_spawns {
             let x = rng.gen_range(bounds.left..bounds.right());
             let y = rng.gen_range(bounds.top..bounds.bottom());
             let radius = rng.gen_range(0.5..4.0);
             let energy = rng.gen_range(50.0..120.0);
-            let cell = Cell::new([x, y], radius, 0, energy);
-
-            if self
-                .buffers
-                .spawn_cell(&self.device, &self.queue, cell)
-                .is_none()
-            {
-                break;
-            }
-
-            self.active_cells_estimate += 1;
+            let mut cell = Cell::new([x, y], radius, 0, energy);
+            cell.random_force = [0.0, 0.0];
+            new_cells.push(cell);
         }
 
-        self.active_cell_counter
-            .store(self.active_cells_estimate as u32, Ordering::Relaxed);
+        let submitted = self
+            .buffers
+            .enqueue_spawn_requests(&self.queue, &new_cells);
+        if submitted > 0 {
+            self.predicted_alive_count =
+                self.predicted_alive_count.saturating_add(submitted as u32);
+        }
     }
 }
 
@@ -285,8 +298,6 @@ pub struct Application {
     bounds: Rect,
     key_states: KeyStates,
     last_cursor_pos: Vec2,
-    active_cell_counter: Arc<AtomicU32>,
-    
     // Performance tracking
     last_render_step_count: u64,
     last_frame_time: std::time::Instant,
@@ -338,7 +349,9 @@ impl Application {
             buffers.cell_buffer_write(), // Compute writes to write buffer
             &buffers.uniform_buffer,
             buffers.cell_free_list_buffer_write(), // Compute uses write buffer's free list
-            buffers.cell_event_buffer(), // Buffer for death events
+            buffers.alive_counter_buffer(),
+            buffers.spawn_request_count_buffer(),
+            buffers.spawn_requests_buffer(),
         );
 
         let speed = Arc::new(parking_lot::Mutex::new(1.0));
@@ -354,11 +367,6 @@ impl Application {
             MAX_SPAWN_PER_STEP,
         )));
 
-        let active_cell_counter = {
-            let sim = simulation.lock();
-            sim.active_cell_counter()
-        };
-        
         Self {
             simulation,
             render_pipelines,
@@ -385,7 +393,6 @@ impl Application {
             real_time: 0.0,
             speed,
             rendering_enabled: true,
-            active_cell_counter,
         }
     }
     
@@ -442,18 +449,19 @@ impl Application {
         }
         
         // Get current simulation state and clone buffers
-        let (current_step, buffers, bounds) = {
+        let (current_step, buffers, bounds, alive_count) = {
             profile_scope!("Sync Simulation State");
             let mut simulation = self.simulation.lock();
             simulation.flush_pending();
             simulation.maintain_minimum_cell_population();
             let current_step = simulation.get_step_count();
             let buffers = simulation.get_buffers();
+            let alive_count = simulation.last_alive_count();
             drop(simulation);
 
             let environment = self.environment.lock();
             let bounds = environment.get_bounds();
-            (current_step, buffers, bounds)
+            (current_step, buffers, bounds, alive_count)
         };
         
         // Calculate simulation rate
@@ -496,8 +504,7 @@ impl Application {
         let camera_pos = self.camera.get_position();
         let zoom = self.camera.get_zoom();
         let view_size = Vec2::new(self.gpu.config.width as f32, self.gpu.config.height as f32);
-        let total_cells = buffers.cell_size();
-        let active_cells = self.active_cell_counter.load(Ordering::Relaxed) as f32;
+        let active_cells = alive_count as f32;
         
         let _render_delta = now.duration_since(self.last_render_time).as_secs_f32();
         
@@ -552,7 +559,7 @@ impl Application {
                     drop(environment);
                     (species_count, lifeforms_count)
                 };
-                let cell_count = self.active_cell_counter.load(Ordering::Relaxed) as usize;
+                let cell_count = alive_count as usize;
                 if let Some(species_component) = screen.find_element_by_id("species") {
                     let species_text = format_number(format!("{}", species_count));
                     species_component.update_text(&species_text);
@@ -580,7 +587,7 @@ impl Application {
         
         // Use actual cell size (number of initialized cells) instead of capacity
         // This ensures we only render the cells that actually exist
-        let num_cells_to_render = total_cells;
+        let num_cells_to_render = buffers.cell_capacity();
         
         // Get surface texture and create encoder
         let output = {
@@ -1003,6 +1010,7 @@ impl Application {
         
         let buffers = Arc::new(GpuBuffers::new(
             &gpu.device,
+            &gpu.queue,
             bytemuck::cast_slice(&cells),
             bytemuck::cast_slice(&[Uniforms::zeroed()]),
         ));

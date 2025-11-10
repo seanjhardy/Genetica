@@ -2,34 +2,38 @@
 
 use wgpu;
 use wgpu::util::DeviceExt;
+use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::gpu::structures::{
-    Cell, 
-};
-use crate::utils::gpu::gpu_vector::{GpuVector};
+use std::sync::mpsc;
+use crate::gpu::structures::Cell;
+use crate::utils::gpu::gpu_vector::GpuVector;
 
+const CELL_CAPACITY: usize = 10_000;
+const MAX_SPAWN_REQUESTS: usize = 512;
 
 pub struct GpuBuffers {
     pub cell_vector_a: GpuVector<Cell>,
     pub cell_vector_b: GpuVector<Cell>,
     cell_read_buffer: AtomicBool,
     pub uniform_buffer: wgpu::Buffer,
-    cell_event_buffer: wgpu::Buffer,
+    alive_counter: wgpu::Buffer,
+    alive_counter_staging: wgpu::Buffer,
+    alive_counter_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
+    spawn_request_count: wgpu::Buffer,
+    spawn_requests: wgpu::Buffer,
+    spawn_capacity: usize,
 }
 
 impl GpuBuffers {
     pub fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         cells: &[u8],
         initial_uniforms: &[u8],
     ) -> Self {
-        // Create fixed-capacity buffer (pad to 1000 cells)
-        const CELL_CAPACITY: usize = 10000;
-        
-        // Convert byte slices to typed slices
         let initial_cells: &[Cell] = bytemuck::cast_slice(cells);
-        
-        // Create TWO GPU vectors for cells (ping-pong buffers for double-buffering)
+        let initial_count = initial_cells.len() as u32;
+
         let cell_vector_a = GpuVector::<Cell>::new(
             device,
             CELL_CAPACITY,
@@ -40,8 +44,7 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::VERTEX,
             Some("Cell Buffer A"),
         );
-        
-        // Buffer B starts with same data as A
+
         let cell_vector_b = GpuVector::<Cell>::new(
             device,
             CELL_CAPACITY,
@@ -53,28 +56,56 @@ impl GpuBuffers {
             Some("Cell Buffer B"),
         );
 
+        cell_vector_a.initialize_free_list(queue, initial_count);
+        cell_vector_b.initialize_free_list(queue, initial_count);
+
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
             contents: initial_uniforms,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let event_capacity = cell_vector_a.capacity();
-        let event_buffer_init = vec![0u32; event_capacity + 1];
-        let cell_event_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Cell Event Buffer"),
-            contents: bytemuck::cast_slice(&event_buffer_init),
+        let alive_counter = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Alive Counter"),
+            contents: bytemuck::cast_slice(&[initial_count]),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let alive_counter_staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Alive Counter Staging"),
+            size: std::mem::size_of::<u32>() as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let spawn_request_count = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Spawn Request Count"),
+            contents: bytemuck::cast_slice(&[0u32]),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
         });
 
+        let spawn_requests = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Spawn Requests Buffer"),
+            size: (MAX_SPAWN_REQUESTS * std::mem::size_of::<Cell>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             cell_vector_a,
             cell_vector_b,
-            cell_read_buffer: AtomicBool::new(false), // Start with A as read buffer
+            cell_read_buffer: AtomicBool::new(false),
             uniform_buffer,
-            cell_event_buffer,
+            alive_counter,
+            alive_counter_staging,
+            alive_counter_readback: Mutex::new(None),
+            spawn_request_count,
+            spawn_requests,
+            spawn_capacity: MAX_SPAWN_REQUESTS,
         }
     }
     
@@ -114,106 +145,102 @@ impl GpuBuffers {
         }
     }
 
-
-    fn write_free_list(
-        queue: &wgpu::Queue,
-        vector: &GpuVector<Cell>,
-        new_count: u32,
-        remaining_indices: &[u32],
-    ) {
-        let count_data = [new_count];
-        let count_bytes = bytemuck::cast_slice(&count_data);
-        queue.write_buffer(vector.free_list_buffer(), 0, count_bytes);
-        if !remaining_indices.is_empty() {
-            let indices_bytes = bytemuck::cast_slice(remaining_indices);
-            queue.write_buffer(vector.free_list_buffer(), 4, indices_bytes);
-        }
+    pub fn alive_counter_buffer(&self) -> &wgpu::Buffer {
+        &self.alive_counter
     }
 
-    /// Spawn a new cell by reusing a free slot (if available). Returns the populated index.
-    pub fn spawn_cell(&self, device: &wgpu::Device, queue: &wgpu::Queue, cell: Cell) -> Option<u32> {
-        let read_is_b = self.cell_read_buffer.load(Ordering::Acquire);
-        let (write_vec, read_vec) = if read_is_b {
-            (&self.cell_vector_a, &self.cell_vector_b)
-        } else {
-            (&self.cell_vector_b, &self.cell_vector_a)
-        };
+    pub fn schedule_alive_counter_copy(&self, encoder: &mut wgpu::CommandEncoder) {
+        {
+            let mut guard = self.alive_counter_readback.lock();
+            if guard.take().is_some() {
+                self.alive_counter_staging.unmap();
+            }
+        }
+        encoder.copy_buffer_to_buffer(
+            &self.alive_counter,
+            0,
+            &self.alive_counter_staging,
+            0,
+            std::mem::size_of::<u32>() as u64,
+        );
+    }
 
-        let mut free_indices = write_vec.read_free_list(device, queue);
-        let free_index = match free_indices.pop() {
-            Some(idx) => idx,
+    pub fn begin_alive_counter_map(&self) {
+        let mut guard = self.alive_counter_readback.lock();
+        if guard.is_some() {
+            return;
+        }
+        let slice = self.alive_counter_staging.slice(..);
+        let (sender, receiver) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        *guard = Some(receiver);
+    }
+
+    pub fn try_consume_alive_counter(&self, device: &wgpu::Device) -> Option<u32> {
+        let mut receiver_guard = self.alive_counter_readback.lock();
+        let receiver = match receiver_guard.as_ref() {
+            Some(r) => r,
             None => return None,
         };
 
-        let new_free_count = free_indices.len() as u32;
-        Self::write_free_list(queue, write_vec, new_free_count, &free_indices);
-        Self::write_free_list(queue, read_vec, new_free_count, &free_indices);
-
-        // Write the cell data into both buffers so render/compute stay in sync
-        let offset = (free_index as usize * std::mem::size_of::<Cell>()) as u64;
-        let cell_data = [cell];
-        let cell_bytes = bytemuck::cast_slice(&cell_data);
-        queue.write_buffer(write_vec.buffer(), offset, cell_bytes);
-        queue.write_buffer(read_vec.buffer(), offset, cell_bytes);
-
-        Some(free_index)
-    }
-
-    pub fn cell_event_buffer(&self) -> &wgpu::Buffer {
-        &self.cell_event_buffer
-    }
-
-    pub fn reset_cell_events(&self, queue: &wgpu::Queue) {
-        let zero = [0u32];
-        queue.write_buffer(&self.cell_event_buffer, 0, bytemuck::cast_slice(&zero));
-    }
-
-    pub fn drain_cell_death_event_count(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> usize {
-        let count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Cell Event Count Buffer"),
-            size: std::mem::size_of::<u32>() as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Cell Event Count Encoder"),
-        });
-        encoder.copy_buffer_to_buffer(&self.cell_event_buffer, 0, &count_buffer, 0, std::mem::size_of::<u32>() as u64);
-        queue.submit(std::iter::once(encoder.finish()));
-
-        let buffer_slice = count_buffer.slice(..);
-        let (sender, receiver) = std::sync::mpsc::channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
-        });
-
-        loop {
-            let _ = device.poll(wgpu::MaintainBase::Wait);
-            match receiver.try_recv() {
-                Ok(Ok(_)) => break,
-                Ok(Err(e)) => panic!("Cell event count read failed: {:?}", e),
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    std::thread::sleep(std::time::Duration::from_micros(100));
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    panic!("Cell event count channel disconnected");
-                }
+        let _ = device.poll(wgpu::MaintainBase::Poll);
+        match receiver.try_recv() {
+            Ok(Ok(_)) => {
+                let mapped = self.alive_counter_staging.slice(..).get_mapped_range();
+                let value = bytemuck::cast_slice::<u8, u32>(&mapped)[0];
+                drop(mapped);
+                self.alive_counter_staging.unmap();
+                *receiver_guard = None;
+                Some(value)
+            }
+            Ok(Err(e)) => {
+                eprintln!("Alive counter read failed: {:?}", e);
+                self.alive_counter_staging.unmap();
+                *receiver_guard = None;
+                None
+            }
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                eprintln!("Alive counter readback channel disconnected");
+                *receiver_guard = None;
+                None
             }
         }
+    }
 
-        let mapped_range = buffer_slice.get_mapped_range();
-        let count: u32 = bytemuck::cast_slice(&mapped_range)[0];
-        drop(mapped_range);
-        count_buffer.unmap();
+    pub fn spawn_request_count_buffer(&self) -> &wgpu::Buffer {
+        &self.spawn_request_count
+    }
 
+    pub fn spawn_requests_buffer(&self) -> &wgpu::Buffer {
+        &self.spawn_requests
+    }
+
+    pub fn spawn_capacity(&self) -> usize {
+        self.spawn_capacity
+    }
+
+    pub fn enqueue_spawn_requests(&self, queue: &wgpu::Queue, cells: &[Cell]) -> usize {
+        let count = cells.len().min(self.spawn_capacity);
         if count == 0 {
-            self.reset_cell_events(queue);
+            queue.write_buffer(&self.spawn_request_count, 0, bytemuck::cast_slice(&[0u32]));
             return 0;
         }
 
-        self.reset_cell_events(queue);
-        count as usize
+        let cells_to_write = &cells[..count];
+        queue.write_buffer(
+            &self.spawn_requests,
+            0,
+            bytemuck::cast_slice(cells_to_write),
+        );
+        queue.write_buffer(
+            &self.spawn_request_count,
+            0,
+            bytemuck::cast_slice(&[count as u32]),
+        );
+        count
     }
 
     /// Get cell buffer (for pipelines) - DEPRECATED, use cell_buffer_read instead
@@ -241,24 +268,4 @@ impl GpuBuffers {
         queue.write_buffer(&self.uniform_buffer, 0, uniforms);
     }
 
-    /// Add a new cell to the GPU buffer (returns the index where it was placed)
-    /// Adds to both buffers to keep them in sync (since we swap frequently)
-    pub fn push_cell(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, cell: Cell) -> Option<u32> {
-        let write_buffer = if self.cell_read_buffer.load(Ordering::Acquire) {
-            &mut self.cell_vector_a
-        } else {
-            &mut self.cell_vector_b
-        };
-        let index = write_buffer.push(device, queue, cell);
-        // Also add to read buffer to keep them in sync
-        if let Some(_idx) = index {
-            let read_buffer = if self.cell_read_buffer.load(Ordering::Acquire) {
-                &mut self.cell_vector_b
-            } else {
-                &mut self.cell_vector_a
-            };
-            read_buffer.push(device, queue, cell);
-        }
-        index
-    }
 }

@@ -1,5 +1,7 @@
 // Compute shader for cell updates
 struct Cell {
+    is_alive: u32,
+    _padding: u32,
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
     radius: f32,
@@ -29,16 +31,21 @@ struct CellFreeList {
     indices: array<u32>,
 }
 
-struct CellEvents {
-    count: atomic<u32>,
-    indices: array<u32>,
-}
-
 @group(0) @binding(2)
 var<storage, read_write> cell_free_list: CellFreeList;
 
+struct Counter {
+    value: atomic<u32>,
+}
+
 @group(0) @binding(3)
-var<storage, read_write> cell_events: CellEvents;
+var<storage, read_write> alive_counter: Counter;
+
+@group(0) @binding(4)
+var<storage, read_write> spawn_count: Counter;
+
+@group(0) @binding(5)
+var<storage, read> spawn_requests: array<Cell>;
 
 
 fn rand(seed: vec2<u32>) -> f32 {
@@ -53,16 +60,53 @@ fn rand(seed: vec2<u32>) -> f32 {
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
 
-    // Check if this cell index is in the free list first
-    let free_cells_count = atomicLoad(&cell_free_list.count);
-    for (var i: u32 = 0u; i < free_cells_count; i++) {
-        if cell_free_list.indices[i] == index {
-            return;
+    loop {
+        let prev_requests = atomicLoad(&spawn_count.value);
+        if prev_requests == 0u {
+            break;
+        }
+        let desired_requests = prev_requests - 1u;
+        let request_exchange = atomicCompareExchangeWeak(
+            &spawn_count.value,
+            prev_requests,
+            desired_requests,
+        );
+        if request_exchange.old_value == prev_requests && request_exchange.exchanged {
+            let spawn_idx = desired_requests;
+            var new_cell = spawn_requests[spawn_idx];
+            var spawned = false;
+            loop {
+                let free_prev = atomicLoad(&cell_free_list.count);
+                if free_prev == 0u {
+                    atomicAdd(&spawn_count.value, 1u);
+                    break;
+                }
+                let free_desired = free_prev - 1u;
+                let free_exchange = atomicCompareExchangeWeak(
+                    &cell_free_list.count,
+                    free_prev,
+                    free_desired,
+                );
+                if free_exchange.old_value == free_prev && free_exchange.exchanged {
+                    let slot_index = cell_free_list.indices[free_desired];
+                    new_cell.is_alive = 1u;
+                    cells[slot_index] = new_cell;
+                    atomicAdd(&alive_counter.value, 1u);
+                    spawned = true;
+                    break;
+                }
+            }
+            if !spawned {
+                break;
+            }
         }
     }
 
     var cell = cells[index];
-    
+    if cell.is_alive == 0u {
+        return;
+    }
+
     // Decrease energy over time (metabolic rate)
     let energy_decay_rate = 0.05 * cell.radius; // Energy units per second (slower decay)
     cell.energy -= energy_decay_rate * uniforms.sim_params.x;
@@ -71,15 +115,14 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // TEMPORARILY DISABLED - don't remove cells based on energy
     if cell.energy <= 0.0 {
         cell.energy = 0.0;
+        cell.is_alive = 0u;
         cells[index] = cell;
         
         // Add this cell's index to the free list atomically
         // Write the index at the next available slot using atomic operation
         let next_free_index = atomicAdd(&cell_free_list.count, 1u);
         cell_free_list.indices[next_free_index] = index;
-
-        let event_index = atomicAdd(&cell_events.count, 1u);
-        cell_events.indices[event_index] = index;
+        atomicSub(&alive_counter.value, 1u);
         
         // Update lifeform cell count (atomic operation not available in WGSL,
         // so we'll handle this on CPU side after reading back results)

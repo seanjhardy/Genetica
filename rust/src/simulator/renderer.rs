@@ -34,9 +34,9 @@ impl Renderer {
         
         // CRITICAL: Copy write buffer to read buffer before rendering
         // This synchronizes compute results (in write buffer) to read buffer (for rendering)
-        let cell_size = buffers.cell_size();
-        if cell_size > 0 {
-            let cell_size_bytes = (cell_size * std::mem::size_of::<crate::gpu::structures::Cell>()) as u64;
+        let cell_capacity = buffers.cell_capacity();
+        if cell_capacity > 0 {
+            let cell_size_bytes = (cell_capacity * std::mem::size_of::<crate::gpu::structures::Cell>()) as u64;
             encoder.copy_buffer_to_buffer(
                 buffers.cell_buffer_write(),
                 0,

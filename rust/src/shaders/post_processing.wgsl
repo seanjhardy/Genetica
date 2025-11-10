@@ -61,7 +61,7 @@ fn fs_main(input: FragmentInput) -> @location(0) vec4<f32> {
     
     // === CHROMATIC ABERRATION ===
     // Color fringing at edges like optical lens imperfection
-    let aberration_strength = 0.05;  // Increased for more noticeable effect
+    let aberration_strength = 0.01;  // Increased for more noticeable effect
     let aberration = aberration_strength * dist_from_center * dist_from_center;
     
     // Sample each color channel with slight offset (more offset at edges)

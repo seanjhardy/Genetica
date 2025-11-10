@@ -216,6 +216,31 @@ impl<T: Pod + Zeroable + Clone> GpuVector<T> {
         indices
     }
 
+    /// Initialize the free list so that indices from `start_index` up to capacity are marked free.
+    /// This overwrites the GPU free list buffer and should be called during setup.
+    pub fn initialize_free_list(&self, queue: &wgpu::Queue, start_index: u32) {
+        let capacity = self.capacity as u32;
+        let start = start_index.min(capacity);
+        let count = capacity.saturating_sub(start);
+        let count_data = [count];
+        queue.write_buffer(
+            self.free_list_buffer(),
+            0,
+            bytemuck::cast_slice(&count_data),
+        );
+        if count > 0 {
+            let mut indices = Vec::with_capacity(count as usize);
+            for idx in start..capacity {
+                indices.push(idx);
+            }
+            queue.write_buffer(
+                self.free_list_buffer(),
+                4,
+                bytemuck::cast_slice(&indices),
+            );
+        }
+    }
+
     /// Read only the number of free indices from GPU without fetching the entire list
     pub fn read_free_count(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> usize {
         let count_buffer = device.create_buffer(&wgpu::BufferDescriptor {

@@ -1,5 +1,7 @@
 // Render shader for drawing cells as quads
 struct Cell {
+    is_alive: u32,
+    _padding: u32,
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
     radius: f32,
@@ -50,16 +52,12 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     let cell_idx = instance_index;
     let quad_vertex = vertex_index;
     
-    let free_cells_count = cell_free_list.count;
-    for (var i: u32 = 0u; i < free_cells_count; i++) {
-        if cell_free_list.indices[i] == cell_idx {
-            out.clip_position = vec4<f32>(0.0, 0.0, -1.0, 1.0);
-            return out;
-        }
-    }
-        
     let cell = cells[cell_idx];
-    
+    if cell.is_alive == 0u {
+        out.clip_position = vec4<f32>(0.0, 0.0, -1.0, 1.0);
+        return out;
+    }
+
     // Transform cell from world space to clip space
     let world_pos = cell.pos;
     let relative_x = world_pos.x - uniforms.camera.x;
