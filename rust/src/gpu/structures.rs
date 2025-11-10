@@ -11,22 +11,22 @@ use crate::genetic_algorithm::genome::Genome;
 pub struct Cell {
     pub pos: [f32; 2],           // offset 0, size 8
     pub prev_pos: [f32; 2],      // offset 8, size 8
-    pub energy: f32,              // offset 16, size 4
-    pub cell_wall_thickness: f32, // offset 20, size 4
-    pub lifeform_idx: u32,       // offset 24, size 2
-    _padding: u32,                // offset 26, size 2 (padding to align random_force to 8 bytes)
-    pub random_force: [f32; 2],   // offset 32, size 8 (8-byte aligned)
+    pub radius: f32,             // offset 16, size 4
+    pub energy: f32,             // offset 20, size 4
+    pub cell_wall_thickness: f32, // offset 24, size 4
+    pub lifeform_idx: u32,       // offset 28, size 4
+    pub random_force: [f32; 2],  // offset 40, size 8 (8-byte aligned)
 }
 
 impl Cell {
-    pub fn new(pos: [f32; 2], lifeform_idx: u32, initial_energy: f32) -> Self {
+    pub fn new(pos: [f32; 2], radius: f32, lifeform_idx: u32, initial_energy: f32) -> Self {
         Self {
             pos,
             prev_pos: pos,
+            radius,
             energy: initial_energy,
             cell_wall_thickness: 0.1,
             lifeform_idx,
-            _padding: 0,
             random_force: [0.0, 0.0],
         }
     }

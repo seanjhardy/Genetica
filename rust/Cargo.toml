@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 resolver = "2"
 
+[package.metadata.bundle]
+name = "Genetica"
+identifier = "com.genetica.app"
+icon = ["assets/icons/dna_highlighted.icns"]
+
 [dependencies]
 winit = "0.30"
 wgpu = "25"
@@ -19,6 +24,7 @@ rand = "0.8"
 parking_lot = "0.12.5"
 regex = "1.10"
 image = "0.25"
+itertools = "0.14.0"
 
 [profile.release]
 opt-level = 3

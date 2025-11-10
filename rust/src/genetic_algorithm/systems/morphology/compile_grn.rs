@@ -1,115 +1,120 @@
-use wgpu::util::DeviceExt;
-
-use crate::genetic_algorithm::systems::{ReceptorType, morphology::{GeneRegulatoryNetwork, gene_regulatory_network::{Embedded, BINDING_DISTANCE_THRESHOLD}}};
+use itertools::Itertools;
+use crate::genetic_algorithm::systems::{PromoterType, };
+use crate::genetic_algorithm::systems::morphology::gene_regulatory_network::{BINDING_DISTANCE_THRESHOLD, Embedded};
+use crate::genetic_algorithm::systems::morphology::gene_regulatory_network::GeneRegulatoryNetwork;
 use crate::utils::math::length;
 
-pub struct GRNInput {
-    pub input_type: ReceptorType,
-    pub extra: [f32; 2],
+
+const MAX_CONNECTIONS: usize = 8;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Input {
+  weight: f32,
+  index: u16,
+  promoter_type: u16,
 }
 
-
-pub struct CompiledGRN {
-  // Network architecture paramers
-  pub inputs: Vec<GRNInput>,
-
-  // Dimensions
-  pub input_size: usize,
-  pub hidden_size: usize,
-  pub output_size: usize,
-
-  // GPU Buffers for inputs and outputs
-  // Previous states hidden nodes are included in input buffer
-  pub in_state: wgpu::Buffer,
-  pub out_state: wgpu::Buffer,
-  // GPU Buffers for weight matrices
-  pub w_inh_h: wgpu::Buffer,
-  pub w_h_out: wgpu::Buffer,
-}
-
-impl CompiledGRN {
-  pub fn new(grn: GeneRegulatoryNetwork, device: &wgpu::Device) -> Self {
-
-    // Set up cpu-side input descriptor
-    let mut inputs: Vec<GRNInput> = grn.receptors.iter().map(|receptor| GRNInput {
-      input_type: receptor.receptor_type,
-      extra: receptor.extra,
-    }).collect();
-
-    // Create empty states
-    let in_state = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("In State Buffer"),
-        size: ((inputs.len() + grn.regulatory_units.len()) * std::mem::size_of::<f32>()) as u64,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    let out_state = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Out State Buffer"),
-        size: (grn.effectors.len() * std::mem::size_of::<f32>()) as u64,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-
-    // Set up gpu-side weight matrices
-    let w_inh_h_dim = (inputs.len() + grn.regulatory_units.len(), grn.regulatory_units.len());
-    let w_h_out_dim = (grn.regulatory_units.len(), grn.effectors.len());
-
-    // Set up matrices using values from affinities of genes
-    // i -> h weight matrix
-    let mut w_inh_h_cpu = vec![0.0f32; w_inh_h_dim.0 * w_inh_h_dim.1];
-    for (i, receptor) in grn.receptors.iter().enumerate() {
-      for (j, regulatory_unit) in grn.regulatory_units.iter().enumerate() {
-        for promoter in regulatory_unit.promoters.iter() {
-          // affinity between receptor and this promoter in this regulatory unit
-          w_inh_h_cpu[i * w_inh_h_dim.1 + j] += calculate_affinity(receptor, promoter);
-        }
-      }
-    }
-    // h -> h weight matrix
-    for (i, regulatory_unit_1) in grn.regulatory_units.iter().enumerate() {
-      for (j, regulatory_unit_2) in grn.regulatory_units.iter().enumerate() {
-        for promoter in regulatory_unit_1.promoters.iter() {
-          for factor in regulatory_unit_2.factors.iter() {
-            w_inh_h_cpu[(inputs.len() + i) * w_inh_h_dim.1 + j] += calculate_affinity(factor, promoter);
-          }
-        }
-      }
-    }
-    let w_inh_h = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-      label: Some("W In H Buffer"),
-      contents: bytemuck::cast_slice(&w_inh_h_cpu),
-      usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-    });
-
-
-    // h -> out weight matrix
-    let mut w_h_out_cpu = vec![0.0f32; w_h_out_dim.0 * w_h_out_dim.1];
-    for (i, regulatory_unit) in grn.regulatory_units.iter().enumerate() {
-      for (j, effector) in grn.effectors.iter().enumerate() {
-        for factor in regulatory_unit.factors.iter() {
-          w_h_out_cpu[i * w_h_out_dim.1 + j] += calculate_affinity(factor, effector);
-        }
-      }
-    }
-    let w_h_out = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-      label: Some("W H Out Buffer"),
-      contents: bytemuck::cast_slice(&w_h_out_cpu),
-      usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-    });
-
+impl Default for Input {
+  fn default() -> Self {
     Self {
-      inputs,
-      in_state,
-      out_state,
-      input_size: grn.receptors.len(),
-      hidden_size: grn.regulatory_units.len(),
-      output_size: grn.effectors.len(),
-      w_inh_h,
-      w_h_out,
+      weight: 0.0,
+      index: 0,
+      promoter_type: 0,
     }
   }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct CompiledRegulatoryUnit {
+  grn_id: u32,
+  inputs: [Input; MAX_CONNECTIONS],
+  effector_indices: [u16; MAX_CONNECTIONS],
+  effector_weights: [f32; MAX_CONNECTIONS],
+  num_inputs: u32,
+  num_outputs: u32,
+}
+
+impl Default for CompiledRegulatoryUnit {
+  fn default() -> Self {
+    Self {
+      grn_id: 0,
+      num_inputs: 0,
+      num_outputs: 0,
+      inputs: [Input::default(); MAX_CONNECTIONS],
+      effector_indices: [0; MAX_CONNECTIONS],
+      effector_weights: [0.0; MAX_CONNECTIONS],
+    }
+  }
+}
+
+pub fn compile_grn(id: u32, grn: GeneRegulatoryNetwork) -> Vec<CompiledRegulatoryUnit> {
+  let mut regulatory_units = Vec::new();
+
+  for unit in grn.regulatory_units.iter() {
+    // Compoute strongest inputs for this regulatory unit
+    let mut inputs: Vec<(u16, f32, bool)> = Vec::new();
+
+    for promoter in unit.promoters.iter() {
+      for (i, receptor) in grn.receptors.iter().enumerate() {
+        let affinity = calculate_affinity(receptor, promoter);
+        inputs.push((i as u16, affinity, promoter.promoter_type == PromoterType::Additive));
+      }
+
+      for (i, other_reg_unit) in grn.regulatory_units.iter().enumerate() {
+        for factor in other_reg_unit.factors.iter() {
+          let affinity = calculate_affinity(factor, promoter);
+          inputs.push(((grn.receptors.len() + i) as u16, affinity, promoter.promoter_type == PromoterType::Additive));
+        }
+      }
+    }
+
+    let mut outputs: Vec<(u16, f32)> = Vec::new();
+    for (i, effector) in grn.effectors.iter().enumerate() {
+      let mut affinity = 0.0;
+      for factor in unit.factors.iter() {
+        affinity += calculate_affinity(factor, effector);
+      }
+      outputs.push((i as u16, affinity));
+    }
+  
+    // Get top-k (MAX_CONNECTIONS) inputs with the highest affinity
+    let top_inputs: Vec<(u16, f32, bool)> = inputs
+                    .iter()
+                    .cloned()
+                    .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
+                    .take(MAX_CONNECTIONS)
+                    .collect();
+    let top_inputs: Vec<Input> = top_inputs.iter().map(|(index, weight, promoter_type)| Input {
+      weight: *weight,
+      index: *index,
+      promoter_type: if *promoter_type { 1 } else { 0 },
+    }).collect();
+    let num_inputs = top_inputs.len() as u32;
+
+    let top_outputs: Vec<(u16, f32)> = outputs
+                    .iter()
+                    .cloned()
+                    .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
+                    .take(MAX_CONNECTIONS)
+                    .collect();
+    let effector_indices: [u16; MAX_CONNECTIONS] = top_outputs.iter().map(|(index, _)| *index).collect::<Vec<u16>>().try_into().unwrap();
+    let effector_weights: [f32; MAX_CONNECTIONS] = top_outputs.iter().map(|(_, weight)| *weight).collect::<Vec<f32>>().try_into().unwrap();
+    let num_outputs = top_outputs.len() as u32;
+
+    let compiled_regulatory_unit = CompiledRegulatoryUnit {
+      grn_id: id,
+      inputs: top_inputs.try_into().unwrap(),
+      effector_indices,
+      effector_weights,
+      num_inputs,
+      num_outputs,
+    };
+    regulatory_units.push(compiled_regulatory_unit);
+  }
+  regulatory_units
+}
 
 fn calculate_affinity(gene1: &impl Embedded, gene2: &impl Embedded) -> f32 {
   let distance = length(&gene1.embedding(), &gene2.embedding());

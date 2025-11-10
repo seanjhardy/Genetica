@@ -1,6 +1,7 @@
 pub const EMBEDDING_DIMENSIONS: usize = 3;
 pub const BINDING_DISTANCE_THRESHOLD: f32 = 0.2;
 
+#[derive(Clone)]
 pub struct GeneRegulatoryNetwork {
   // Inputs
   pub receptors: Vec<Receptor>,
@@ -19,7 +20,6 @@ impl GeneRegulatoryNetwork {
         }
     }
 }
-
 
 pub trait Embedded {
   fn embedding(&self) -> [f32; EMBEDDING_DIMENSIONS];
@@ -44,7 +44,7 @@ pub enum FactorType {
   Orientant,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum PromoterType {
   Additive,
   Multiplicative,
@@ -63,6 +63,7 @@ pub enum EffectorType {
 }
 
 
+#[derive(Clone)]
 pub struct Receptor {
     pub receptor_type: ReceptorType,
     pub sign: bool,
@@ -191,6 +192,7 @@ impl Embedded for Effector {
   }
 }
 
+#[derive(Clone)]
 pub struct RegulatoryUnit {
   pub promoters: Vec<Promoter>,
   pub factors: Vec<Factor>,

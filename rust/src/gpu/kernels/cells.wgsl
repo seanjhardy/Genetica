@@ -1,8 +1,8 @@
 // Compute shader for cell updates
-
 struct Cell {
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
+    radius: f32,
     energy: f32,
     cell_wall_thickness: f32,
     lifeform_idx: u32,
@@ -11,17 +11,10 @@ struct Cell {
 
 // Uniforms struct must match Rust struct layout exactly (including padding)
 struct Uniforms {
-    delta_time: f32,
-    _padding1: f32,
-    _padding2: f32,
-    _padding3: f32,
-    camera_pos: vec2<f32>,
-    zoom: f32,
-    point_radius: f32,
-    bounds: vec4<f32>,
-    view_size: vec2<f32>,
-    cell_capacity: u32,
-    free_cells_count: u32,
+    sim_params: vec4<f32>, // x: dt, y: zoom, z: view_w, w: view_h
+    cell_count: vec4<f32>, // x: cell_count, y: reserved0, z: reserved1, w: reserved2
+    camera: vec4<f32>,     // x: cam_x, y: cam_y
+    bounds: vec4<f32>,     // (left, top, right, bottom)
 }
 
 
@@ -31,8 +24,21 @@ var<uniform> uniforms: Uniforms;
 @group(0) @binding(1)
 var<storage, read_write> cells: array<Cell>;
 
+struct CellFreeList {
+    count: atomic<u32>,
+    indices: array<u32>,
+}
+
+struct CellEvents {
+    count: atomic<u32>,
+    indices: array<u32>,
+}
+
 @group(0) @binding(2)
-var<storage, read_write> cell_free_list: array<atomic<u32>>;
+var<storage, read_write> cell_free_list: CellFreeList;
+
+@group(0) @binding(3)
+var<storage, read_write> cell_events: CellEvents;
 
 
 fn rand(seed: vec2<u32>) -> f32 {
@@ -46,16 +52,11 @@ fn rand(seed: vec2<u32>) -> f32 {
 @compute @workgroup_size(128)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
-    
-    // Iterate through all cells up to capacity
-    if index >= uniforms.cell_capacity {
-        return;
-    }
-    
+
     // Check if this cell index is in the free list first
-    // cell_free_list[0] is the count, cell_free_list[1..] are the free indices
-    for (var i: u32 = 0u; i < uniforms.free_cells_count; i++) {
-        if atomicLoad(&cell_free_list[i]) == index {
+    let free_cells_count = atomicLoad(&cell_free_list.count);
+    for (var i: u32 = 0u; i < free_cells_count; i++) {
+        if cell_free_list.indices[i] == index {
             return;
         }
     }
@@ -63,8 +64,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var cell = cells[index];
     
     // Decrease energy over time (metabolic rate)
-    let energy_decay_rate = 0.1; // Energy units per second (slower decay)
-    cell.energy -= energy_decay_rate * uniforms.delta_time;
+    let energy_decay_rate = 0.05 * cell.radius; // Energy units per second (slower decay)
+    cell.energy -= energy_decay_rate * uniforms.sim_params.x;
     
     // Remove cell if energy reaches 0
     // TEMPORARILY DISABLED - don't remove cells based on energy
@@ -73,15 +74,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         cells[index] = cell;
         
         // Add this cell's index to the free list atomically
-        // cell_free_list[0] is the count, cell_free_list[1..] are the free indices
-        let free_index = uniforms.free_cells_count;
-        // Write the index at position (free_index + 1) since index 0 is the count
-        // Use atomicStore to ensure thread-safe write
-        //atomicStore(&cell_free_list[free_index], index);
+        // Write the index at the next available slot using atomic operation
+        let next_free_index = atomicAdd(&cell_free_list.count, 1u);
+        cell_free_list.indices[next_free_index] = index;
+
+        let event_index = atomicAdd(&cell_events.count, 1u);
+        cell_events.indices[event_index] = index;
         
         // Update lifeform cell count (atomic operation not available in WGSL,
         // so we'll handle this on CPU side after reading back results)
-        //return;
+        return;
     }
     
     // Generate random position offset for this timestep
@@ -105,13 +107,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Random position offset per timestep (added directly to position, no accumulation)
     let random_offset_magnitude = 0.5; // World units per timestep (small offset for subtle movement)
-    let random_offset = vec2<f32>(random_x, random_y) * random_offset_magnitude * uniforms.delta_time;
+    let random_offset = vec2<f32>(random_x, random_y) * random_offset_magnitude * uniforms.sim_params.x;
     
     // Store random offset for potential future use (but not using it for accumulation anymore)
     cell.random_force = random_offset;
     
     // Verlet integration with damping (no acceleration term)
-    let dt = uniforms.delta_time;
+    let dt = uniforms.sim_params.x;
     let velocity = cell.pos - cell.prev_pos;
     
     let damping = 0.98;
@@ -123,7 +125,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Boundary constraints
     // Note: bounds is [left, top, right, bottom]
-    let radius = uniforms.point_radius;
+    let radius = cell.radius;
     let min_x = uniforms.bounds.x + radius;
     let max_x = uniforms.bounds.z - radius; // bounds.z is right edge
     let min_y = uniforms.bounds.y + radius;

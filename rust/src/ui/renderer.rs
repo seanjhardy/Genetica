@@ -40,7 +40,6 @@ struct RenderableElement {
     background_color: Color,
     border: super::styles::Border,
     shadow: Shadow,
-    border_radius: f32, // Legacy: used for shadows
     border_radius_tl: f32,
     border_radius_tr: f32,
     border_radius_br: f32,
@@ -462,7 +461,6 @@ impl UiRenderer {
             background_color: component.style.background_color,
             border: component.style.border,
             shadow: component.style.shadow,
-            border_radius: component.style.border.radius, // Legacy: used for shadows
             border_radius_tl: component.style.border.radius_tl,
             border_radius_tr: component.style.border.radius_tr,
             border_radius_br: component.style.border.radius_br,
@@ -490,7 +488,11 @@ impl UiRenderer {
                 let text_height = text.font_size;
                 
                 let text_x = if content_width > 0.0 && content_width > text_width {
-                    x + component.style.padding.left + (content_width - text_width) / 2.0
+                    match text.text_align {
+                        super::styles::TextAlign::Left => x + component.style.padding.left,
+                        super::styles::TextAlign::Center => x + component.style.padding.left + (content_width - text_width) / 2.0,
+                        super::styles::TextAlign::Right => x + component.style.padding.left + content_width - text_width,
+                    }
                 } else {
                     x + component.style.padding.left
                 };
@@ -706,7 +708,8 @@ impl UiRenderer {
                     if element.shadow.blur > 0.0 || element.shadow.spread > 0.0 {
                         self.vertices.clear();
                         self.indices.clear();
-                        self.add_shadow_rect(element.x, element.y, element.width, element.height, &element.shadow, element.border_radius);
+                        self.add_shadow_rect(element.x, element.y, element.width, element.height, &element.shadow, 
+                            element.border_radius_tl, element.border_radius_tr, element.border_radius_br, element.border_radius_bl);
                         if !self.vertices.is_empty() {
                             self.render_rectangles(device, encoder, view);
                         }
@@ -725,24 +728,28 @@ impl UiRenderer {
                     
                     if has_uniform_radius {
                         // Use optimized uniform radius rendering
-                    self.add_rect(
-                        element.x,
-                        element.y,
-                        element.width,
-                        element.height,
+                        self.add_rounded_rect(
+                            element.x,
+                            element.y,
+                            element.width,
+                            element.height,
                             element.border_radius_tl,
-                        element.background_color,
-                    );
+                            element.border_radius_tr,
+                            element.border_radius_br,
+                            element.border_radius_bl,
+                            element.background_color,
+                        );
                     } else {
                         // Use per-corner rendering
-                        let max_radius = element.border_radius_tl.max(element.border_radius_tr)
-                            .max(element.border_radius_br).max(element.border_radius_bl);
-                        let clamped_radius = max_radius.min(element.width.min(element.height) / 2.0);
+                        let clamped_radius_tl = element.border_radius_tl.min(element.width.min(element.height) / 2.0);
+                        let clamped_radius_tr = element.border_radius_tr.min(element.width.min(element.height) / 2.0);
+                        let clamped_radius_br = element.border_radius_br.min(element.width.min(element.height) / 2.0);
+                        let clamped_radius_bl = element.border_radius_bl.min(element.width.min(element.height) / 2.0);
                         
-                        if clamped_radius <= 1.0 {
+                        if clamped_radius_tl <= 1.0 && clamped_radius_tr <= 1.0 && clamped_radius_br <= 1.0 && clamped_radius_bl <= 1.0 {
                             self.add_simple_rect(element.x, element.y, element.width, element.height, element.background_color);
                         } else {
-                            self.add_rounded_rect_corners(
+                            self.add_rounded_rect(
                                 element.x,
                                 element.y,
                                 element.width,
@@ -859,19 +866,22 @@ impl UiRenderer {
                 // Render border (on top)
                 if element.width > 0.0 && element.height > 0.0 {
                     if element.border.width > 0.0 {
-                    self.vertices.clear();
-                    self.indices.clear();
+                        self.vertices.clear();
+                        self.indices.clear();
                         self.add_border_rect(
                             element.x,
                             element.y,
                             element.width,
                             element.height,
-                            element.border_radius,
+                            element.border_radius_tl,
+                            element.border_radius_tr,
+                            element.border_radius_br,
+                            element.border_radius_bl,
                             element.border.width,
                             element.border.color,
                         );
-                    if !self.vertices.is_empty() {
-                        self.render_rectangles(device, encoder, view);
+                        if !self.vertices.is_empty() {
+                            self.render_rectangles(device, encoder, view);
                         }
                     }
                 }
@@ -1053,41 +1063,7 @@ impl UiRenderer {
         None
     }
 
-    fn add_rect(
-        &mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        radius: f32,
-        color: Color,
-    ) {
-        // Clamp radius to maximum possible (half of smallest dimension)
-        let radius = radius.min(width.min(height) / 2.0);
-
-        if radius <= 1.0 {
-            // Simple rectangle
-            self.add_simple_rect(x, y, width, height, color);
-        } else {
-            // Generate rounded rectangle
-            self.add_rounded_rect(x, y, width, height, radius, color);
-        }
-    }
-
     fn add_rounded_rect(
-        &mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        radius: f32,
-        color: Color,
-    ) {
-        // Call per-corner version with uniform radius
-        self.add_rounded_rect_corners(x, y, width, height, radius, radius, radius, radius, color);
-    }
-    
-    fn add_rounded_rect_corners(
         &mut self,
         x: f32,
         y: f32,
@@ -1326,14 +1302,14 @@ impl UiRenderer {
         y: f32,
         width: f32,
         height: f32,
-        radius: f32,
+        tl_radius: f32,
+        tr_radius: f32,
+        br_radius: f32,
+        bl_radius: f32,
         border_width: f32,
         color: Color,
-    ) {
-        // Clamp radius to maximum possible (half of smallest dimension)
-        let radius = radius.min(width.min(height) / 2.0);
-        
-        if radius < 1.0 {
+    ) { 
+        if tl_radius < 1.0 && tr_radius < 1.0 && br_radius < 1.0 && bl_radius < 1.0 {
             // Simple border (no rounded corners)
             // Render border as outline using 4 rectangles (top, right, bottom, left)
             // Top border
@@ -1345,9 +1321,11 @@ impl UiRenderer {
             // Left border
             self.add_simple_rect(x, y, border_width, height, color);
         } else {
-            // Rounded border - render as an outline
-            // We'll render 4 straight segments and 4 rounded corner pieces
-            self.add_rounded_border_outline(x, y, width, height, radius, border_width, color);
+            let max_tl_radius = tl_radius.min(width / 2.0).min(height / 2.0);
+            let max_tr_radius = tr_radius.min(width / 2.0).min(height / 2.0);
+            let max_br_radius = br_radius.min(width / 2.0).min(height / 2.0);
+            let max_bl_radius = bl_radius.min(width / 2.0).min(height / 2.0);
+            self.add_rounded_border_outline(x, y, width, height, max_tl_radius, max_tr_radius, max_br_radius, max_bl_radius, border_width, color);
         }
     }
     
@@ -1357,7 +1335,10 @@ impl UiRenderer {
         y: f32,
         width: f32,
         height: f32,
-        radius: f32,
+        tl_radius: f32,
+        tr_radius: f32,
+        br_radius: f32,
+        bl_radius: f32,
         border_width: f32,
         color: Color,
     ) {
@@ -1369,32 +1350,35 @@ impl UiRenderer {
         // 4. Left border (straight segment, minus corner areas)
         // 5. 4 rounded corner pieces
         
-        let inner_radius = (radius - border_width).max(0.0);
+        let inner_tl_radius = (tl_radius - border_width).max(0.0);
+        let inner_tr_radius = (tr_radius - border_width).max(0.0);
+        let inner_br_radius = (br_radius - border_width).max(0.0);
+        let inner_bl_radius = (bl_radius - border_width).max(0.0);
         
         // Top border (minus corner areas)
-        if width > 2.0 * radius {
-            self.add_simple_rect(x + radius, y, width - 2.0 * radius, border_width, color);
+        if width > (tl_radius + tr_radius) {
+            self.add_simple_rect(x + tl_radius, y, width - (tl_radius + tr_radius), border_width, color);
         }
         
         // Right border (minus corner areas)
-        if height > 2.0 * radius {
-            self.add_simple_rect(x + width - border_width, y + radius, border_width, height - 2.0 * radius, color);
+        if height > (tr_radius + br_radius) {
+            self.add_simple_rect(x + width - border_width, y + tr_radius, border_width, height - (tr_radius + br_radius), color);
         }
         
         // Bottom border (minus corner areas)
-        if width > 2.0 * radius {
-            self.add_simple_rect(x + radius, y + height - border_width, width - 2.0 * radius, border_width, color);
+        if width > (br_radius + bl_radius) {
+            self.add_simple_rect(x + br_radius, y + height - border_width, width - (br_radius + bl_radius), border_width, color);
         }
         
         // Left border (minus corner areas)
-        if height > 2.0 * radius {
-            self.add_simple_rect(x, y + radius, border_width, height - 2.0 * radius, color);
+        if height > (bl_radius + tl_radius) {
+            self.add_simple_rect(x, y + tl_radius, border_width, height - (bl_radius + tl_radius), color);
         }
         
         // Top-left rounded corner
-        if radius > 0.0 {
+        if tl_radius > 0.0 {
             self.add_rounded_corner_border(
-                x + radius, y + radius, radius, inner_radius,
+                x + tl_radius, y + tl_radius, tl_radius, inner_tl_radius,
                 std::f32::consts::PI, // Start angle (180 degrees)
                 8, // segments
                 color.to_array(),
@@ -1402,9 +1386,9 @@ impl UiRenderer {
         }
         
         // Top-right rounded corner
-        if radius > 0.0 {
+        if tr_radius > 0.0 {
             self.add_rounded_corner_border(
-                x + width - radius, y + radius, radius, inner_radius,
+                x + width - tr_radius, y + tr_radius, tr_radius, inner_tr_radius,
                 3.0 * std::f32::consts::PI / 2.0, // Start angle (90 degrees)
                 8, // segments
                 color.to_array(),
@@ -1412,9 +1396,9 @@ impl UiRenderer {
         }
         
         // Bottom-right rounded corner
-        if radius > 0.0 {
+        if br_radius > 0.0 {
             self.add_rounded_corner_border(
-                x + width - radius, y + height - radius, radius, inner_radius,
+                x + width - br_radius, y + height - br_radius, br_radius, inner_br_radius,
                 0.0, // Start angle (0 degrees)
                 8, // segments
                 color.to_array(),
@@ -1422,9 +1406,9 @@ impl UiRenderer {
         }
         
         // Bottom-left rounded corner
-        if radius > 0.0 {
+        if bl_radius > 0.0 {
             self.add_rounded_corner_border(
-                x + radius, y + height - radius, radius, inner_radius,
+                x + bl_radius, y + height - bl_radius, bl_radius, inner_bl_radius,
                 std::f32::consts::PI / 2.0, // Start angle (270 degrees)
                 8, // segments
                 color.to_array(),
@@ -1501,7 +1485,10 @@ impl UiRenderer {
         width: f32,
         height: f32,
         shadow: &Shadow,
-        radius: f32,
+        tl_radius: f32,
+        tr_radius: f32,
+        br_radius: f32,
+        bl_radius: f32,
     ) {
         // Simple shadow: render as a rectangle with offset and blur approximation
         // For now, we'll use simple rectangles even for rounded elements
@@ -1523,10 +1510,13 @@ impl UiRenderer {
 
         // Only render shadow if it's visible (alpha > 0)
         if shadow_color.a > 0.001 && shadow_width > 0.0 && shadow_height > 0.0 {
-            if radius > 0.0 {
+            if tl_radius > 0.0 || tr_radius > 0.0 || br_radius > 0.0 || bl_radius > 0.0 {
                 // Clamp radius to not exceed half of the smaller dimension
-                let max_radius = (shadow_width.min(shadow_height) / 2.0).min(radius);
-                self.add_rounded_rect(shadow_x, shadow_y, shadow_width, shadow_height, max_radius, shadow_color);
+                let max_tl_radius = tl_radius.min(shadow_width / 2.0).min(shadow_height / 2.0);
+                let max_tr_radius = tr_radius.min(shadow_width / 2.0).min(shadow_height / 2.0);
+                let max_br_radius = br_radius.min(shadow_width / 2.0).min(shadow_height / 2.0);
+                let max_bl_radius = bl_radius.min(shadow_width / 2.0).min(shadow_height / 2.0);
+                self.add_rounded_rect(shadow_x, shadow_y, shadow_width, shadow_height, max_tl_radius, max_tr_radius, max_br_radius, max_bl_radius, shadow_color);
             } else {
                 self.add_simple_rect(shadow_x, shadow_y, shadow_width, shadow_height, shadow_color);
             }

@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use crate::genetic_algorithm::systems::morphology::compile_grn;
 // Genetic algorithm module - manages genomes, lifeforms, and gene regulatory networks
 use crate::gpu::structures::{Cell, Lifeform};
 use crate::utils::math::Rect;
@@ -13,6 +14,7 @@ pub struct GeneticAlgorithm {
     lifeforms: Vec<Lifeform>,
     // Other data
     species: Vec<Species>,
+    //grn_buffers: GpuVector<CompiledGRN>,
 }
 
 impl GeneticAlgorithm {
@@ -29,10 +31,12 @@ impl GeneticAlgorithm {
     pub const INSERT_BASE_CHANCE: f32 = 0.00003;
     pub const DELETE_BASE_CHANCE: f32 = 0.00005;
 
-    pub fn new() -> Self {
+    pub fn new(device: &wgpu::Device) -> Self {
         Self {
             lifeforms: Vec::new(),
             species: Vec::new(),
+            //grn_buffers: GpuVector::new(device, 0, &[], 
+            //    wgpu::BufferUsages::STORAGE, Some("GRN Buffers")),
         }
     }
 
@@ -48,7 +52,7 @@ impl GeneticAlgorithm {
         SPECIES_ID.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub fn init(&mut self, num_lifeforms: u32, bounds: Rect) -> Vec<Cell>{
+    pub fn init(&mut self, num_lifeforms: u32, bounds: Rect, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<Cell>{
         use rand::Rng;
         
         LIFEFORM_ID.store(0, Ordering::Relaxed);
@@ -74,14 +78,19 @@ impl GeneticAlgorithm {
                 bounds.left + rng.gen::<f32>() * bounds.width,
                 bounds.top + rng.gen::<f32>() * bounds.height,
             ];
+            // Keep radii in a visible range (world units ~= screen pixels at zoom 1)
+            let random_radius = rng.gen_range(0.5..4.0);
             
             let cell_idx = cells.len() as u32;
-            let cell = Cell::new(pos, i as u32, 100.0);
+            let cell = Cell::new(pos, random_radius, i as u32, 100.0);
             cells.push(cell);
             
             // Create lifeform with 1 cell
-            let lifeform = Lifeform::new(lifeform_id, Vec::from([cell_idx]), genome, grn);
+            let lifeform = Lifeform::new(lifeform_id, Vec::from([cell_idx]), genome, grn.clone());
             self.lifeforms.push(lifeform);
+
+            //let compiled_grn = CompiledGRN::new(grn, &device);
+            //self.grn_buffers.push(device, queue, compiled_grn);
         }
 
         cells
@@ -90,5 +99,9 @@ impl GeneticAlgorithm {
     /// Get number of lifeforms (from genomes/GRNs count)
     pub fn num_lifeforms(&self) -> usize {
         self.lifeforms.len()
+    }
+
+    pub fn num_species(&self) -> usize {
+        self.species.len()
     }
 }

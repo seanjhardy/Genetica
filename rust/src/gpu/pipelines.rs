@@ -14,6 +14,7 @@ impl ComputePipelines {
         cell_buffer: &wgpu::Buffer,
         uniform_buffer: &wgpu::Buffer,
         cell_free_list_buffer: &wgpu::Buffer,
+        cell_event_buffer: &wgpu::Buffer,
     ) -> Self {
         // Create shader module
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -55,6 +56,16 @@ impl ComputePipelines {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -88,6 +99,10 @@ impl ComputePipelines {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: cell_free_list_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: cell_event_buffer.as_entire_binding(),
                 },
             ],
         });

@@ -120,39 +120,6 @@ impl View {
         let num_children = visible_indices.len();
         let total_gap = self.gap * (num_children as f32 - 1.0);
         available_main_size = (available_main_size - total_gap).max(0.0);
-        
-        // Debug logging for button parent containers and their parents
-        let has_button_child = visible_indices.iter().any(|&idx| {
-            if let Some(ref id) = self.children[idx].id {
-                id.contains("Btn")
-            } else {
-                false
-            }
-        });
-        
-        // Also check if any child is a parent of buttons (button group)
-        let has_button_grandchild = visible_indices.iter().any(|&idx| {
-            if let super::ComponentType::View(ref view) = self.children[idx].component_type {
-                view.children.iter().any(|gc| {
-                    if let Some(ref id) = gc.id {
-                        id.contains("Btn")
-                    } else {
-                        false
-                    }
-                })
-            } else {
-                false
-            }
-        });
-        
-        // Check if this is the controlPanel
-        let is_control_panel = visible_indices.iter().any(|&idx| {
-            if let Some(ref id) = self.children[idx].id {
-                id == "controlPanel"
-            } else {
-                false
-            }
-        });
 
         let mut total_fixed_main = 0.0;
         let mut flex_item_count = 0;

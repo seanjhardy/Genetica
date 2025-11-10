@@ -66,6 +66,7 @@ fn fs_main(input: FragmentInput) -> @location(0) vec4<f32> {
     
     // Sample each color channel with slight offset (more offset at edges)
     // Apply to the blurred result for combined effect
+    
     let r = textureSample(viewport_texture, texture_sampler, clamp(input.uv + uv_centered * aberration, vec2<f32>(0.0), vec2<f32>(1.0))).r;
     let g = textureSample(viewport_texture, texture_sampler, input.uv).g;
     let b = textureSample(viewport_texture, texture_sampler, clamp(input.uv - uv_centered * aberration, vec2<f32>(0.0), vec2<f32>(1.0))).b;

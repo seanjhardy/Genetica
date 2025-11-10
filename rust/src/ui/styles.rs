@@ -228,3 +228,11 @@ impl Default for Style {
         Self::new()
     }
 }
+
+
+#[derive(Debug, Clone, Copy)]
+pub enum TextAlign {
+    Left,
+    Center,
+    Right,
+}

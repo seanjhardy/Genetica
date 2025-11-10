@@ -1,5 +1,7 @@
 // HTML and CSS parser for UI definitions
 
+use crate::ui::styles::TextAlign;
+
 use super::components::{Component, ComponentType, View, Text, Image};
 use super::styles::{Style, Color, Border, Shadow, Padding, Margin, Size};
 use super::components::view::{FlexDirection, Alignment};
@@ -668,6 +670,20 @@ impl UiParser {
                                 _ => {}
                             }
                         }
+                    }
+                }
+
+                if let Some(text_align) = class_props.get("text-align") {
+                    match &mut component.component_type {
+                        ComponentType::Text(text) => {
+                            match text_align.as_str() {
+                                "left" => text.text_align = TextAlign::Left,
+                                "center" => text.text_align = TextAlign::Center,
+                                "right" => text.text_align = TextAlign::Right,
+                                _ => {}
+                            }
+                        }
+                        _ => {}
                     }
                 }
 

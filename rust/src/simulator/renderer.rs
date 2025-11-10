@@ -44,6 +44,15 @@ impl Renderer {
                 0,
                 cell_size_bytes,
             );
+
+            let free_list_bytes = ((buffers.cell_capacity() + 1) * std::mem::size_of::<u32>()) as u64;
+            encoder.copy_buffer_to_buffer(
+                buffers.cell_free_list_buffer_write(),
+                0,
+                buffers.cell_free_list_buffer_read(),
+                0,
+                free_list_bytes,
+            );
         }
 
         // Prepare viewport textures (compute layout and create textures)
@@ -60,7 +69,7 @@ impl Renderer {
                 }
             }
         }
-        
+
         let viewport_texture_view = match viewport_texture_view {
             Some(view) => view,
             None => {

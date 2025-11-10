@@ -14,6 +14,7 @@ pub struct GpuBuffers {
     pub cell_vector_b: GpuVector<Cell>,
     cell_read_buffer: AtomicBool,
     pub uniform_buffer: wgpu::Buffer,
+    cell_event_buffer: wgpu::Buffer,
 }
 
 impl GpuBuffers {
@@ -58,11 +59,22 @@ impl GpuBuffers {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let event_capacity = cell_vector_a.capacity();
+        let event_buffer_init = vec![0u32; event_capacity + 1];
+        let cell_event_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Cell Event Buffer"),
+            contents: bytemuck::cast_slice(&event_buffer_init),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
         Self {
             cell_vector_a,
             cell_vector_b,
             cell_read_buffer: AtomicBool::new(false), // Start with A as read buffer
             uniform_buffer,
+            cell_event_buffer,
         }
     }
     
@@ -102,14 +114,108 @@ impl GpuBuffers {
         }
     }
 
-    /// Get the read buffer's free list length (for rendering)
-    pub fn free_cells_count(&self) -> usize {
-        if self.cell_read_buffer.load(Ordering::Acquire) {
-            self.cell_vector_b.free_count()
-        } else {
-            self.cell_vector_a.free_count()
+
+    fn write_free_list(
+        queue: &wgpu::Queue,
+        vector: &GpuVector<Cell>,
+        new_count: u32,
+        remaining_indices: &[u32],
+    ) {
+        let count_data = [new_count];
+        let count_bytes = bytemuck::cast_slice(&count_data);
+        queue.write_buffer(vector.free_list_buffer(), 0, count_bytes);
+        if !remaining_indices.is_empty() {
+            let indices_bytes = bytemuck::cast_slice(remaining_indices);
+            queue.write_buffer(vector.free_list_buffer(), 4, indices_bytes);
         }
     }
+
+    /// Spawn a new cell by reusing a free slot (if available). Returns the populated index.
+    pub fn spawn_cell(&self, device: &wgpu::Device, queue: &wgpu::Queue, cell: Cell) -> Option<u32> {
+        let read_is_b = self.cell_read_buffer.load(Ordering::Acquire);
+        let (write_vec, read_vec) = if read_is_b {
+            (&self.cell_vector_a, &self.cell_vector_b)
+        } else {
+            (&self.cell_vector_b, &self.cell_vector_a)
+        };
+
+        let mut free_indices = write_vec.read_free_list(device, queue);
+        let free_index = match free_indices.pop() {
+            Some(idx) => idx,
+            None => return None,
+        };
+
+        let new_free_count = free_indices.len() as u32;
+        Self::write_free_list(queue, write_vec, new_free_count, &free_indices);
+        Self::write_free_list(queue, read_vec, new_free_count, &free_indices);
+
+        // Write the cell data into both buffers so render/compute stay in sync
+        let offset = (free_index as usize * std::mem::size_of::<Cell>()) as u64;
+        let cell_data = [cell];
+        let cell_bytes = bytemuck::cast_slice(&cell_data);
+        queue.write_buffer(write_vec.buffer(), offset, cell_bytes);
+        queue.write_buffer(read_vec.buffer(), offset, cell_bytes);
+
+        Some(free_index)
+    }
+
+    pub fn cell_event_buffer(&self) -> &wgpu::Buffer {
+        &self.cell_event_buffer
+    }
+
+    pub fn reset_cell_events(&self, queue: &wgpu::Queue) {
+        let zero = [0u32];
+        queue.write_buffer(&self.cell_event_buffer, 0, bytemuck::cast_slice(&zero));
+    }
+
+    pub fn drain_cell_death_event_count(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> usize {
+        let count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Cell Event Count Buffer"),
+            size: std::mem::size_of::<u32>() as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Cell Event Count Encoder"),
+        });
+        encoder.copy_buffer_to_buffer(&self.cell_event_buffer, 0, &count_buffer, 0, std::mem::size_of::<u32>() as u64);
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let buffer_slice = count_buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+
+        loop {
+            let _ = device.poll(wgpu::MaintainBase::Wait);
+            match receiver.try_recv() {
+                Ok(Ok(_)) => break,
+                Ok(Err(e)) => panic!("Cell event count read failed: {:?}", e),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    std::thread::sleep(std::time::Duration::from_micros(100));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    panic!("Cell event count channel disconnected");
+                }
+            }
+        }
+
+        let mapped_range = buffer_slice.get_mapped_range();
+        let count: u32 = bytemuck::cast_slice(&mapped_range)[0];
+        drop(mapped_range);
+        count_buffer.unmap();
+
+        if count == 0 {
+            self.reset_cell_events(queue);
+            return 0;
+        }
+
+        self.reset_cell_events(queue);
+        count as usize
+    }
+
     /// Get cell buffer (for pipelines) - DEPRECATED, use cell_buffer_read instead
     pub fn cell_buffer(&self) -> &wgpu::Buffer {
         self.cell_buffer_read()
@@ -119,7 +225,7 @@ impl GpuBuffers {
     pub fn cell_free_list_buffer(&self) -> &wgpu::Buffer {
         self.cell_free_list_buffer_read()
     }
-    
+
     /// Get cell capacity
     pub fn cell_capacity(&self) -> usize {
         self.cell_vector_a.capacity() // Both have same capacity
@@ -135,25 +241,6 @@ impl GpuBuffers {
         queue.write_buffer(&self.uniform_buffer, 0, uniforms);
     }
 
-    /// Update cell at specific index (updates write buffer)
-    pub fn update_cell(&self, queue: &wgpu::Queue, index: u32, cell: Cell) {
-        let write_buffer = if self.cell_read_buffer.load(Ordering::Acquire) {
-            &self.cell_vector_a
-        } else {
-            &self.cell_vector_b
-        };
-        write_buffer.update_item(queue, index, cell);
-    }
-    
-    /// Update all cells (updates write buffer)
-    pub fn update_cells(&self, queue: &wgpu::Queue, cells: &[Cell]) {
-        let write_buffer = if self.cell_read_buffer.load(Ordering::Acquire) {
-            &self.cell_vector_a
-        } else {
-            &self.cell_vector_b
-        };
-        write_buffer.update_all(queue, cells);
-    }
     /// Add a new cell to the GPU buffer (returns the index where it was placed)
     /// Adds to both buffers to keep them in sync (since we swap frequently)
     pub fn push_cell(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, cell: Cell) -> Option<u32> {
@@ -173,33 +260,5 @@ impl GpuBuffers {
             read_buffer.push(device, queue, cell);
         }
         index
-    }
-
-
-    /// Mark a cell index as free (for reuse) - updates both buffers
-    pub fn mark_cell_free(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, index: u32) {
-        self.cell_vector_a.mark_free(device, queue, index);
-        self.cell_vector_b.mark_free(device, queue, index);
-    }
-
-    /// Read cells from GPU buffer (for cleanup)
-    /// Returns all cells from read buffer - caller should check free list if needed
-    pub fn read_cells(&self, device: &wgpu::Device, queue: &wgpu::Queue, _count: usize) -> Vec<u8> {
-        // Read all cells from read buffer and convert to bytes
-        // Note: Does not filter by free list - check free list separately if needed
-        let read_buffer = if self.cell_read_buffer.load(Ordering::Acquire) {
-            &self.cell_vector_b
-        } else {
-            &self.cell_vector_a
-        };
-        let cells = read_buffer.read_all(device, queue);
-        bytemuck::cast_slice(&cells).to_vec()
-    }
-    
-    /// Sync free list count from GPU (useful after shader modifications)
-    /// Syncs both buffers to keep them in sync
-    pub fn sync_free_cell_count(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        self.cell_vector_a.sync_free_count(device, queue);
-        self.cell_vector_b.sync_free_count(device, queue);
     }
 }

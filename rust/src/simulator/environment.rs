@@ -1,5 +1,6 @@
 // Environment module - manages bounds, lifeforms, cells, and physics simulation
 
+use crate::utils::gpu::GpuDevice;
 use crate::utils::math::{Rect, Vec2};
 use crate::utils::ui::DragHandler;
 use crate::genetic_algorithm::GeneticAlgorithm;
@@ -19,7 +20,7 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new(_initial_bounds: Rect) -> Self {
+    pub fn new(_initial_bounds: Rect, gpu: &GpuDevice) -> Self {
         let mut planet = Planet::new_delune();
         planet.set_bounds(_initial_bounds);
         
@@ -27,7 +28,7 @@ impl Environment {
             bounds: _initial_bounds,
             drag_handler: DragHandler::new(),
             planet,
-            genetic_algorithm: GeneticAlgorithm::new(),
+            genetic_algorithm: GeneticAlgorithm::new(&gpu.device),
         }
     }
 

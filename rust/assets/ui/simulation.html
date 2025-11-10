@@ -5,6 +5,21 @@
     
     <!-- Show UI button view (hidden by default) -->
     <view id="showUIView" class="absolute w-full h-full flex-row col-start row-start hidden text-white">
+        <view class="w-400 h-80 py-10 px-20 m-10 bg-black-100 border-2 border-white-40 rounded-50 gap-10 
+        flex-row col-center row-center text-lg text-white">
+            <view class="flex-1 flex-row col-center row-center">
+                <image class="w-60 h-60 icon-dna"/>
+                <text class="w-80" id="species">0</text>
+            </view>
+            <view class="flex-1 flex-row col-center row-center">
+                <image class="w-60 h-60 icon-paw"/>
+                <text class="w-80" id="lifeforms">0</text>
+            </view>
+            <view class="flex-1 flex-row col-center row-center">
+                <image class="w-60 h-60 icon-cells"/>
+                <text class="w-80" id="cells">0</text>
+            </view>
+        </view>
         <view class="w-80 h-80 m-10 bg-transparent col-center row-center rounded-5 group" on-click="showUI">
             <image id="showUIIcon" class="w-60 h-60 icon-eye group-hover:icon-eyeHighlighted"/>
         </view>

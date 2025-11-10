@@ -10,4 +10,4 @@ pub use viewport::Viewport;
 pub use image::{Image, ImageResizeMode};
 pub use super::*;
 pub use component::{Component, ComponentType};
-pub use super::styles::{Color, Size};
+pub use super::styles::{Color, Size, TextAlign};

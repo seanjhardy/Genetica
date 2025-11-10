@@ -39,6 +39,7 @@ pub struct GpuVector<T: Pod + Zeroable + Clone> {
     /// GPU buffer containing all elements (fixed capacity)
     buffer: wgpu::Buffer,
     /// GPU buffer containing free indices (can hold up to capacity free indices)
+    /// Layout: [count: u32, indices: array<u32>]
     free_list_buffer: wgpu::Buffer,
     /// Current number of active elements (max index + 1)
     size: usize,
@@ -84,9 +85,7 @@ impl<T: Pod + Zeroable + Clone> GpuVector<T> {
         });
         
         // Create free list buffer (can hold up to capacity free indices)
-        // Layout: [count: u32 at offset 0, indices: array<u32> starting at offset 4]
-        // The count should be accessed atomically in shaders for thread safety
-        // Buffer size: (capacity + 1) * sizeof(u32) to hold count + up to capacity indices
+        // Layout: [count: u32, indices: array<u32>]
         let free_list_label = label.map(|l| format!("{} Free List", l));
         let free_list_data = vec![0u32; actual_capacity + 1]; // +1 for count at offset 0
         let free_list_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -126,16 +125,9 @@ impl<T: Pod + Zeroable + Clone> GpuVector<T> {
     pub fn capacity(&self) -> usize {
         self.capacity
     }
-    
-    /// Get number of free indices
-    pub fn free_count(&self) -> usize {
-        self.free_count
-    }
-    
     /// Read free list count and indices from GPU
     /// Always reads from GPU (doesn't rely on CPU-side free_count for accuracy)
-    fn read_free_list(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<u32> {
-        
+    pub fn read_free_list(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<u32> {
         // Read the count first (stored at offset 0)
         let count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Free List Count Buffer"),
@@ -222,6 +214,56 @@ impl<T: Pod + Zeroable + Clone> GpuVector<T> {
         indices_buffer.unmap();
         
         indices
+    }
+
+    /// Read only the number of free indices from GPU without fetching the entire list
+    pub fn read_free_count(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> usize {
+        let count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Free List Count Buffer"),
+            size: std::mem::size_of::<u32>() as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Free List Count Readback Encoder"),
+        });
+        encoder.copy_buffer_to_buffer(
+            &self.free_list_buffer,
+            0,
+            &count_buffer,
+            0,
+            std::mem::size_of::<u32>() as u64,
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let buffer_slice = count_buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+
+        loop {
+            let _ = device.poll(wgpu::MaintainBase::Wait);
+            match receiver.try_recv() {
+                Ok(Ok(_)) => break,
+                Ok(Err(e)) => panic!("Buffer mapping failed: {:?}", e),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    std::thread::sleep(std::time::Duration::from_micros(100));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    panic!("Channel disconnected before mapping completed");
+                }
+            }
+        }
+
+        let mapped_range = buffer_slice.get_mapped_range();
+        let count: u32 = bytemuck::cast_slice(&mapped_range)[0];
+        drop(mapped_range);
+        count_buffer.unmap();
+
+        count as usize
     }
     
     /// Write free list count and indices to GPU
@@ -443,47 +485,10 @@ impl<T: Pod + Zeroable + Clone> GpuVector<T> {
     /// Sync free list count from GPU (updates CPU-side free_count)
     /// Useful for keeping CPU-side count accurate after shader modifications
     pub fn sync_free_count(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Free List Count Sync Buffer"),
-            size: std::mem::size_of::<u32>() as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Free List Count Sync Encoder"),
-        });
-        encoder.copy_buffer_to_buffer(&self.free_list_buffer, 0, &count_buffer, 0, std::mem::size_of::<u32>() as u64);
-        queue.submit(std::iter::once(encoder.finish()));
-        
-        let buffer_slice = count_buffer.slice(..);
-        let (sender, receiver) = std::sync::mpsc::channel();
-        
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
-        });
-        
-        loop {
-            let _ = device.poll(wgpu::MaintainBase::Wait);
-            match receiver.try_recv() {
-                Ok(Ok(_)) => break,
-                Ok(Err(e)) => panic!("Buffer mapping failed: {:?}", e),
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    std::thread::sleep(std::time::Duration::from_micros(100));
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    panic!("Channel disconnected before mapping completed");
-                }
-            }
-        }
-        
-        let mapped_range = buffer_slice.get_mapped_range();
-        let count: u32 = bytemuck::cast_slice(&mapped_range)[0];
-        drop(mapped_range);
-        count_buffer.unmap();
-        
-        self.free_count = count as usize;
+        let count = self.read_free_count(device, queue);
+        self.free_count = count;
     }
+
 }
 
 /// Static GPU Vector - fixed capacity without free list management

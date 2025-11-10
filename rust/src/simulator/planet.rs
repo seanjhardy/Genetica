@@ -57,6 +57,8 @@ impl Planet {
     
     /// Create Delune planet with default configuration
     pub fn new_delune() -> Self {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
         Self {
             name: "Delune".to_string(),
             // Colors in sRGB (0-255) converted to linear space for rendering
@@ -66,10 +68,10 @@ impl Planet {
                 Self::srgb_u8_to_linear(20, 11, 92),
             ],
             noise_frequency: 0.6,
-            noise_octaves: 1,
+            noise_octaves: 2,
             noise_warp: 0.0,
             smooth_noise: true,
-            seed: rand::random::<f32>(),
+            seed: rng.gen_range(0.0..10000.0),
             current_bounds: Rect::new(0.0, 0.0, 1000.0, 1000.0),
             texture: None,
             texture_view: None,

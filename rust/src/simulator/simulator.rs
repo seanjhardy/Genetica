@@ -1,10 +1,11 @@
 // Simulator module - main simulation loop and window management
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use rand::Rng;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -23,23 +24,27 @@ use crate::gpu::buffers::GpuBuffers;
 use crate::gpu::pipelines::{ComputePipelines, RenderPipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
+use crate::gpu::structures::Cell;
 use crate::simulator::environment::Environment;
 use crate::simulator::renderer::Renderer;
 
-const NUM_LIFEFORMS: u32 = 500;
-
-// Fixed simulation timestep - large value for faster simulation at lower accuracy
-// This is NOT tied to render frame time - simulation runs independently
 const SIMULATION_DELTA_TIME: f32 = 0.1; // 100ms per simulation step
+const MIN_ACTIVE_CELLS: usize = 120;
+const MAX_SPAWN_PER_STEP: usize = 4;
 
-/// Simulation structure - runs compute updates as fast as possible
+/// Simulation structure
 pub struct Simulation {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     compute_pipelines: ComputePipelines,
     buffers: Arc<GpuBuffers>,
+    environment: Arc<parking_lot::Mutex<Environment>>,
     paused: bool,
     speed: Arc<parking_lot::Mutex<f32>>, // Shared speed for thread-safe access
+    min_cells: usize,
+    max_spawns_per_step: usize,
+    active_cells_estimate: usize,
+    active_cell_counter: Arc<AtomicU32>,
     
     // Simulation parameters
     workgroup_size: u32,
@@ -60,15 +65,25 @@ impl Simulation {
         queue: Arc<wgpu::Queue>,
         compute_pipelines: ComputePipelines,
         buffers: Arc<GpuBuffers>,
+        environment: Arc<parking_lot::Mutex<Environment>>,
         speed: Arc<parking_lot::Mutex<f32>>,
+        min_cells: usize,
+        max_spawns_per_step: usize,
     ) -> Self {
+        let initial_cells = buffers.cell_size() as u32;
+        let active_cell_counter = Arc::new(AtomicU32::new(initial_cells));
         Self {
             device,
             queue,
             compute_pipelines,
             buffers,
+            environment,
             paused: false,
             speed,
+            min_cells,
+            max_spawns_per_step,
+            active_cells_estimate: initial_cells as usize,
+            active_cell_counter,
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
             pending_command_buffers: Vec::with_capacity(4),
@@ -129,6 +144,10 @@ impl Simulation {
     
     pub fn get_buffers(&self) -> Arc<GpuBuffers> {
         self.buffers.clone()
+    }
+
+    pub fn active_cell_counter(&self) -> Arc<AtomicU32> {
+        self.active_cell_counter.clone()
     }
 
     pub fn flush_pending(&mut self) {
@@ -192,6 +211,59 @@ impl Simulation {
         self.step_count
             .fetch_add(iterations as u64, Ordering::Relaxed);
     }
+
+    pub fn maintain_minimum_cell_population(&mut self) {
+        // Submit any pending work so the free-list readback sees the most recent state
+        if !self.pending_command_buffers.is_empty() {
+            self.flush_pending_submissions();
+        }
+
+        let death_count = self
+            .buffers
+            .drain_cell_death_event_count(&self.device, &self.queue);
+        if death_count > 0 {
+            self.active_cells_estimate = self
+                .active_cells_estimate
+                .saturating_sub(death_count);
+            self.active_cell_counter
+                .store(self.active_cells_estimate as u32, Ordering::Relaxed);
+        }
+
+        if self.active_cells_estimate >= self.min_cells {
+            return;
+        }
+
+        let deficit = self.min_cells - self.active_cells_estimate;
+        let spawn_attempts = deficit.min(self.max_spawns_per_step);
+
+        let bounds = {
+            let env = self.environment.lock();
+            env.get_bounds()
+        };
+
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..spawn_attempts {
+            let x = rng.gen_range(bounds.left..bounds.right());
+            let y = rng.gen_range(bounds.top..bounds.bottom());
+            let radius = rng.gen_range(0.5..4.0);
+            let energy = rng.gen_range(50.0..120.0);
+            let cell = Cell::new([x, y], radius, 0, energy);
+
+            if self
+                .buffers
+                .spawn_cell(&self.device, &self.queue, cell)
+                .is_none()
+            {
+                break;
+            }
+
+            self.active_cells_estimate += 1;
+        }
+
+        self.active_cell_counter
+            .store(self.active_cells_estimate as u32, Ordering::Relaxed);
+    }
 }
 
 /// Application structure - manages rendering at 60 FPS and window events
@@ -213,6 +285,7 @@ pub struct Application {
     bounds: Rect,
     key_states: KeyStates,
     last_cursor_pos: Vec2,
+    active_cell_counter: Arc<AtomicU32>,
     
     // Performance tracking
     last_render_step_count: u64,
@@ -265,6 +338,7 @@ impl Application {
             buffers.cell_buffer_write(), // Compute writes to write buffer
             &buffers.uniform_buffer,
             buffers.cell_free_list_buffer_write(), // Compute uses write buffer's free list
+            buffers.cell_event_buffer(), // Buffer for death events
         );
 
         let speed = Arc::new(parking_lot::Mutex::new(1.0));
@@ -274,8 +348,16 @@ impl Application {
             queue,
             compute_pipelines_for_sim,
             buffers,
+            environment.clone(),
             speed.clone(),
+            MIN_ACTIVE_CELLS,
+            MAX_SPAWN_PER_STEP,
         )));
+
+        let active_cell_counter = {
+            let sim = simulation.lock();
+            sim.active_cell_counter()
+        };
         
         Self {
             simulation,
@@ -303,6 +385,7 @@ impl Application {
             real_time: 0.0,
             speed,
             rendering_enabled: true,
+            active_cell_counter,
         }
     }
     
@@ -363,6 +446,7 @@ impl Application {
             profile_scope!("Sync Simulation State");
             let mut simulation = self.simulation.lock();
             simulation.flush_pending();
+            simulation.maintain_minimum_cell_population();
             let current_step = simulation.get_step_count();
             let buffers = simulation.get_buffers();
             drop(simulation);
@@ -412,6 +496,8 @@ impl Application {
         let camera_pos = self.camera.get_position();
         let zoom = self.camera.get_zoom();
         let view_size = Vec2::new(self.gpu.config.width as f32, self.gpu.config.height as f32);
+        let total_cells = buffers.cell_size();
+        let active_cells = self.active_cell_counter.load(Ordering::Relaxed) as f32;
         
         let _render_delta = now.duration_since(self.last_render_time).as_secs_f32();
         
@@ -422,15 +508,13 @@ impl Application {
             SIMULATION_DELTA_TIME, // Use fixed timestep for physics consistency
             [camera_pos.x, camera_pos.y],
             zoom,
-            2.0,
             bounds.left,
             bounds.top,
             bounds.right(),
             bounds.bottom(),
             view_size.x,
             view_size.y,
-            buffers.cell_capacity() as u32,
-            buffers.free_cells_count() as u32,
+            active_cells,
         );
 
         // Update uniforms on the buffers (this updates the uniform buffer for both compute and render)
@@ -458,6 +542,29 @@ impl Application {
                 if let Some(time_component) = screen.find_element_by_id("time") {
                     time_component.update_text(&time_string);
                 }
+
+                // Get current simulation state and clone buffers
+                let (species_count, lifeforms_count) = {
+                    profile_scope!("Get Genetic Algorithm State");
+                    let environment = self.environment.lock();
+                    let species_count = environment.genetic_algorithm.num_species();
+                    let lifeforms_count = environment.genetic_algorithm.num_lifeforms();
+                    drop(environment);
+                    (species_count, lifeforms_count)
+                };
+                let cell_count = self.active_cell_counter.load(Ordering::Relaxed) as usize;
+                if let Some(species_component) = screen.find_element_by_id("species") {
+                    let species_text = format_number(format!("{}", species_count));
+                    species_component.update_text(&species_text);
+                }
+                if let Some(lifeforms_component) = screen.find_element_by_id("lifeforms") {
+                    let lifeforms_text = format_number(format!("{}", lifeforms_count));
+                    lifeforms_component.update_text(&lifeforms_text);
+                }
+                if let Some(cells_component) = screen.find_element_by_id("cells") {
+                    let cells_text = format_number(format!("{}", cell_count));
+                    cells_component.update_text(&cells_text);
+                }
             }
         };
         
@@ -473,7 +580,7 @@ impl Application {
         
         // Use actual cell size (number of initialized cells) instead of capacity
         // This ensures we only render the cells that actually exist
-        let num_cells_to_render = buffers.cell_size();
+        let num_cells_to_render = total_cells;
         
         // Get surface texture and create encoder
         let output = {
@@ -877,7 +984,7 @@ impl Application {
 
         // Initialize environment
         let initial_bounds = Rect::new(0.0, 0.0, size.width as f32, size.height as f32);
-        let mut environment = Environment::new(initial_bounds);
+        let mut environment = Environment::new(initial_bounds, &gpu);
 
         // Initialize camera (must be before buffers since we need camera data for uniforms)
         let camera = Camera::new(
@@ -886,7 +993,7 @@ impl Application {
         );
 
         // Get initial cells and lifeforms from environment
-        let cells = environment.genetic_algorithm.init(NUM_LIFEFORMS, environment.get_bounds());
+        let cells = environment.genetic_algorithm.init(200, environment.get_bounds(), &gpu.device, &gpu.queue);
 
         // Initialize GPU buffers with initial data
         let bounds = environment.get_bounds();
@@ -900,19 +1007,19 @@ impl Application {
             bytemuck::cast_slice(&[Uniforms::zeroed()]),
         ));
         
+        let initial_cell_count = buffers.cell_size() as f32;
+
         let initial_uniforms = Uniforms::new(
             0.0,
             [camera_pos.x, camera_pos.y],
             zoom,
-            2.0, // point_radius - match physics collision radius
             bounds.left,
             bounds.top,
             bounds.right(),
             bounds.bottom(),
             view_size.x,
             view_size.y,
-            buffers.cell_capacity() as u32,
-            buffers.free_cells_count() as u32,
+            initial_cell_count,
         );
         
         buffers.update_uniforms(&gpu.queue, bytemuck::cast_slice(&[initial_uniforms]));
@@ -925,8 +1032,6 @@ impl Application {
             &buffers.uniform_buffer,
             buffers.cell_free_list_buffer(),
         );
-
-        // Initialize timestamp buffers
 
         // Initialize bounds renderer (includes planet background)
         let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.queue, &gpu.config);
