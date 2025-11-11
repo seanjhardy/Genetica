@@ -27,7 +27,7 @@ impl GeneticAlgorithm {
     pub const GENE_DIFFERENCE_SCALAR: f32 = 0.5;
     #[allow(dead_code)]
     pub const BASE_DIFFERENCE_SCALAR: f32 = 0.1;
-    pub const COMPATABILITY_DISTANCE_THRESHOLD: f32 = 5.0;
+    pub const COMPATABILITY_DISTANCE_THRESHOLD: f32 = 200.0;
 
     #[allow(dead_code)]
     pub const INSERT_GENE_CHANCE: f32 = 0.0005;

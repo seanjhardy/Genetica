@@ -31,8 +31,8 @@ use crate::simulator::state::{GpuTransferState, PauseState, PopulationState, Spa
 use crate::simulator::renderer::Renderer;
 
 const SIMULATION_DELTA_TIME: f32 = 0.1; // 100ms per simulation step
-const MIN_ACTIVE_CELLS: usize = 120;
-const MAX_SPAWN_PER_STEP: usize = 4;
+const MIN_ACTIVE_CELLS: usize = 20;
+const MAX_SPAWN_PER_STEP: usize = 50;
 
 #[derive(Copy, Clone)]
 enum SpawnKind {
@@ -155,7 +155,7 @@ impl Simulation {
             speed
         };
 
-        let iterations = (speed.max(1.0).floor() as u32).max(1);
+        let iterations = (speed.max(1.0).floor() as u32);
         self.run_compute_batch(iterations);
     }
     

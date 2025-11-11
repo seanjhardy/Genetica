@@ -271,7 +271,7 @@ impl Genome {
                 gene_difference += 1;
             }
         }
-
+        
         (gene_difference as f32) * GeneticAlgorithm::GENE_DIFFERENCE_SCALAR + base_difference * GeneticAlgorithm::BASE_DIFFERENCE_SCALAR
     }
 
