@@ -1,14 +1,14 @@
 // Compute shader for cell updates
 struct Cell {
-    is_alive: u32,
-    _padding: u32,
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
+    random_force: vec2<f32>,
     radius: f32,
     energy: f32,
     cell_wall_thickness: f32,
-    lifeform_idx: u32,
-    random_force: vec2<f32>, // Random force vector that changes over time
+    is_alive: u32,
+    lifeform_slot: u32,
+    padding: u32,
 }
 
 // Uniforms struct must match Rust struct layout exactly (including padding)
@@ -46,6 +46,38 @@ var<storage, read_write> spawn_count: Counter;
 
 @group(0) @binding(5)
 var<storage, read> spawn_requests: array<Cell>;
+
+struct LifeformCounterArray {
+    values: array<atomic<u32>>,
+}
+
+@group(0) @binding(6)
+var<storage, read_write> lifeform_counts: LifeformCounterArray;
+
+@group(0) @binding(7)
+var<storage, read_write> lifeform_active: LifeformCounterArray;
+
+@group(0) @binding(8)
+var<storage, read_write> active_lifeform_counter: Counter;
+
+struct DivisionRequest {
+    parent_lifeform_slot: u32,
+    cell_index: u32,
+    pos: vec2<f32>,
+    radius: f32,
+    energy: f32,
+}
+
+@group(0) @binding(9)
+var<storage, read_write> division_request_count: Counter;
+
+@group(0) @binding(10)
+var<storage, read_write> division_requests: array<DivisionRequest>;
+
+const DIVISION_PROBABILITY: f32 = 0.01;
+const MAX_DIVISION_REQUESTS: u32 = 512u;
+const LIFEFORM_CAPACITY: u32 = 4096u;
+const MIN_DIVISION_ENERGY: f32 = 20.0;
 
 
 fn rand(seed: vec2<u32>) -> f32 {
@@ -92,6 +124,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     new_cell.is_alive = 1u;
                     cells[slot_index] = new_cell;
                     atomicAdd(&alive_counter.value, 1u);
+                    let lf_idx = new_cell.lifeform_slot;
+                    if lf_idx < LIFEFORM_CAPACITY {
+                        let prev_lifeform = atomicAdd(&lifeform_counts.values[lf_idx], 1u);
+                        if prev_lifeform == 0u {
+                            let was_active = atomicExchange(&lifeform_active.values[lf_idx], 1u);
+                            if was_active == 0u {
+                                atomicAdd(&active_lifeform_counter.value, 1u);
+                            }
+                        }
+                    }
                     spawned = true;
                     break;
                 }
@@ -100,6 +142,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 break;
             }
         }
+    }
+
+    let total_cells = arrayLength(&cells);
+    if index >= total_cells {
+        return;
     }
 
     var cell = cells[index];
@@ -117,15 +164,54 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         cell.energy = 0.0;
         cell.is_alive = 0u;
         cells[index] = cell;
-        
-        // Add this cell's index to the free list atomically
-        // Write the index at the next available slot using atomic operation
+
         let next_free_index = atomicAdd(&cell_free_list.count, 1u);
         cell_free_list.indices[next_free_index] = index;
-        atomicSub(&alive_counter.value, 1u);
-        
-        // Update lifeform cell count (atomic operation not available in WGSL,
-        // so we'll handle this on CPU side after reading back results)
+
+        loop {
+            let current = atomicLoad(&alive_counter.value);
+            if current == 0u {
+                break;
+            }
+            let exchange = atomicCompareExchangeWeak(&alive_counter.value, current, current - 1u);
+            if exchange.old_value == current && exchange.exchanged {
+                break;
+            }
+        }
+
+        let lf_idx = cell.lifeform_slot;
+        if lf_idx < LIFEFORM_CAPACITY {
+            var lifeform_reached_zero = false;
+            loop {
+                let current = atomicLoad(&lifeform_counts.values[lf_idx]);
+                if current == 0u {
+                    break;
+                }
+                let desired = current - 1u;
+                let exchange = atomicCompareExchangeWeak(&lifeform_counts.values[lf_idx], current, desired);
+                if exchange.old_value == current && exchange.exchanged {
+                    lifeform_reached_zero = desired == 0u;
+                    break;
+                }
+            }
+
+            if lifeform_reached_zero {
+                let was_active = atomicExchange(&lifeform_active.values[lf_idx], 0u);
+                if was_active == 1u {
+                    loop {
+                        let current = atomicLoad(&active_lifeform_counter.value);
+                        if current == 0u {
+                            break;
+                        }
+                        let exchange = atomicCompareExchangeWeak(&active_lifeform_counter.value, current, current - 1u);
+                        if exchange.old_value == current && exchange.exchanged {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         return;
     }
     
@@ -188,6 +274,25 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     } else if cell.pos.y > max_y {
         cell.prev_pos.y = cell.pos.y;
         cell.pos.y = max_y;
+    }
+
+    if cell.energy > MIN_DIVISION_ENERGY {
+        let division_seed = vec2<u32>(seed1 ^ 0x9e3779b9u, seed2 ^ 0x243f6a88u);
+        let division_random = (rand(division_seed) + 1.0) * 0.5;
+        if division_random < DIVISION_PROBABILITY && cell.lifeform_slot < LIFEFORM_CAPACITY {
+            let request_index = atomicAdd(&division_request_count.value, 1u);
+            if request_index < MAX_DIVISION_REQUESTS {
+                let child_energy = cell.energy * 0.5;
+                cell.energy = child_energy;
+                division_requests[request_index].parent_lifeform_slot = cell.lifeform_slot;
+                division_requests[request_index].cell_index = index;
+                division_requests[request_index].pos = cell.pos;
+                division_requests[request_index].radius = cell.radius;
+                division_requests[request_index].energy = child_energy;
+            } else {
+                atomicSub(&division_request_count.value, 1u);
+            }
+        }
     }
     
     cells[index] = cell;

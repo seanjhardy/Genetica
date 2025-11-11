@@ -1,7 +1,7 @@
 // Simulator module - main simulation loop and window management
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -26,11 +26,25 @@ use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
 use crate::gpu::structures::Cell;
 use crate::simulator::environment::Environment;
+use crate::simulator::lifeform_registry::{LifeformMetadata, LifeformRegistry};
+use crate::simulator::state::{GpuTransferState, PauseState, PopulationState, SpawnState, SubmissionState};
 use crate::simulator::renderer::Renderer;
 
 const SIMULATION_DELTA_TIME: f32 = 0.1; // 100ms per simulation step
 const MIN_ACTIVE_CELLS: usize = 120;
 const MAX_SPAWN_PER_STEP: usize = 4;
+
+#[derive(Copy, Clone)]
+enum SpawnKind {
+    RandomNew,
+    Division { parent_lifeform_id: usize },
+}
+
+struct PendingSpawn {
+    cell: Cell,
+    slot: u32,
+    kind: SpawnKind,
+}
 
 /// Simulation structure
 pub struct Simulation {
@@ -39,26 +53,19 @@ pub struct Simulation {
     compute_pipelines: ComputePipelines,
     buffers: Arc<GpuBuffers>,
     environment: Arc<parking_lot::Mutex<Environment>>,
-    paused: bool,
+    pause: PauseState,
     speed: Arc<parking_lot::Mutex<f32>>, // Shared speed for thread-safe access
-    min_cells: usize,
-    max_spawns_per_step: usize,
-    last_alive_count: u32,
-    predicted_alive_count: u32,
-    alive_counter_pending: bool,
-    spawn_capacity: usize,
+    population: PopulationState,
+    transfers: GpuTransferState,
+    lifeforms: LifeformRegistry,
+    spawn: SpawnState,
     
     // Simulation parameters
     workgroup_size: u32,
     
     // Step counter (atomic for thread-safe access)
     step_count: Arc<AtomicU64>,
-
-    // Batched command submission
-    pending_command_buffers: Vec<wgpu::CommandBuffer>,
-    submission_batch_size: usize,
-    max_submission_delay: Duration,
-    last_submission: Instant,
+    submission: SubmissionState,
 }
 
 impl Simulation {
@@ -69,40 +76,50 @@ impl Simulation {
         buffers: Arc<GpuBuffers>,
         environment: Arc<parking_lot::Mutex<Environment>>,
         speed: Arc<parking_lot::Mutex<f32>>,
-        min_cells: usize,
-        max_spawns_per_step: usize,
     ) -> Self {
-        let initial_alive = buffers.cell_size() as u32;
+        let initial_alive = buffers.initial_alive_count();
         let spawn_capacity = buffers.spawn_capacity();
+        let lifeform_capacity = buffers.lifeform_capacity();
+        let existing_lifeform_entries = {
+            let env_guard = environment.lock();
+            env_guard.genetic_algorithm.list_active_lifeforms()
+        };
+        let mut lifeforms = LifeformRegistry::new(lifeform_capacity);
+        for (lifeform_id, species_id) in existing_lifeform_entries {
+            let slot = lifeform_id as u32;
+            if (slot as usize) >= lifeform_capacity {
+                continue;
+            }
+            lifeforms.bootstrap_slot(
+                slot,
+                lifeform_id,
+                LifeformMetadata {
+                    species_id: Some(species_id),
+                    genome_id: None,
+                },
+            );
+        }
+        let initial_lifeforms = lifeforms.active_count();
         Self {
             device,
             queue,
             compute_pipelines,
             buffers,
             environment,
-            paused: false,
+            pause: PauseState::new(false),
             speed,
-            min_cells,
-            max_spawns_per_step,
-            last_alive_count: initial_alive,
-            predicted_alive_count: initial_alive,
-            alive_counter_pending: false,
-            spawn_capacity,
+            population: PopulationState::new(initial_alive, initial_lifeforms),
+            transfers: GpuTransferState::default(),
+            lifeforms,
+            spawn: SpawnState::new(spawn_capacity),
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
-            pending_command_buffers: Vec::with_capacity(4),
-            submission_batch_size: 4,
-            max_submission_delay: Duration::from_micros(500),
-            last_submission: Instant::now(),
+            submission: SubmissionState::new(4, Duration::from_micros(500)),
         }
     }
     
     pub fn set_paused(&mut self, paused: bool) {
-        self.paused = paused;
-    }
-    
-    pub fn is_paused(&self) -> bool {
-        self.paused
+        self.pause.set(paused);
     }
     
     // Run a single simulation step (called as fast as possible)
@@ -110,7 +127,7 @@ impl Simulation {
         profile_scope!("Simulation Step");
         
         // Skip simulation if paused
-        if self.paused {
+        if self.pause.is_paused() {
             self.flush_pending_submissions();
             thread::sleep(Duration::from_millis(10));
             return;
@@ -150,22 +167,35 @@ impl Simulation {
         self.buffers.clone()
     }
 
-    pub fn last_alive_count(&self) -> u32 {
-        self.last_alive_count
+    pub fn paused_handle(&self) -> Arc<AtomicBool> {
+        self.pause.handle()
     }
 
-    pub fn flush_pending(&mut self) {
-        self.flush_pending_submissions();
+    pub fn is_paused(&self) -> bool {
+        self.pause.is_paused()
     }
+
+    pub fn last_alive_count(&self) -> u32 {
+        self.population.last_alive
+    }
+
+    pub fn last_lifeform_count(&self) -> u32 {
+        self.population.last_lifeform
+    }
+
+    pub fn enqueue_spawn_requests(&self, cells: &[Cell]) -> usize {
+        self.buffers.enqueue_spawn_requests(&self.queue, cells)
+    }
+
 
     fn flush_pending_submissions(&mut self) {
-        if self.pending_command_buffers.is_empty() {
+        if self.submission.pending_command_buffers.is_empty() {
             return;
         }
 
         self.queue
-            .submit(self.pending_command_buffers.drain(..));
-        self.last_submission = Instant::now();
+            .submit(self.submission.pending_command_buffers.drain(..));
+        self.submission.record_submission_time();
     }
 
     fn run_compute_batch(&mut self, iterations: u32) {
@@ -198,10 +228,28 @@ impl Simulation {
                 }
             }
 
-            if !self.alive_counter_pending {
+            if !self.transfers.alive_counter_pending {
                 self.buffers
                     .schedule_alive_counter_copy(&mut encoder);
-                self.alive_counter_pending = true;
+                self.transfers.alive_counter_pending = true;
+            }
+
+            if !self.transfers.lifeform_counter_pending {
+                self.buffers
+                    .schedule_lifeform_counter_copy(&mut encoder);
+                self.transfers.lifeform_counter_pending = true;
+            }
+
+            if !self.transfers.lifeform_flags_pending {
+                self.buffers
+                    .schedule_lifeform_flags_copy(&mut encoder);
+                self.transfers.lifeform_flags_pending = true;
+            }
+
+            if !self.transfers.division_requests_pending {
+                self.buffers
+                    .schedule_division_requests_copy(&mut encoder);
+                self.transfers.division_requests_pending = true;
             }
 
             encoder.finish()
@@ -209,9 +257,9 @@ impl Simulation {
 
         {
             profile_scope!("Submit Simulation Commands");
-            self.pending_command_buffers.push(command_buffer);
-            if self.pending_command_buffers.len() >= self.submission_batch_size
-                || self.last_submission.elapsed() >= self.max_submission_delay
+            self.submission.pending_command_buffers.push(command_buffer);
+            if self.submission.pending_command_buffers.len() >= self.submission.submission_batch_size
+                || self.submission.last_submission.elapsed() >= self.submission.max_submission_delay
             {
                 self.flush_pending_submissions();
             }
@@ -224,57 +272,259 @@ impl Simulation {
     }
 
     pub fn maintain_minimum_cell_population(&mut self) {
-        if !self.pending_command_buffers.is_empty() {
+        if !self.submission.pending_command_buffers.is_empty() {
+            profile_scope!("Flush Pending Command Buffers");
             self.flush_pending_submissions();
         }
 
-        if self.alive_counter_pending {
-            self.buffers.begin_alive_counter_map();
-            if let Some(value) = self.buffers.try_consume_alive_counter(&self.device) {
-                self.last_alive_count = value;
-                self.predicted_alive_count = value;
-                self.alive_counter_pending = false;
+        let mut counters_need_poll = false;
+
+        if self.transfers.alive_counter_pending {
+            {
+                profile_scope!("Begin Alive Counter Map");
+                self.buffers.begin_alive_counter_map();
+            }
+            counters_need_poll = true;
+        }
+
+        if self.transfers.lifeform_counter_pending {
+            {
+                profile_scope!("Begin Lifeform Counter Map");
+                self.buffers.begin_lifeform_counter_map();
+            }
+            counters_need_poll = true;
+        }
+
+        if self.transfers.lifeform_flags_pending {
+            {
+                profile_scope!("Begin Lifeform Flags Map");
+                self.buffers.begin_lifeform_flags_map();
+            }
+            counters_need_poll = true;
+        }
+
+        if counters_need_poll {
+            profile_scope!("Poll GPU Counters");
+            let _ = self.device.poll(wgpu::MaintainBase::Poll);
+        }
+
+        if self.transfers.alive_counter_pending {
+            profile_scope!("Consume Alive Counter");
+            if let Some(value) = self.buffers.try_consume_alive_counter() {
+                self.population.sync_alive(value);
+                self.transfers.alive_counter_pending = false;
             }
         }
 
-        let alive_estimate = self.predicted_alive_count as usize;
-        if alive_estimate >= self.min_cells {
+        if self.transfers.lifeform_counter_pending {
+            profile_scope!("Consume Lifeform Counter");
+            if let Some(value) = self.buffers.try_consume_lifeform_counter() {
+                self.population.sync_lifeforms(value);
+                self.transfers.lifeform_counter_pending = false;
+            }
+        }
+
+        if self.transfers.lifeform_flags_pending {
+            profile_scope!("Consume Lifeform Flags");
+            if let Some(flags) = self.buffers.try_consume_lifeform_flags() {
+                {
+                    profile_scope!("Apply Lifeform Flags");
+                    let update = self.lifeforms.apply_gpu_flags(&flags);
+                    if !update.extinct_ids.is_empty() {
+                        profile_scope!("Process Extinct Lifeforms");
+                        let death_time = self.step_count.load(Ordering::Relaxed) as usize;
+                        let mut environment = self.environment.lock();
+                        let ga = &mut environment.genetic_algorithm;
+                        for id in update.extinct_ids {
+                            ga.remove_lifeform(id, death_time);
+                        }
+                    }
+                    self.population.sync_lifeforms(update.active_total);
+                }
+                self.transfers.lifeform_flags_pending = false;
+            }
+        }
+
+        if self.pause.is_paused() {
             return;
         }
 
-        let deficit = self.min_cells - alive_estimate;
-        let desired_spawns = deficit
-            .min(self.max_spawns_per_step)
-            .min(self.spawn_capacity);
+        let alive_estimate = self.population.predicted_alive as usize;
+        let spawn_limit = MAX_SPAWN_PER_STEP.min(self.spawn.capacity);
+        let mut pending_spawns: Vec<PendingSpawn> = Vec::with_capacity(spawn_limit);
+        let mut rng = rand::thread_rng();
+        let mut spawn_reads_need_poll = false;
 
-        if desired_spawns == 0 {
-            return;
+        if self.transfers.division_requests_pending {
+            {
+                profile_scope!("Begin Division Requests Map");
+                self.buffers.begin_division_requests_map();
+            }
+            spawn_reads_need_poll = true;
+        }
+
+        if spawn_reads_need_poll {
+            profile_scope!("Poll Division Requests");
+            let _ = self.device.poll(wgpu::MaintainBase::Poll);
+        }
+
+        if self.transfers.division_requests_pending {
+            profile_scope!("Consume Division Requests");
+            if let Some(requests) = self.buffers.try_consume_division_requests() {
+                self.transfers.division_requests_pending = false;
+                profile_scope!("Queue Division Spawns");
+                for request in requests {
+                    if pending_spawns.len() >= spawn_limit {
+                        break;
+                    }
+                    let parent_id = match self.lifeforms.id_for_slot(request.parent_lifeform_slot) {
+                        Some(id) => id,
+                        None => continue,
+                    };
+                    let slot = match self.lifeforms.reserve_slot() {
+                        Some(slot) => slot,
+                        None => continue,
+                    };
+                    let mut cell = Cell::new(request.pos, request.radius, slot, request.energy);
+                    cell.random_force = [0.0, 0.0];
+                    pending_spawns.push(PendingSpawn {
+                        cell,
+                        slot,
+                        kind: SpawnKind::Division {
+                            parent_lifeform_id: parent_id,
+                        },
+                    });
+                }
+            }
         }
 
         let bounds = {
+            profile_scope!("Fetch Environment Bounds");
             let env = self.environment.lock();
             env.get_bounds()
         };
 
-        let mut rng = rand::thread_rng();
-        let mut new_cells = Vec::with_capacity(desired_spawns);
+        if alive_estimate < MIN_ACTIVE_CELLS {
+            profile_scope!("Queue Random Spawns");
+            let deficit = MIN_ACTIVE_CELLS - alive_estimate;
+            let available_slots = spawn_limit
+                .saturating_sub(pending_spawns.len());
+            if available_slots > 0 {
+                let desired_spawns = deficit
+                    .min(MAX_SPAWN_PER_STEP)
+                    .min(available_slots);
 
-        for _ in 0..desired_spawns {
-            let x = rng.gen_range(bounds.left..bounds.right());
-            let y = rng.gen_range(bounds.top..bounds.bottom());
-            let radius = rng.gen_range(0.5..4.0);
-            let energy = rng.gen_range(50.0..120.0);
-            let mut cell = Cell::new([x, y], radius, 0, energy);
-            cell.random_force = [0.0, 0.0];
-            new_cells.push(cell);
+                for _ in 0..desired_spawns {
+                    let slot = match self.lifeforms.reserve_slot() {
+                        Some(slot) => slot,
+                        None => break,
+                    };
+                    let x = rng.gen_range(bounds.left..bounds.right());
+                    let y = rng.gen_range(bounds.top..bounds.bottom());
+                    let radius = rng.gen_range(0.5..4.0);
+                    let energy = rng.gen_range(50.0..120.0);
+                    let mut cell = Cell::new([x, y], radius, slot, energy);
+                    cell.random_force = [0.0, 0.0];
+                    pending_spawns.push(PendingSpawn {
+                        cell,
+                        slot,
+                        kind: SpawnKind::RandomNew,
+                    });
+                }
+            }
         }
 
-        let submitted = self
-            .buffers
-            .enqueue_spawn_requests(&self.queue, &new_cells);
-        if submitted > 0 {
-            self.predicted_alive_count =
-                self.predicted_alive_count.saturating_add(submitted as u32);
+        if pending_spawns.is_empty() {
+            return;
+        }
+
+        self.spawn.scratch.clear();
+        self.spawn.scratch
+            .extend(pending_spawns.iter().map(|spawn| spawn.cell));
+        let submitted = {
+            profile_scope!("Submit Spawn Requests");
+            self.enqueue_spawn_requests(&self.spawn.scratch)
+        };
+
+        if submitted == 0 {
+            profile_scope!("Release Rejected Spawn Slots");
+            for spawn in pending_spawns {
+                self.lifeforms.release_slot(spawn.slot);
+            }
+            return;
+        }
+
+        self.population.predicted_alive =
+            self.population.predicted_alive.saturating_add(submitted as u32);
+        let mut random_new_slots = Vec::new();
+        let mut division_infos = Vec::new();
+
+        {
+            profile_scope!("Categorize Spawn Results");
+            for spawn in pending_spawns.iter().take(submitted) {
+                match spawn.kind {
+                    SpawnKind::RandomNew => {
+                        random_new_slots.push(spawn.slot);
+                    }
+                    SpawnKind::Division { parent_lifeform_id } => {
+                        division_infos.push((spawn.slot, parent_lifeform_id));
+                    }
+                }
+            }
+        }
+
+        let birth_time = self.step_count.load(Ordering::Relaxed) as usize;
+        let mut _new_lifeforms = 0u32;
+        {
+            profile_scope!("Register Lifeforms");
+            let mut environment = self.environment.lock();
+            let ga = &mut environment.genetic_algorithm;
+            {
+                profile_scope!("Register Random Lifeforms");
+                for slot in random_new_slots {
+                    let (lifeform_id, species_id) = ga.spawn_random_lifeform(&mut rng, birth_time);
+                    self.lifeforms.assign_id_to_slot(
+                        slot,
+                        lifeform_id,
+                        LifeformMetadata {
+                            species_id: Some(species_id),
+                            genome_id: None,
+                        },
+                    );
+                    _new_lifeforms += 1;
+                }
+            }
+            {
+                profile_scope!("Register Division Offspring");
+                for (slot, parent_id) in division_infos {
+                if let Some((child_id, species_id)) =
+                    ga.register_division_offspring(parent_id, birth_time, &mut rng)
+                    {
+                        self.lifeforms.assign_id_to_slot(
+                            slot,
+                            child_id,
+                            LifeformMetadata {
+                                species_id: Some(species_id),
+                                genome_id: None,
+                            },
+                        );
+                        _new_lifeforms += 1;
+                    } else {
+                        self.lifeforms.release_slot(slot);
+                        self.population.predicted_alive =
+                            self.population.predicted_alive.saturating_sub(1);
+                    }
+                }
+            }
+        }
+
+        self.population.predicted_lifeform = self.lifeforms.active_count();
+
+        {
+            profile_scope!("Release Excess Spawn Slots");
+            for spawn in pending_spawns.iter().skip(submitted) {
+                self.lifeforms.release_slot(spawn.slot);
+            }
         }
     }
 }
@@ -300,19 +550,20 @@ pub struct Application {
     last_cursor_pos: Vec2,
     // Performance tracking
     last_render_step_count: u64,
-    last_frame_time: std::time::Instant,
-    last_render_time: std::time::Instant,
+    last_frame_time: Instant,
+    last_render_time: Instant,
     target_frame_duration: std::time::Duration,
     frame_count: u32,
-    last_fps_update: std::time::Instant,
+    last_fps_update: Instant,
     fps_frames: u32,
     fps: f32,
-    last_cleanup: std::time::Instant,
+    last_cleanup: Instant,
     cleanup_interval: std::time::Duration,
     
     // Simulation time tracking
     real_time: f32,
     speed: Arc<parking_lot::Mutex<f32>>, // Shared with simulation thread
+    simulation_paused: Arc<AtomicBool>,
     
     // Deferred resize to avoid blocking the event loop
     pending_resize: Option<winit::dpi::PhysicalSize<u32>>,
@@ -352,20 +603,25 @@ impl Application {
             buffers.alive_counter_buffer(),
             buffers.spawn_request_count_buffer(),
             buffers.spawn_requests_buffer(),
+            buffers.lifeform_counts_buffer(),
+            buffers.lifeform_active_flags_buffer(),
+            buffers.lifeform_active_counter_buffer(),
+            buffers.division_request_count_buffer(),
+            buffers.division_requests_buffer(),
         );
 
         let speed = Arc::new(parking_lot::Mutex::new(1.0));
 
-        let simulation = Arc::new(parking_lot::Mutex::new(Simulation::new(
+        let simulation_inner = Simulation::new(
             device,
             queue,
             compute_pipelines_for_sim,
             buffers,
             environment.clone(),
             speed.clone(),
-            MIN_ACTIVE_CELLS,
-            MAX_SPAWN_PER_STEP,
-        )));
+        );
+        let simulation_paused = simulation_inner.paused_handle();
+        let simulation = Arc::new(parking_lot::Mutex::new(simulation_inner));
 
         Self {
             simulation,
@@ -380,18 +636,19 @@ impl Application {
             key_states: KeyStates::default(),
             last_cursor_pos: Vec2::new(0.0, 0.0),
             last_render_step_count: 0,
-            last_frame_time: std::time::Instant::now(),
-            last_render_time: std::time::Instant::now(),
+            last_frame_time: Instant::now(),
+            last_render_time: Instant::now(),
             target_frame_duration: std::time::Duration::from_secs_f64(1.0 / 60.0),
             frame_count: 0,
-            last_fps_update: std::time::Instant::now(),
+            last_fps_update: Instant::now(),
             fps_frames: 0,
             fps: 0.0,
-            last_cleanup: std::time::Instant::now(),
+            last_cleanup: Instant::now(),
             cleanup_interval: std::time::Duration::from_secs(5),
             pending_resize: None,
             real_time: 0.0,
             speed,
+            simulation_paused,
             rendering_enabled: true,
         }
     }
@@ -413,7 +670,7 @@ impl Application {
     // Render at 60fps (called from main event loop)
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         profile_scope!("Render Frame");
-        let now = std::time::Instant::now();
+        let now = Instant::now();
         
         // Handle pending resize at the start of the render frame (avoids blocking event loop)
         {
@@ -449,19 +706,31 @@ impl Application {
         }
         
         // Get current simulation state and clone buffers
-        let (current_step, buffers, bounds, alive_count) = {
+        let (current_step, buffers, bounds, alive_count, lifeform_count) = {
             profile_scope!("Sync Simulation State");
             let mut simulation = self.simulation.lock();
-            simulation.flush_pending();
-            simulation.maintain_minimum_cell_population();
-            let current_step = simulation.get_step_count();
-            let buffers = simulation.get_buffers();
-            let alive_count = simulation.last_alive_count();
-            drop(simulation);
-
-            let environment = self.environment.lock();
-            let bounds = environment.get_bounds();
-            (current_step, buffers, bounds, alive_count)
+            {
+                profile_scope!("Flush Pending");
+                simulation.flush_pending_submissions();
+            }
+            {
+                profile_scope!("Maintain Minimum Cell Population");
+                simulation.maintain_minimum_cell_population();
+            }
+            {
+                profile_scope!("Get Simulation State");
+            }
+            {
+                profile_scope!("Get Simulation State");
+                let current_step = simulation.get_step_count();
+                let buffers = simulation.get_buffers();
+                let alive_count = simulation.last_alive_count();
+                let lifeform_count = simulation.last_lifeform_count();
+                drop(simulation);
+                let environment = self.environment.lock();
+                let bounds = environment.get_bounds();
+                (current_step, buffers, bounds, alive_count, lifeform_count)
+            }
         };
         
         // Calculate simulation rate
@@ -488,11 +757,7 @@ impl Application {
         // Update simulation time (advance only if playing)
         {
             profile_scope!("Advance Simulation Clock");
-            let simulation = self.simulation.lock();
-            let is_paused = simulation.is_paused();
-            drop(simulation);
-            
-            if !is_paused {
+            if !self.simulation_paused.load(Ordering::Relaxed) {
                 let speed = *self.speed.lock();
                 self.real_time += delta_time * speed;
             }
@@ -551,21 +816,21 @@ impl Application {
                 }
 
                 // Get current simulation state and clone buffers
-                let (species_count, lifeforms_count) = {
-                    profile_scope!("Get Genetic Algorithm State");
+                let species_count = {
+                    profile_scope!("Get Genetic Algorithm Species Count");
                     let environment = self.environment.lock();
                     let species_count = environment.genetic_algorithm.num_species();
-                    let lifeforms_count = environment.genetic_algorithm.num_lifeforms();
                     drop(environment);
-                    (species_count, lifeforms_count)
+                    species_count
                 };
                 let cell_count = alive_count as usize;
+                let lifeform_display_count = lifeform_count as usize;
                 if let Some(species_component) = screen.find_element_by_id("species") {
                     let species_text = format_number(format!("{}", species_count));
                     species_component.update_text(&species_text);
                 }
                 if let Some(lifeforms_component) = screen.find_element_by_id("lifeforms") {
-                    let lifeforms_text = format_number(format!("{}", lifeforms_count));
+                    let lifeforms_text = format_number(format!("{}", lifeform_display_count));
                     lifeforms_component.update_text(&lifeforms_text);
                 }
                 if let Some(cells_component) = screen.find_element_by_id("cells") {
@@ -727,10 +992,12 @@ impl Application {
     }
     
     pub fn toggle_paused(&mut self) {
-        let mut simulation = self.simulation.lock();
-        let is_paused = simulation.is_paused();
-        simulation.set_paused(!is_paused);
-        drop(simulation);
+        let new_state = {
+            let was_paused = self.simulation_paused.load(Ordering::Relaxed);
+            let mut simulation = self.simulation.lock();
+            simulation.set_paused(!was_paused);
+            simulation.is_paused()
+        };
 
         
         // Update play button icon (toggle between play and pause)
@@ -738,16 +1005,16 @@ impl Application {
             if let Some(play_icon) = screen.find_element_by_id("playBtnIcon") {
                 use crate::ui::components::ComponentType;
                 if let ComponentType::Image(ref mut image) = play_icon.component_type {
-                    if is_paused {
-                        // Was paused, now playing - show pause icon (because clicking will pause)
-                        image.set_source("pause");
-                        image.base_source = Some("pause".to_string());
-                        image.set_group_hover_source("pauseHighlighted");
-                    } else {
-                        // Was playing, now paused - show play icon (because clicking will play)
+                    if new_state {
+                        // Currently paused - show play icon (clicking will resume)
                         image.set_source("play");
                         image.base_source = Some("play".to_string());
                         image.set_group_hover_source("playHighlighted");
+                    } else {
+                        // Currently playing - show pause icon (clicking will pause)
+                        image.set_source("pause");
+                        image.base_source = Some("pause".to_string());
+                        image.set_group_hover_source("pauseHighlighted");
                     }
                 }
             }
@@ -945,7 +1212,7 @@ impl ApplicationHandler for Simulator {
             WindowEvent::RedrawRequested => {
                 puffin::GlobalProfiler::lock().new_frame();
                 if let Some(ref mut application) = self.application {
-                    let now = std::time::Instant::now();
+                    let now = Instant::now();
                     
                     // Only render if enough time has passed (60 FPS cap)
                     let time_since_last_render = now.duration_since(application.last_render_time);
@@ -963,7 +1230,7 @@ impl ApplicationHandler for Simulator {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(ref application) = self.application {
-            let now = std::time::Instant::now();
+            let now = Instant::now();
             
             // Schedule next wake time for rendering
             let next_frame_time = application.last_render_time + application.target_frame_duration;

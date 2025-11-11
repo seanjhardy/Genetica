@@ -25,6 +25,8 @@ parking_lot = "0.12.5"
 regex = "1.10"
 image = "0.25"
 itertools = "0.14.0"
+rand_distr = "0.4"
+smallvec = "1.13"
 
 [profile.release]
 opt-level = 3

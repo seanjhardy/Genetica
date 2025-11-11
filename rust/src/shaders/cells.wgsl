@@ -1,14 +1,14 @@
 // Render shader for drawing cells as quads
 struct Cell {
-    is_alive: u32,
-    _padding: u32,
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
+    random_force: vec2<f32>,
     radius: f32,
     energy: f32,
     cell_wall_thickness: f32,
-    lifeform_idx: u32,
-    random_force: vec2<f32>, // Random force vector that changes over time
+    is_alive: u32,
+    lifeform_slot: u32,
+    padding: u32,
 }
 
 // Uniforms struct must match Rust struct layout exactly (including padding)
@@ -54,7 +54,11 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     
     let cell = cells[cell_idx];
     if cell.is_alive == 0u {
-        out.clip_position = vec4<f32>(0.0, 0.0, -1.0, 1.0);
+        out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        out.cell_index = 0.0;
+        out.uv = vec2<f32>(0.0);
+        out.energy = 0.0;
+        out.cell_wall_thickness = 0.0;
         return out;
     }
 

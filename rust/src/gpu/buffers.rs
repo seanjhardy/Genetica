@@ -3,13 +3,16 @@
 use wgpu;
 use wgpu::util::DeviceExt;
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use crate::gpu::structures::Cell;
+use crate::gpu::structures::{Cell, DivisionRequest};
 use crate::utils::gpu::gpu_vector::GpuVector;
 
 const CELL_CAPACITY: usize = 10_000;
 const MAX_SPAWN_REQUESTS: usize = 512;
+const LIFEFORM_CAPACITY: usize = 4_096;
+const MAX_DIVISION_REQUESTS: usize = 512;
 
 pub struct GpuBuffers {
     pub cell_vector_a: GpuVector<Cell>,
@@ -19,9 +22,22 @@ pub struct GpuBuffers {
     alive_counter: wgpu::Buffer,
     alive_counter_staging: wgpu::Buffer,
     alive_counter_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
+    lifeform_counts: wgpu::Buffer,
+    lifeform_active_flags: wgpu::Buffer,
+    lifeform_active_flags_staging: wgpu::Buffer,
+    lifeform_active_counter: wgpu::Buffer,
+    lifeform_active_counter_staging: wgpu::Buffer,
+    lifeform_active_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
+    lifeform_active_flags_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
     spawn_request_count: wgpu::Buffer,
     spawn_requests: wgpu::Buffer,
+    division_request_count: wgpu::Buffer,
+    division_requests: wgpu::Buffer,
+    division_requests_staging: wgpu::Buffer,
+    division_requests_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
     spawn_capacity: usize,
+    division_capacity: usize,
+    initial_alive_count: u32,
 }
 
 impl GpuBuffers {
@@ -31,13 +47,25 @@ impl GpuBuffers {
         cells: &[u8],
         initial_uniforms: &[u8],
     ) -> Self {
-        let initial_cells: &[Cell] = bytemuck::cast_slice(cells);
+        let mut initial_cells: Vec<Cell> = bytemuck::cast_slice(cells).to_vec();
+        if initial_cells.len() > CELL_CAPACITY {
+            panic!(
+                "Initial cell count {} exceeds CELL_CAPACITY {}",
+                initial_cells.len(),
+                CELL_CAPACITY
+            );
+        }
+
+        for cell in initial_cells.iter_mut() {
+            cell.is_alive = 1;
+        }
+
         let initial_count = initial_cells.len() as u32;
 
         let cell_vector_a = GpuVector::<Cell>::new(
             device,
             CELL_CAPACITY,
-            initial_cells,
+            &initial_cells,
             wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC
@@ -48,7 +76,7 @@ impl GpuBuffers {
         let cell_vector_b = GpuVector::<Cell>::new(
             device,
             CELL_CAPACITY,
-            initial_cells,
+            &initial_cells,
             wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC
@@ -65,6 +93,13 @@ impl GpuBuffers {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let mut lifeform_counts_map: HashMap<u32, u32> = HashMap::new();
+        for cell in &initial_cells {
+            if cell.is_alive != 0 {
+                *lifeform_counts_map.entry(cell.lifeform_slot).or_insert(0) += 1;
+            }
+        }
+
         let alive_counter = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Alive Counter"),
             contents: bytemuck::cast_slice(&[initial_count]),
@@ -75,6 +110,59 @@ impl GpuBuffers {
 
         let alive_counter_staging = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Alive Counter Staging"),
+            size: std::mem::size_of::<u32>() as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mut lifeform_counts_init = vec![0u32; LIFEFORM_CAPACITY];
+        let mut lifeform_active_init = vec![0u32; LIFEFORM_CAPACITY];
+        let mut max_lifeform_idx = 0u32;
+        for (id, count) in lifeform_counts_map.iter() {
+            if (*id as usize) >= LIFEFORM_CAPACITY {
+                panic!(
+                    "Lifeform id {} exceeds LIFEFORM_CAPACITY {}",
+                    id, LIFEFORM_CAPACITY
+                );
+            }
+            lifeform_counts_init[*id as usize] = *count;
+            if *count > 0 {
+                lifeform_active_init[*id as usize] = 1;
+            }
+            max_lifeform_idx = max_lifeform_idx.max(*id);
+        }
+
+        let active_lifeform_count = lifeform_counts_map.values().filter(|&&c| c > 0).count() as u32;
+
+        let lifeform_counts = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Lifeform Counts Buffer"),
+            contents: bytemuck::cast_slice(&lifeform_counts_init),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let lifeform_active_flags = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Lifeform Active Flags"),
+            contents: bytemuck::cast_slice(&lifeform_active_init),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let lifeform_active_flags_staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Lifeform Active Flags Staging"),
+            size: (LIFEFORM_CAPACITY * std::mem::size_of::<u32>()) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let lifeform_active_counter = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Active Lifeform Counter"),
+            contents: bytemuck::cast_slice(&[active_lifeform_count]),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let lifeform_active_counter_staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Active Lifeform Counter Staging"),
             size: std::mem::size_of::<u32>() as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -95,6 +183,29 @@ impl GpuBuffers {
             mapped_at_creation: false,
         });
 
+        let division_request_count = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Division Request Count"),
+            contents: bytemuck::cast_slice(&[0u32]),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let division_requests = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Division Requests Buffer"),
+            size: (MAX_DIVISION_REQUESTS * std::mem::size_of::<DivisionRequest>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let division_requests_staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Division Requests Staging"),
+            size: (std::mem::size_of::<u32>()
+                + MAX_DIVISION_REQUESTS * std::mem::size_of::<DivisionRequest>()) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             cell_vector_a,
             cell_vector_b,
@@ -103,9 +214,22 @@ impl GpuBuffers {
             alive_counter,
             alive_counter_staging,
             alive_counter_readback: Mutex::new(None),
+            lifeform_counts,
+            lifeform_active_flags,
+            lifeform_active_flags_staging,
+            lifeform_active_counter,
+            lifeform_active_counter_staging,
+            lifeform_active_readback: Mutex::new(None),
+            lifeform_active_flags_readback: Mutex::new(None),
             spawn_request_count,
             spawn_requests,
+            division_request_count,
+            division_requests,
+            division_requests_staging,
+            division_requests_readback: Mutex::new(None),
             spawn_capacity: MAX_SPAWN_REQUESTS,
+            division_capacity: MAX_DIVISION_REQUESTS,
+            initial_alive_count: initial_count,
         }
     }
     
@@ -178,14 +302,13 @@ impl GpuBuffers {
         *guard = Some(receiver);
     }
 
-    pub fn try_consume_alive_counter(&self, device: &wgpu::Device) -> Option<u32> {
+    pub fn try_consume_alive_counter(&self) -> Option<u32> {
         let mut receiver_guard = self.alive_counter_readback.lock();
         let receiver = match receiver_guard.as_ref() {
             Some(r) => r,
             None => return None,
         };
 
-        let _ = device.poll(wgpu::MaintainBase::Poll);
         match receiver.try_recv() {
             Ok(Ok(_)) => {
                 let mapped = self.alive_counter_staging.slice(..).get_mapped_range();
@@ -210,6 +333,140 @@ impl GpuBuffers {
         }
     }
 
+    pub fn lifeform_counts_buffer(&self) -> &wgpu::Buffer {
+        &self.lifeform_counts
+    }
+
+    pub fn lifeform_active_flags_buffer(&self) -> &wgpu::Buffer {
+        &self.lifeform_active_flags
+    }
+
+    pub fn lifeform_active_counter_buffer(&self) -> &wgpu::Buffer {
+        &self.lifeform_active_counter
+    }
+
+    pub fn schedule_lifeform_counter_copy(&self, encoder: &mut wgpu::CommandEncoder) {
+        {
+            let mut guard = self.lifeform_active_readback.lock();
+            if guard.take().is_some() {
+                self.lifeform_active_counter_staging.unmap();
+            }
+        }
+        encoder.copy_buffer_to_buffer(
+            &self.lifeform_active_counter,
+            0,
+            &self.lifeform_active_counter_staging,
+            0,
+            std::mem::size_of::<u32>() as u64,
+        );
+    }
+
+    pub fn begin_lifeform_counter_map(&self) {
+        let mut guard = self.lifeform_active_readback.lock();
+        if guard.is_some() {
+            return;
+        }
+        let slice = self.lifeform_active_counter_staging.slice(..);
+        let (sender, receiver) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        *guard = Some(receiver);
+    }
+
+    pub fn try_consume_lifeform_counter(&self) -> Option<u32> {
+        let mut guard = self.lifeform_active_readback.lock();
+        let receiver = match guard.as_ref() {
+            Some(r) => r,
+            None => return None,
+        };
+
+        match receiver.try_recv() {
+            Ok(Ok(_)) => {
+                let mapped = self.lifeform_active_counter_staging.slice(..).get_mapped_range();
+                let value = bytemuck::cast_slice::<u8, u32>(&mapped)[0];
+                drop(mapped);
+                self.lifeform_active_counter_staging.unmap();
+                *guard = None;
+                Some(value)
+            }
+            Ok(Err(e)) => {
+                eprintln!("Lifeform counter read failed: {:?}", e);
+                self.lifeform_active_counter_staging.unmap();
+                *guard = None;
+                None
+            }
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                eprintln!("Lifeform counter readback channel disconnected");
+                *guard = None;
+                None
+            }
+        }
+    }
+
+    pub fn schedule_lifeform_flags_copy(&self, encoder: &mut wgpu::CommandEncoder) {
+        {
+            let mut guard = self.lifeform_active_flags_readback.lock();
+            if guard.take().is_some() {
+                self.lifeform_active_flags_staging.unmap();
+            }
+        }
+        encoder.copy_buffer_to_buffer(
+            &self.lifeform_active_flags,
+            0,
+            &self.lifeform_active_flags_staging,
+            0,
+            (LIFEFORM_CAPACITY * std::mem::size_of::<u32>()) as u64,
+        );
+    }
+
+    pub fn begin_lifeform_flags_map(&self) {
+        let mut guard = self.lifeform_active_flags_readback.lock();
+        if guard.is_some() {
+            return;
+        }
+        let slice = self.lifeform_active_flags_staging.slice(..);
+        let (sender, receiver) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        *guard = Some(receiver);
+    }
+
+    pub fn try_consume_lifeform_flags(&self) -> Option<Vec<u32>> {
+        let mut guard = self.lifeform_active_flags_readback.lock();
+        let receiver = match guard.as_ref() {
+            Some(r) => r,
+            None => return None,
+        };
+
+        match receiver.try_recv() {
+            Ok(Ok(_)) => {
+                let mapped = self.lifeform_active_flags_staging.slice(..).get_mapped_range();
+                let values = bytemuck::cast_slice::<u8, u32>(&mapped);
+                let mut result = Vec::with_capacity(values.len());
+                result.extend_from_slice(values);
+                drop(mapped);
+                self.lifeform_active_flags_staging.unmap();
+                *guard = None;
+                Some(result)
+            }
+            Ok(Err(e)) => {
+                eprintln!("Lifeform flags read failed: {:?}", e);
+                self.lifeform_active_flags_staging.unmap();
+                *guard = None;
+                None
+            }
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                eprintln!("Lifeform flags readback channel disconnected");
+                *guard = None;
+                None
+            }
+        }
+    }
+
     pub fn spawn_request_count_buffer(&self) -> &wgpu::Buffer {
         &self.spawn_request_count
     }
@@ -218,9 +475,26 @@ impl GpuBuffers {
         &self.spawn_requests
     }
 
+    pub fn division_request_count_buffer(&self) -> &wgpu::Buffer {
+        &self.division_request_count
+    }
+
+    pub fn division_requests_buffer(&self) -> &wgpu::Buffer {
+        &self.division_requests
+    }
+
     pub fn spawn_capacity(&self) -> usize {
         self.spawn_capacity
     }
+
+    pub fn lifeform_capacity(&self) -> usize {
+        LIFEFORM_CAPACITY
+    }
+    
+    pub fn initial_alive_count(&self) -> u32 {
+        self.initial_alive_count
+    }
+
 
     pub fn enqueue_spawn_requests(&self, queue: &wgpu::Queue, cells: &[Cell]) -> usize {
         let count = cells.len().min(self.spawn_capacity);
@@ -241,6 +515,98 @@ impl GpuBuffers {
             bytemuck::cast_slice(&[count as u32]),
         );
         count
+    }
+
+    pub fn schedule_division_requests_copy(&self, encoder: &mut wgpu::CommandEncoder) {
+        {
+            let mut guard = self.division_requests_readback.lock();
+            if guard.take().is_some() {
+                self.division_requests_staging.unmap();
+            }
+        }
+
+        let count_size = std::mem::size_of::<u32>() as u64;
+        let requests_size =
+            (self.division_capacity * std::mem::size_of::<DivisionRequest>()) as u64;
+
+        encoder.copy_buffer_to_buffer(
+            &self.division_request_count,
+            0,
+            &self.division_requests_staging,
+            0,
+            count_size,
+        );
+        encoder.copy_buffer_to_buffer(
+            &self.division_requests,
+            0,
+            &self.division_requests_staging,
+            count_size,
+            requests_size,
+        );
+        encoder.clear_buffer(&self.division_request_count, 0, None);
+    }
+
+    pub fn begin_division_requests_map(&self) {
+        let mut guard = self.division_requests_readback.lock();
+        if guard.is_some() {
+            return;
+        }
+        let slice = self.division_requests_staging.slice(..);
+        let (sender, receiver) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        *guard = Some(receiver);
+    }
+
+    pub fn try_consume_division_requests(&self) -> Option<Vec<DivisionRequest>> {
+        let mut guard = self.division_requests_readback.lock();
+        let receiver = match guard.as_ref() {
+            Some(r) => r,
+            None => return None,
+        };
+
+        match receiver.try_recv() {
+            Ok(Ok(_)) => {
+                let mapped = self.division_requests_staging.slice(..).get_mapped_range();
+                let count_size = std::mem::size_of::<u32>();
+                if mapped.len() < count_size {
+                    self.division_requests_staging.unmap();
+                    *guard = None;
+                    return Some(Vec::new());
+                }
+                let mut count_bytes = [0u8; 4];
+                count_bytes.copy_from_slice(&mapped[..count_size]);
+                let count = u32::from_le_bytes(count_bytes);
+                let capped_count = count.min(self.division_capacity as u32);
+                let total_bytes =
+                    capped_count as usize * std::mem::size_of::<DivisionRequest>();
+                let mut result = Vec::with_capacity(capped_count as usize);
+                if capped_count > 0 {
+                    let requests_bytes =
+                        &mapped[count_size..count_size + total_bytes];
+                    let typed =
+                        bytemuck::cast_slice::<u8, DivisionRequest>(requests_bytes);
+                    result.extend_from_slice(typed);
+                }
+                drop(mapped);
+                self.division_requests_staging.unmap();
+                *guard = None;
+                Some(result)
+            }
+            Ok(Err(e)) => {
+                eprintln!("Division requests read failed: {:?}", e);
+                self.division_requests_staging.unmap();
+                *guard = None;
+                None
+            }
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                eprintln!("Division requests readback channel disconnected");
+                *guard = None;
+                None
+            }
+        }
     }
 
     /// Get cell buffer (for pipelines) - DEPRECATED, use cell_buffer_read instead

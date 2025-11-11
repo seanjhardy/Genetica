@@ -1,15 +1,59 @@
 // Sequencer - reads genome and builds gene regulatory network
 
-use std::collections::VecDeque;
+use std::mem;
+
+use puffin::profile_scope;
 
 use crate::genetic_algorithm::genome::Genome;
 use crate::genetic_algorithm::systems::{GeneRegulatoryNetwork, Receptor, Factor, Promoter, Effector,
      RegulatoryUnit, ReceptorType, FactorType, PromoterType, EffectorType, EMBEDDING_DIMENSIONS};
-use crate::genetic_algorithm::utils::{read_base, read_base_range, read_unique_base_range};
+
+const MIN_GENE_BASES: usize = 20;
+
+struct SequenceReader<'a> {
+    data: &'a [u8],
+    position: usize,
+}
+
+impl<'a> SequenceReader<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, position: 0 }
+    }
+
+    #[inline]
+    fn remaining(&self) -> usize {
+        self.data.len().saturating_sub(self.position)
+    }
+
+    #[inline]
+    fn read_base(&mut self) -> Option<u8> {
+        let value = *self.data.get(self.position)?;
+        self.position += 1;
+        Some(value)
+    }
+
+    fn read_base_range(&mut self, length: usize) -> Option<f32> {
+        let mut result = 0.0f32;
+        for _ in 0..length {
+            result += self.read_base()? as f32;
+        }
+        Some(result / (3.0 * length as f32))
+    }
+
+    fn read_unique_base_range(&mut self, length: usize) -> Option<f32> {
+        let mut result = 0.0f32;
+        for i in 0..length {
+            let base = self.read_base()? as f32;
+            result += base * 0.25f32.powi((i + 1) as i32);
+        }
+        Some(result)
+    }
+}
 
 /// Sequence a genome to build a gene regulatory network
 /// Returns the GRN even if some genes fail to parse
 pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
+    profile_scope!("Sequence GRN");
     let mut grn = GeneRegulatoryNetwork::new();
     // Inputs
     let mut receptors: Vec<Receptor> = Vec::new();
@@ -24,27 +68,27 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
     let mut reading_promoters = true;
     
     // Process each gene in the genome
-    for (_gene_id, sequence) in genome
-        .hox_gene_order
-        .iter()
-        .filter_map(|id| genome.hox_genes.get(id).map(|seq| (*id, seq.clone())))
-    {
-        let mut rna: VecDeque<u8> = VecDeque::from(sequence.clone());
-        
-        // Process genes until RNA is exhausted or we can't read more
-        while rna.len() >= 20 { // Minimum required bases for a gene (2 + 1 + 1 + 8 + 8*3 = 20)
+    for gene_id in genome.hox_gene_order.iter() {
+        let sequence = match genome.hox_genes.get(gene_id) {
+            Some(seq) => seq.as_slice(),
+            None => continue,
+        };
+
+        let mut reader = SequenceReader::new(sequence);
+
+        while reader.remaining() >= MIN_GENE_BASES {
             // Read gene type (2 bases -> 0-16, mod 5 -> 0-4)
-            let type_val = match read_base_range(&mut rna, 2) {
-                Ok(val) => (val * 16.0) as usize % 5,
-                Err(_) => break,
+            let type_val = match reader.read_base_range(2) {
+                Some(val) => (val * 16.0) as usize % 5,
+                None => break,
             };
-            let sign = match read_base(&mut rna) {
-                Ok(b) => b >= 2,
-                Err(_) => break,
+            let sign = match reader.read_base() {
+                Some(b) => b >= 2,
+                None => break,
             };
-            let active = match read_base(&mut rna) {
-                Ok(b) => b >= 1,
-                Err(_) => break,
+            let active = match reader.read_base() {
+                Some(b) => b >= 1,
+                None => break,
             };
             
             if !active {
@@ -52,18 +96,25 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
             }
             
             // Read modifier (8 bases)
-            let modifier = match read_unique_base_range(&mut rna, 8) {
-                Ok(m) => m,
-                Err(_) => break,
+            let modifier = match reader.read_unique_base_range(8) {
+                Some(m) => m,
+                None => break,
             };
             
             // Read embedding (8 bases each for x, y, z ... of EMBEDDING_DIMENSIONS)
             let mut embedding: [f32; EMBEDDING_DIMENSIONS] = [0.0f32; EMBEDDING_DIMENSIONS];
-            for i in 0..EMBEDDING_DIMENSIONS {
-                embedding[i] = match read_unique_base_range(&mut rna, 8) {
-                    Ok(m) => m,
-                    Err(_) => break,
-                };
+            let mut embedding_valid = true;
+            for value in embedding.iter_mut() {
+                match reader.read_unique_base_range(8) {
+                    Some(m) => *value = m,
+                    None => {
+                        embedding_valid = false;
+                        break;
+                    }
+                }
+            }
+            if !embedding_valid {
+                break;
             }
             
             // Process based on type
@@ -78,17 +129,17 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
                         ReceptorType::Energy,
                         ReceptorType::Time,
                     ];
-                    let sub_type = match read_unique_base_range(&mut rna, 3) {
-                        Ok(val) => ((val * 64.0) as usize) % 6,
-                        Err(_) => break,
+                    let sub_type = match reader.read_unique_base_range(3) {
+                        Some(val) => ((val * 64.0) as usize) % 6,
+                        None => break,
                     };
                     let receptor_type: ReceptorType = receptor_types[sub_type];
                     
                     let extra = match (
-                        read_unique_base_range(&mut rna, 8),
-                        read_unique_base_range(&mut rna, 8),
+                        reader.read_unique_base_range(8),
+                        reader.read_unique_base_range(8),
                     ) {
-                        (Ok(x), Ok(y)) => [x, y],
+                        (Some(x), Some(y)) => [x, y],
                         _ => break,
                     };
                     
@@ -102,9 +153,9 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
                         EffectorType::Distance, EffectorType::Radius,
                         EffectorType::Red, EffectorType::Green, EffectorType::Blue,
                     ];
-                    let sub_type = match read_unique_base_range(&mut rna, 4) {
-                        Ok(val) => ((val * 256.0) as usize) % effector_types.len(),
-                        Err(_) => break,
+                    let sub_type = match reader.read_unique_base_range(4) {
+                        Some(val) => ((val * 256.0) as usize) % effector_types.len(),
+                        None => break,
                     };
                     let effector_type = effector_types[sub_type];
 
@@ -113,9 +164,9 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
                 }
                 2 => {
                     // Promoters
-                    let additive = match read_base(&mut rna) {
-                        Ok(b) => b >= 1,
-                        Err(_) => break,
+                    let additive = match reader.read_base() {
+                        Some(b) => b >= 1,
+                        None => break,
                     };
                     let promoter_type = if additive {
                         PromoterType::Additive
@@ -127,12 +178,10 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
                     
                     if !reading_promoters {
                         // Finish current regulatory unit
-                        regulatory_unit.promoters = regulatory_promoters.clone();
-                        regulatory_unit.factors = regulatory_factors.clone();
+                        regulatory_unit.promoters = mem::take(&mut regulatory_promoters);
+                        regulatory_unit.factors = mem::take(&mut regulatory_factors);
                         regulatory_units.push(regulatory_unit);
                         regulatory_unit = RegulatoryUnit::new();
-                        regulatory_promoters.clear();
-                        regulatory_factors.clear();
                         reading_promoters = true;
                     }
                     
@@ -163,8 +212,8 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
     
     // Add final regulatory unit if it exists
     if !regulatory_promoters.is_empty() && !regulatory_factors.is_empty() {
-        regulatory_unit.promoters = regulatory_promoters;
-        regulatory_unit.factors = regulatory_factors;
+        regulatory_unit.promoters = mem::take(&mut regulatory_promoters);
+        regulatory_unit.factors = mem::take(&mut regulatory_factors);
         regulatory_units.push(regulatory_unit);
     }
     
