@@ -159,6 +159,13 @@ impl LifeformRegistry {
             .and_then(|entry| *entry)
     }
 
+    pub fn is_slot_active(&self, slot: u32) -> bool {
+        self.alive_slots
+            .get(slot as usize)
+            .copied()
+            .unwrap_or(false)
+    }
+
     pub fn active_count(&self) -> u32 {
         self.alive_slots.iter().filter(|alive| **alive).count() as u32
     }

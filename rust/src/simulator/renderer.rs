@@ -28,6 +28,7 @@ impl Renderer {
         camera_pos: Vec2,
         zoom: f32,
         num_points: usize,
+        show_grid: bool,
         encoder: &mut wgpu::CommandEncoder,
     ) -> bool {
         profile_scope!("Render Simulation");
@@ -114,6 +115,32 @@ impl Renderer {
                 viewport_texture_view,
                 planet_texture_view,
             );
+        }
+
+        if show_grid {
+            profile_scope!("Render Nutrient Overlay");
+            let (grid_w, grid_h) = buffers.nutrient_grid_dimensions();
+            let grid_cells = grid_w.saturating_mul(grid_h);
+            if grid_cells > 0 {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Nutrient Overlay Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: viewport_texture_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                    ..Default::default()
+                });
+                render_pass.set_pipeline(&render_pipelines.nutrient_overlay);
+                render_pass.set_bind_group(0, &render_pipelines.nutrient_bind_group, &[]);
+                render_pass.draw(0..4, 0..grid_cells);
+            }
         }
         
         // Render simulation cells to viewport texture (on top of planet background)

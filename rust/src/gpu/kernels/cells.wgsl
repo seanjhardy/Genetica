@@ -17,11 +17,13 @@ struct Uniforms {
     cell_count: vec4<f32>, // x: cell_count, y: reserved0, z: reserved1, w: reserved2
     camera: vec4<f32>,     // x: cam_x, y: cam_y
     bounds: vec4<f32>,     // (left, top, right, bottom)
+    nutrient: vec4<u32>,// (Cell size, scale, reserved, reserved)
 }
 
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
+
 
 @group(0) @binding(1)
 var<storage, read_write> cells: array<Cell>;
@@ -47,18 +49,12 @@ var<storage, read_write> spawn_count: Counter;
 @group(0) @binding(5)
 var<storage, read> spawn_requests: array<Cell>;
 
-struct LifeformCounterArray {
+struct LifeformFlagArray {
     values: array<atomic<u32>>,
 }
 
 @group(0) @binding(6)
-var<storage, read_write> lifeform_counts: LifeformCounterArray;
-
-@group(0) @binding(7)
-var<storage, read_write> lifeform_active: LifeformCounterArray;
-
-@group(0) @binding(8)
-var<storage, read_write> active_lifeform_counter: Counter;
+var<storage, read_write> lifeform_active: LifeformFlagArray;
 
 struct DivisionRequest {
     parent_lifeform_slot: u32,
@@ -68,13 +64,20 @@ struct DivisionRequest {
     energy: f32,
 }
 
-@group(0) @binding(9)
+@group(0) @binding(7)
 var<storage, read_write> division_request_count: Counter;
 
-@group(0) @binding(10)
+@group(0) @binding(8)
 var<storage, read_write> division_requests: array<DivisionRequest>;
 
-const DIVISION_PROBABILITY: f32 = 0.01;
+struct NutrientGrid {
+    values: array<atomic<u32>>,
+}
+
+@group(0) @binding(9)
+var<storage, read_write> nutrient_grid: NutrientGrid;
+
+const DIVISION_PROBABILITY: f32 = 0.0001;
 const RANDOM_DEATH_PROBABILITY: f32 = 0.00005;
 const MAX_DIVISION_REQUESTS: u32 = 512u;
 const LIFEFORM_CAPACITY: u32 = 4096u;
@@ -109,8 +112,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     // Decrease energy over time (metabolic rate)
-    var energy_change_rate = 1.0 - 2.0 / cell.radius; // Energy units per second (slower decay)
+    var energy_change_rate = 0.0;
+    energy_change_rate -= 0.2 + 0.3 / cell.radius; // Metabolism proportional to size
+    energy_change_rate += 1000.0 * absorb_nutrients(index, 0.001 * cell.radius); // Eat nutrients from the environemnt
     cell.energy += energy_change_rate * dt;
+    cell.energy = clamp(cell.energy, 0.0, cell.radius * 100.0);
 
     if cell.energy <= 0.0 || random.z < RANDOM_DEATH_PROBABILITY {
         kill_cell(index);
@@ -158,11 +164,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         cell.pos.y = max_y;
     }
 
+
     if cell.energy > MIN_DIVISION_ENERGY {
         if random.w < DIVISION_PROBABILITY && cell.lifeform_slot < LIFEFORM_CAPACITY {
+            let original_energy = cell.energy;
+            let child_energy = original_energy * 0.5;
             let request_index = atomicAdd(&division_request_count.value, 1u);
             if request_index < MAX_DIVISION_REQUESTS {
-                let child_energy = cell.energy * 0.5;
                 cell.energy = child_energy;
                 division_requests[request_index].parent_lifeform_slot = cell.lifeform_slot;
                 division_requests[request_index].cell_index = index;
@@ -170,11 +178,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 division_requests[request_index].radius = cell.radius;
                 division_requests[request_index].energy = child_energy;
             } else {
+                // Restore energy if we couldn't record the division
                 atomicSub(&division_request_count.value, 1u);
+                // No request recorded, keep original energy
+                // (division didn't happen)
+                cell.energy = original_energy;
             }
         }
     }
-    
+
     cells[index] = cell;
 }
 
@@ -214,13 +226,7 @@ fn spawn_cells() {
                     atomicAdd(&alive_counter.value, 1u);
                     let lf_idx = new_cell.lifeform_slot;
                     if lf_idx < LIFEFORM_CAPACITY {
-                        let prev_lifeform = atomicAdd(&lifeform_counts.values[lf_idx], 1u);
-                        if prev_lifeform == 0u {
-                            let was_active = atomicExchange(&lifeform_active.values[lf_idx], 1u);
-                            if was_active == 0u {
-                                atomicAdd(&active_lifeform_counter.value, 1u);
-                            }
-                        }
+                        atomicStore(&lifeform_active.values[lf_idx], 1u);
                     }
                     spawned = true;
                     break;
@@ -255,35 +261,7 @@ fn kill_cell(index: u32) {
 
     let lf_idx = cell.lifeform_slot;
     if lf_idx < LIFEFORM_CAPACITY {
-        var lifeform_reached_zero = false;
-        loop {
-            let current = atomicLoad(&lifeform_counts.values[lf_idx]);
-            if current == 0u {
-                break;
-            }
-            let desired = current - 1u;
-            let exchange = atomicCompareExchangeWeak(&lifeform_counts.values[lf_idx], current, desired);
-            if exchange.old_value == current && exchange.exchanged {
-                lifeform_reached_zero = desired == 0u;
-                break;
-            }
-        }
-
-        if lifeform_reached_zero {
-            let was_active = atomicExchange(&lifeform_active.values[lf_idx], 0u);
-            if was_active == 1u {
-                loop {
-                    let current = atomicLoad(&active_lifeform_counter.value);
-                    if current == 0u {
-                        break;
-                    }
-                    let exchange = atomicCompareExchangeWeak(&active_lifeform_counter.value, current, current - 1u);
-                    if exchange.old_value == current && exchange.exchanged {
-                        break;
-                    }
-                }
-            }
-        }
+        atomicStore(&lifeform_active.values[lf_idx], 0u);
     }
 }
 
@@ -298,4 +276,54 @@ fn get_random_values(index: u32) -> vec4<f32> {
     let random_4 = rand(vec2<u32>(seed_2 * 13u + 29u, seed_1 * 17u + 31u));
 
     return vec4<f32>(random_1, random_2, random_3, random_4);
+}
+
+fn absorb_nutrients(index: u32, absorption_rate: f32) -> f32 {
+    let cell = cells[index];
+    let bounds_width = uniforms.bounds.z - uniforms.bounds.x;
+    let bounds_height = uniforms.bounds.w - uniforms.bounds.y;
+    let cell_size = f32(uniforms.nutrient.x);
+    if bounds_width > 0.0 && bounds_height > 0.0 {
+        let grid_width_f = max(1.0, ceil(bounds_width / cell_size));
+        let grid_height_f = max(1.0, ceil(bounds_height / cell_size));
+        let grid_width = u32(grid_width_f);
+        let grid_height = u32(grid_height_f);
+
+        let local_x = clamp(cell.pos.x - uniforms.bounds.x, 0.0, bounds_width - 0.0001);
+        let local_y = clamp(cell.pos.y - uniforms.bounds.y, 0.0, bounds_height - 0.0001);
+
+        let gx = u32(clamp(floor(local_x / cell_size), 0.0, grid_width_f - 1.0));
+        let gy = u32(clamp(floor(local_y / cell_size), 0.0, grid_height_f - 1.0));
+        let grid_index = gy * grid_width + gx;
+
+        if grid_index < grid_width * grid_height && grid_index < arrayLength(&nutrient_grid.values) {
+            var attempts = 0u;
+            loop {
+                let old_val = atomicLoad(&nutrient_grid.values[grid_index]);
+                let current = f32(old_val) / f32(uniforms.nutrient.y);
+                if current == 0.0 {
+                    return 0.0;
+                }
+
+                let available = min(f32(absorption_rate), current);
+                let new_val = u32(f32(old_val) - available * f32(uniforms.nutrient.y));
+
+                let exchange = atomicCompareExchangeWeak(
+                    &nutrient_grid.values[grid_index],
+                    old_val,
+                    new_val,
+                );
+
+                if exchange.exchanged {
+                    return available;
+                }
+
+                attempts += 1u;
+                if attempts > 4u {
+                    break;
+                }
+            }
+        }
+    }
+    return 0.0;
 }

@@ -3,16 +3,18 @@
 use wgpu;
 use wgpu::util::DeviceExt;
 use parking_lot::Mutex;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use crate::gpu::structures::{Cell, DivisionRequest};
+use crate::utils::math::Rect;
 use crate::utils::gpu::gpu_vector::GpuVector;
 
-const CELL_CAPACITY: usize = 10_000;
+const CELL_CAPACITY: usize = 20_000;
 const MAX_SPAWN_REQUESTS: usize = 512;
-const LIFEFORM_CAPACITY: usize = 4_096;
+const LIFEFORM_CAPACITY: usize = 20_000;
 const MAX_DIVISION_REQUESTS: usize = 512;
+const NUTRIENT_CELL_SIZE: u32 = 20;
+const NUTRIENT_UNIT_SCALE: u32 = 4_000_000_000; // annoyingly we can't do atomicSubCompareExchangeWeak with f32 :sadge:
 
 pub struct GpuBuffers {
     pub cell_vector_a: GpuVector<Cell>,
@@ -22,12 +24,8 @@ pub struct GpuBuffers {
     alive_counter: wgpu::Buffer,
     alive_counter_staging: wgpu::Buffer,
     alive_counter_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
-    lifeform_counts: wgpu::Buffer,
     lifeform_active_flags: wgpu::Buffer,
     lifeform_active_flags_staging: wgpu::Buffer,
-    lifeform_active_counter: wgpu::Buffer,
-    lifeform_active_counter_staging: wgpu::Buffer,
-    lifeform_active_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
     lifeform_active_flags_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
     spawn_request_count: wgpu::Buffer,
     spawn_requests: wgpu::Buffer,
@@ -38,6 +36,9 @@ pub struct GpuBuffers {
     spawn_capacity: usize,
     division_capacity: usize,
     initial_alive_count: u32,
+    nutrient_grid: wgpu::Buffer,
+    nutrient_grid_width: u32,
+    nutrient_grid_height: u32,
 }
 
 impl GpuBuffers {
@@ -46,6 +47,7 @@ impl GpuBuffers {
         queue: &wgpu::Queue,
         cells: &[u8],
         initial_uniforms: &[u8],
+        bounds: Rect,
     ) -> Self {
         let mut initial_cells: Vec<Cell> = bytemuck::cast_slice(cells).to_vec();
         if initial_cells.len() > CELL_CAPACITY {
@@ -93,13 +95,6 @@ impl GpuBuffers {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let mut lifeform_counts_map: HashMap<u32, u32> = HashMap::new();
-        for cell in &initial_cells {
-            if cell.is_alive != 0 {
-                *lifeform_counts_map.entry(cell.lifeform_slot).or_insert(0) += 1;
-            }
-        }
-
         let alive_counter = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Alive Counter"),
             contents: bytemuck::cast_slice(&[initial_count]),
@@ -115,30 +110,15 @@ impl GpuBuffers {
             mapped_at_creation: false,
         });
 
-        let mut lifeform_counts_init = vec![0u32; LIFEFORM_CAPACITY];
         let mut lifeform_active_init = vec![0u32; LIFEFORM_CAPACITY];
-        let mut max_lifeform_idx = 0u32;
-        for (id, count) in lifeform_counts_map.iter() {
-            if (*id as usize) >= LIFEFORM_CAPACITY {
-                panic!(
-                    "Lifeform id {} exceeds LIFEFORM_CAPACITY {}",
-                    id, LIFEFORM_CAPACITY
-                );
+        for cell in &initial_cells {
+            if cell.is_alive != 0 {
+                let slot = cell.lifeform_slot as usize;
+                if slot < LIFEFORM_CAPACITY {
+                    lifeform_active_init[slot] = 1;
+                }
             }
-            lifeform_counts_init[*id as usize] = *count;
-            if *count > 0 {
-                lifeform_active_init[*id as usize] = 1;
-            }
-            max_lifeform_idx = max_lifeform_idx.max(*id);
         }
-
-        let active_lifeform_count = lifeform_counts_map.values().filter(|&&c| c > 0).count() as u32;
-
-        let lifeform_counts = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Lifeform Counts Buffer"),
-            contents: bytemuck::cast_slice(&lifeform_counts_init),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-        });
 
         let lifeform_active_flags = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Lifeform Active Flags"),
@@ -149,21 +129,6 @@ impl GpuBuffers {
         let lifeform_active_flags_staging = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Lifeform Active Flags Staging"),
             size: (LIFEFORM_CAPACITY * std::mem::size_of::<u32>()) as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let lifeform_active_counter = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Active Lifeform Counter"),
-            contents: bytemuck::cast_slice(&[active_lifeform_count]),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let lifeform_active_counter_staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Active Lifeform Counter Staging"),
-            size: std::mem::size_of::<u32>() as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -206,6 +171,18 @@ impl GpuBuffers {
             mapped_at_creation: false,
         });
 
+        let grid_width = (bounds.width / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
+        let grid_height = (bounds.height / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
+        let nutrient_grid_size = (grid_width * grid_height) as usize;
+        let initial_nutrients = vec![NUTRIENT_UNIT_SCALE; nutrient_grid_size];
+        let nutrient_grid = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Nutrient Grid Buffer"),
+            contents: bytemuck::cast_slice(&initial_nutrients),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
         Self {
             cell_vector_a,
             cell_vector_b,
@@ -214,12 +191,8 @@ impl GpuBuffers {
             alive_counter,
             alive_counter_staging,
             alive_counter_readback: Mutex::new(None),
-            lifeform_counts,
             lifeform_active_flags,
             lifeform_active_flags_staging,
-            lifeform_active_counter,
-            lifeform_active_counter_staging,
-            lifeform_active_readback: Mutex::new(None),
             lifeform_active_flags_readback: Mutex::new(None),
             spawn_request_count,
             spawn_requests,
@@ -230,6 +203,9 @@ impl GpuBuffers {
             spawn_capacity: MAX_SPAWN_REQUESTS,
             division_capacity: MAX_DIVISION_REQUESTS,
             initial_alive_count: initial_count,
+            nutrient_grid,
+            nutrient_grid_width: grid_width,
+            nutrient_grid_height: grid_height,
         }
     }
     
@@ -333,76 +309,8 @@ impl GpuBuffers {
         }
     }
 
-    pub fn lifeform_counts_buffer(&self) -> &wgpu::Buffer {
-        &self.lifeform_counts
-    }
-
     pub fn lifeform_active_flags_buffer(&self) -> &wgpu::Buffer {
         &self.lifeform_active_flags
-    }
-
-    pub fn lifeform_active_counter_buffer(&self) -> &wgpu::Buffer {
-        &self.lifeform_active_counter
-    }
-
-    pub fn schedule_lifeform_counter_copy(&self, encoder: &mut wgpu::CommandEncoder) {
-        {
-            let mut guard = self.lifeform_active_readback.lock();
-            if guard.take().is_some() {
-                self.lifeform_active_counter_staging.unmap();
-            }
-        }
-        encoder.copy_buffer_to_buffer(
-            &self.lifeform_active_counter,
-            0,
-            &self.lifeform_active_counter_staging,
-            0,
-            std::mem::size_of::<u32>() as u64,
-        );
-    }
-
-    pub fn begin_lifeform_counter_map(&self) {
-        let mut guard = self.lifeform_active_readback.lock();
-        if guard.is_some() {
-            return;
-        }
-        let slice = self.lifeform_active_counter_staging.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
-        });
-        *guard = Some(receiver);
-    }
-
-    pub fn try_consume_lifeform_counter(&self) -> Option<u32> {
-        let mut guard = self.lifeform_active_readback.lock();
-        let receiver = match guard.as_ref() {
-            Some(r) => r,
-            None => return None,
-        };
-
-        match receiver.try_recv() {
-            Ok(Ok(_)) => {
-                let mapped = self.lifeform_active_counter_staging.slice(..).get_mapped_range();
-                let value = bytemuck::cast_slice::<u8, u32>(&mapped)[0];
-                drop(mapped);
-                self.lifeform_active_counter_staging.unmap();
-                *guard = None;
-                Some(value)
-            }
-            Ok(Err(e)) => {
-                eprintln!("Lifeform counter read failed: {:?}", e);
-                self.lifeform_active_counter_staging.unmap();
-                *guard = None;
-                None
-            }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                eprintln!("Lifeform counter readback channel disconnected");
-                *guard = None;
-                None
-            }
-        }
     }
 
     pub fn schedule_lifeform_flags_copy(&self, encoder: &mut wgpu::CommandEncoder) {
@@ -632,6 +540,21 @@ impl GpuBuffers {
     /// Update uniform buffer
     pub fn update_uniforms(&self, queue: &wgpu::Queue, uniforms: &[u8]) {
         queue.write_buffer(&self.uniform_buffer, 0, uniforms);
+    }
+
+    pub fn nutrient_grid_buffer(&self) -> &wgpu::Buffer {
+        &self.nutrient_grid
+    }
+
+    pub fn nutrient_grid_dimensions(&self) -> (u32, u32) {
+        (self.nutrient_grid_width, self.nutrient_grid_height)
+    }
+
+    pub fn nutrient_cell_size(&self) -> u32 {
+        NUTRIENT_CELL_SIZE
+    }
+    pub fn nutrient_scale(&self) -> u32 {
+        NUTRIENT_UNIT_SCALE
     }
 
 }

@@ -17,6 +17,7 @@ struct Uniforms {
     cell_count: vec4<f32>, // x: cell_count, y: reserved0, z: reserved1, w: reserved2
     camera: vec4<f32>,     // x: cam_x, y: cam_y
     bounds: vec4<f32>,     // (left, top, right, bottom)
+    nutrient: vec4<u32>,// (Cell size, scale, reserved, reserved)
 };
 
 
@@ -127,8 +128,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let center = vec2<f32>(0.5, 0.5);
     let dist = length(in.uv - center);
     let angle_from_center = atan2(in.uv.y - center.y, in.uv.x - center.x);
-    let radius = 0.49 - sin(angle_from_center * 10.0) * 0.01;
-    if dist > radius {
+    let radius = 0.5;
+    let radius_for_wall = radius - sin(angle_from_center * 20.0) * 0.01;
+    if dist > radius_for_wall {
         discard;
     }
     

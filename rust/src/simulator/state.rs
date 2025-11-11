@@ -38,7 +38,6 @@ impl PopulationState {
 #[derive(Debug, Default)]
 pub struct GpuTransferState {
     pub alive_counter_pending: bool,
-    pub lifeform_counter_pending: bool,
     pub lifeform_flags_pending: bool,
     pub division_requests_pending: bool,
 }

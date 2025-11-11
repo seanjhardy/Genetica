@@ -13,6 +13,8 @@ pub struct Uniforms {
     pub camera: [f32; 4],
     /// (bounds_left, bounds_top, bounds_right, bounds_bottom)
     pub bounds: [f32; 4],
+    // (nutrient_cell_size, nutrient_scale, grid_width, grid_height)
+    pub nutrient: [u32; 4],
 }
 
 // Manually implement Pod and Zeroable since we have explicit padding
@@ -28,6 +30,7 @@ impl Uniforms {
             cell_count: [0.0, 0.0, 0.0, 0.0],
             camera: [0.0, 0.0, 0.0, 0.0],
             bounds: [0.0, 0.0, 0.0, 0.0],
+            nutrient: [0, 0, 0, 0],
         }
     }
 }
@@ -44,12 +47,22 @@ impl Uniforms {
         view_width: f32,
         view_height: f32,
         cell_count: f32,
+        nutrient_cell_size: u32,
+        nutrient_scale: u32,
+        nutrient_grid_width: u32,
+        nutrient_grid_height: u32,
     ) -> Self {
         Self {
             sim_params: [delta_time, zoom, view_width, view_height],
             cell_count: [cell_count, 0.0, 0.0, 0.0],
             camera: [camera_pos[0], camera_pos[1], 0.0, 0.0],
             bounds: [left, top, right, bottom],
+            nutrient: [
+                nutrient_cell_size,
+                nutrient_scale,
+                nutrient_grid_width,
+                nutrient_grid_height,
+            ],
         }
     }
 }

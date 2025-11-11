@@ -1,5 +1,6 @@
 // Simulator module - main simulation loop and window management
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
@@ -24,7 +25,7 @@ use crate::gpu::buffers::GpuBuffers;
 use crate::gpu::pipelines::{ComputePipelines, RenderPipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
-use crate::gpu::structures::Cell;
+use crate::gpu::structures::{Cell, DivisionRequest};
 use crate::simulator::environment::Environment;
 use crate::simulator::lifeform_registry::{LifeformMetadata, LifeformRegistry};
 use crate::simulator::state::{GpuTransferState, PauseState, PopulationState, SpawnState, SubmissionState};
@@ -37,7 +38,7 @@ const MAX_SPAWN_PER_STEP: usize = 50;
 #[derive(Copy, Clone)]
 enum SpawnKind {
     RandomNew,
-    Division { parent_lifeform_id: usize },
+    Division { parent_lifeform_id: usize, request: DivisionRequest },
 }
 
 struct PendingSpawn {
@@ -59,6 +60,7 @@ pub struct Simulation {
     transfers: GpuTransferState,
     lifeforms: LifeformRegistry,
     spawn: SpawnState,
+    pending_division_requests: VecDeque<DivisionRequest>,
     
     // Simulation parameters
     workgroup_size: u32,
@@ -112,6 +114,7 @@ impl Simulation {
             transfers: GpuTransferState::default(),
             lifeforms,
             spawn: SpawnState::new(spawn_capacity),
+            pending_division_requests: VecDeque::new(),
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
             submission: SubmissionState::new(4, Duration::from_micros(500)),
@@ -155,8 +158,9 @@ impl Simulation {
             speed
         };
 
-        let iterations = (speed.max(1.0).floor() as u32);
+        let iterations = (10.0 * speed).max(1.0).floor() as u32;
         self.run_compute_batch(iterations);
+        self.maintain_minimum_cell_population(iterations);
     }
     
     pub fn get_step_count(&self) -> u64 {
@@ -211,14 +215,33 @@ impl Simulation {
             });
 
             {
+                profile_scope!("Dispatch Nutrient Regeneration");
+                let mut nutrient_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("Nutrient Regeneration Pass"),
+                    timestamp_writes: None,
+                });
+                let (grid_w, grid_h) = self.buffers.nutrient_grid_dimensions();
+                let total_cells = grid_w.saturating_mul(grid_h);
+                if total_cells > 0 {
+                    let workgroup_size: u32 = 256;
+                    let workgroups = (total_cells + workgroup_size - 1) / workgroup_size;
+                    nutrient_pass.set_pipeline(&self.compute_pipelines.update_nutrients);
+                    nutrient_pass.set_bind_group(0, &self.compute_pipelines.update_nutrients_bind_group, &[]);
+                    for _ in 0..iterations {
+                        nutrient_pass.dispatch_workgroups(workgroups, 1, 1);
+                    }
+                }
+            }
+
+            {
                 profile_scope!("Dispatch Cell Simulation Compute Batch");
                 let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("Update Compute Pass"),
                     timestamp_writes: None,
                 });
 
-                compute_pass.set_pipeline(&self.compute_pipelines.update);
-                compute_pass.set_bind_group(0, &self.compute_pipelines.compute_bind_group, &[]);
+                compute_pass.set_pipeline(&self.compute_pipelines.update_cells);
+                compute_pass.set_bind_group(0, &self.compute_pipelines.update_cells_bind_group, &[]);
 
                 let num_cells = self.buffers.cell_capacity() as u32;
                 let workgroups = (num_cells + self.workgroup_size - 1) / self.workgroup_size;
@@ -232,12 +255,6 @@ impl Simulation {
                 self.buffers
                     .schedule_alive_counter_copy(&mut encoder);
                 self.transfers.alive_counter_pending = true;
-            }
-
-            if !self.transfers.lifeform_counter_pending {
-                self.buffers
-                    .schedule_lifeform_counter_copy(&mut encoder);
-                self.transfers.lifeform_counter_pending = true;
             }
 
             if !self.transfers.lifeform_flags_pending {
@@ -271,7 +288,7 @@ impl Simulation {
 
     }
 
-    pub fn maintain_minimum_cell_population(&mut self) {
+    fn maintain_minimum_cell_population(&mut self, iteration_multiplier: u32) {
         if !self.submission.pending_command_buffers.is_empty() {
             profile_scope!("Flush Pending Command Buffers");
             self.flush_pending_submissions();
@@ -283,14 +300,6 @@ impl Simulation {
             {
                 profile_scope!("Begin Alive Counter Map");
                 self.buffers.begin_alive_counter_map();
-            }
-            counters_need_poll = true;
-        }
-
-        if self.transfers.lifeform_counter_pending {
-            {
-                profile_scope!("Begin Lifeform Counter Map");
-                self.buffers.begin_lifeform_counter_map();
             }
             counters_need_poll = true;
         }
@@ -316,14 +325,6 @@ impl Simulation {
             }
         }
 
-        if self.transfers.lifeform_counter_pending {
-            profile_scope!("Consume Lifeform Counter");
-            if let Some(value) = self.buffers.try_consume_lifeform_counter() {
-                self.population.sync_lifeforms(value);
-                self.transfers.lifeform_counter_pending = false;
-            }
-        }
-
         if self.transfers.lifeform_flags_pending {
             profile_scope!("Consume Lifeform Flags");
             if let Some(flags) = self.buffers.try_consume_lifeform_flags() {
@@ -339,7 +340,14 @@ impl Simulation {
                             ga.remove_lifeform(id, death_time);
                         }
                     }
-                    self.population.sync_lifeforms(update.active_total);
+                    // The GPU lifeform flags reflect the authoritative set of active cells.
+                    // Use them to keep both the lifeform and cell counters from drifting high
+                    // when a stale alive-counter readback fails to arrive.
+                    let active_total = update.active_total;
+                    self.population.sync_lifeforms(active_total);
+                    if self.population.last_alive != active_total {
+                        self.population.sync_alive(active_total);
+                    }
                 }
                 self.transfers.lifeform_flags_pending = false;
             }
@@ -350,8 +358,13 @@ impl Simulation {
         }
 
         let alive_estimate = self.population.predicted_alive as usize;
-        let spawn_limit = MAX_SPAWN_PER_STEP.min(self.spawn.capacity);
-        let mut pending_spawns: Vec<PendingSpawn> = Vec::with_capacity(spawn_limit);
+        let spawn_multiplier = iteration_multiplier.max(1) as usize;
+        let base_spawn_cap = MAX_SPAWN_PER_STEP.min(self.spawn.capacity);
+        let scaled_spawn_cap = base_spawn_cap
+            .saturating_mul(spawn_multiplier)
+            .min(self.spawn.capacity);
+
+        let mut pending_spawns: Vec<PendingSpawn> = Vec::with_capacity(scaled_spawn_cap);
         let mut rng = rand::thread_rng();
         let mut spawn_reads_need_poll = false;
 
@@ -374,27 +387,33 @@ impl Simulation {
                 self.transfers.division_requests_pending = false;
                 profile_scope!("Queue Division Spawns");
                 for request in requests {
-                    if pending_spawns.len() >= spawn_limit {
+                    if let Some(requeue) = self.process_division_request(
+                        request,
+                        &mut pending_spawns,
+                        scaled_spawn_cap,
+                    ) {
+                        self.pending_division_requests.push_back(requeue);
+                    }
+                }
+            }
+        }
+
+        {
+            profile_scope!("Drain Pending Division Queue");
+            let mut iterations = self.pending_division_requests.len();
+            while pending_spawns.len() < scaled_spawn_cap && iterations > 0 {
+                if let Some(request) = self.pending_division_requests.pop_front() {
+                    if let Some(requeue) =
+                        self.process_division_request(request, &mut pending_spawns, scaled_spawn_cap)
+                    {
+                        self.pending_division_requests.push_back(requeue);
                         break;
                     }
-                    let parent_id = match self.lifeforms.id_for_slot(request.parent_lifeform_slot) {
-                        Some(id) => id,
-                        None => continue,
-                    };
-                    let slot = match self.lifeforms.reserve_slot() {
-                        Some(slot) => slot,
-                        None => continue,
-                    };
-                    let mut cell = Cell::new(request.pos, request.radius, slot, request.energy);
-                    cell.random_force = [0.0, 0.0];
-                    pending_spawns.push(PendingSpawn {
-                        cell,
-                        slot,
-                        kind: SpawnKind::Division {
-                            parent_lifeform_id: parent_id,
-                        },
-                    });
                 }
+                if self.pending_division_requests.is_empty() {
+                    break;
+                }
+                iterations -= 1;
             }
         }
 
@@ -404,14 +423,14 @@ impl Simulation {
             env.get_bounds()
         };
 
-        if alive_estimate < MIN_ACTIVE_CELLS {
+        if scaled_spawn_cap > 0 && alive_estimate < MIN_ACTIVE_CELLS {
             profile_scope!("Queue Random Spawns");
             let deficit = MIN_ACTIVE_CELLS - alive_estimate;
-            let available_slots = spawn_limit
+            let available_slots = scaled_spawn_cap
                 .saturating_sub(pending_spawns.len());
             if available_slots > 0 {
                 let desired_spawns = deficit
-                    .min(MAX_SPAWN_PER_STEP)
+                    .min(scaled_spawn_cap)
                     .min(available_slots);
 
                 for _ in 0..desired_spawns {
@@ -449,6 +468,9 @@ impl Simulation {
         if submitted == 0 {
             profile_scope!("Release Rejected Spawn Slots");
             for spawn in pending_spawns {
+                if let SpawnKind::Division { request, .. } = spawn.kind {
+                    self.pending_division_requests.push_back(request);
+                }
                 self.lifeforms.release_slot(spawn.slot);
             }
             return;
@@ -466,7 +488,9 @@ impl Simulation {
                     SpawnKind::RandomNew => {
                         random_new_slots.push(spawn.slot);
                     }
-                    SpawnKind::Division { parent_lifeform_id } => {
+                    SpawnKind::Division {
+                        parent_lifeform_id, ..
+                    } => {
                         division_infos.push((spawn.slot, parent_lifeform_id));
                     }
                 }
@@ -499,7 +523,7 @@ impl Simulation {
                 for (slot, parent_id) in division_infos {
                 if let Some((child_id, species_id)) =
                     ga.register_division_offspring(parent_id, birth_time, &mut rng)
-                    {
+                {
                         self.lifeforms.assign_id_to_slot(
                             slot,
                             child_id,
@@ -523,9 +547,50 @@ impl Simulation {
         {
             profile_scope!("Release Excess Spawn Slots");
             for spawn in pending_spawns.iter().skip(submitted) {
+                if let SpawnKind::Division { request, .. } = spawn.kind {
+                    self.pending_division_requests.push_back(request);
+                }
                 self.lifeforms.release_slot(spawn.slot);
             }
         }
+    }
+
+    fn process_division_request(
+        &mut self,
+        request: DivisionRequest,
+        pending_spawns: &mut Vec<PendingSpawn>,
+        spawn_limit: usize,
+    ) -> Option<DivisionRequest> {
+        if pending_spawns.len() >= spawn_limit {
+            return Some(request);
+        }
+
+        let parent_slot = request.parent_lifeform_slot;
+        if !self.lifeforms.is_slot_active(parent_slot) {
+            return None;
+        }
+
+        let parent_id = match self.lifeforms.id_for_slot(parent_slot) {
+            Some(id) => id,
+            None => return Some(request),
+        };
+
+        let slot = match self.lifeforms.reserve_slot() {
+            Some(slot) => slot,
+            None => return Some(request),
+        };
+
+        let mut cell = Cell::new(request.pos, request.radius, slot, request.energy);
+        cell.random_force = [0.0, 0.0];
+        pending_spawns.push(PendingSpawn {
+            cell,
+            slot,
+            kind: SpawnKind::Division {
+                parent_lifeform_id: parent_id,
+                request,
+            },
+        });
+        None
     }
 }
 
@@ -570,6 +635,7 @@ pub struct Application {
 
     // Rendering control
     rendering_enabled: bool,
+    show_grid: bool,
 }
 
 impl Application {
@@ -603,13 +669,11 @@ impl Application {
             buffers.alive_counter_buffer(),
             buffers.spawn_request_count_buffer(),
             buffers.spawn_requests_buffer(),
-            buffers.lifeform_counts_buffer(),
             buffers.lifeform_active_flags_buffer(),
-            buffers.lifeform_active_counter_buffer(),
             buffers.division_request_count_buffer(),
             buffers.division_requests_buffer(),
+            buffers.nutrient_grid_buffer(),
         );
-
         let speed = Arc::new(parking_lot::Mutex::new(1.0));
 
         let simulation_inner = Simulation::new(
@@ -650,6 +714,7 @@ impl Application {
             speed,
             simulation_paused,
             rendering_enabled: true,
+            show_grid: false,
         }
     }
     
@@ -714,10 +779,6 @@ impl Application {
                 simulation.flush_pending_submissions();
             }
             {
-                profile_scope!("Maintain Minimum Cell Population");
-                simulation.maintain_minimum_cell_population();
-            }
-            {
                 profile_scope!("Get Simulation State");
             }
             {
@@ -776,6 +837,7 @@ impl Application {
         // Use SIMULATION_DELTA_TIME for compute shader physics, but render_delta for UI
         // The compute shader uses delta_time for physics calculations
         // Note: Speed is controlled by running more/fewer simulation steps, not by changing dt
+        let (nutrient_grid_width, nutrient_grid_height) = buffers.nutrient_grid_dimensions();
         let uniforms = Uniforms::new(
             SIMULATION_DELTA_TIME, // Use fixed timestep for physics consistency
             [camera_pos.x, camera_pos.y],
@@ -787,6 +849,10 @@ impl Application {
             view_size.x,
             view_size.y,
             active_cells,
+            buffers.nutrient_cell_size(),
+            buffers.nutrient_scale(),
+            nutrient_grid_width,
+            nutrient_grid_height,
         );
 
         // Update uniforms on the buffers (this updates the uniform buffer for both compute and render)
@@ -886,6 +952,7 @@ impl Application {
                 camera_pos,
                 zoom,
                 num_cells_to_render,
+                self.show_grid,
                 &mut encoder,
             );
         }
@@ -1045,6 +1112,10 @@ impl Application {
             }
         }
     }
+
+    fn toggle_grid(&mut self) {
+        self.show_grid = !self.show_grid;
+    }
     
     fn handle_ui_function(&mut self, function_name: &str) {
         match function_name {
@@ -1052,6 +1123,7 @@ impl Application {
             "slowDown" => self.slow_down(),
             "togglePaused" => self.toggle_paused(),
             "showUI" => self.toggle_ui(),
+            "toggleGrid" => self.toggle_grid(),
             _ => {
                 // Unknown function - log it for debugging
                 eprintln!("Unknown UI function: {}", function_name);
@@ -1280,10 +1352,12 @@ impl Application {
             &gpu.queue,
             bytemuck::cast_slice(&cells),
             bytemuck::cast_slice(&[Uniforms::zeroed()]),
+            bounds,
         ));
         
         let initial_cell_count = buffers.cell_size() as f32;
 
+        let (nutrient_grid_width, nutrient_grid_height) = buffers.nutrient_grid_dimensions();
         let initial_uniforms = Uniforms::new(
             0.0,
             [camera_pos.x, camera_pos.y],
@@ -1295,6 +1369,10 @@ impl Application {
             view_size.x,
             view_size.y,
             initial_cell_count,
+            buffers.nutrient_cell_size(),
+            buffers.nutrient_scale(),
+            nutrient_grid_width,
+            nutrient_grid_height,
         );
         
         buffers.update_uniforms(&gpu.queue, bytemuck::cast_slice(&[initial_uniforms]));
@@ -1306,6 +1384,7 @@ impl Application {
             buffers.cell_buffer(),
             &buffers.uniform_buffer,
             buffers.cell_free_list_buffer(),
+            buffers.nutrient_grid_buffer(),
         );
 
         // Initialize bounds renderer (includes planet background)
