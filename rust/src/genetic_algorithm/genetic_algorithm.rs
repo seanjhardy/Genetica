@@ -87,15 +87,10 @@ impl GeneticAlgorithm {
             let genome = Self::generate_random_genome(&mut rng);
             let grn = sequence_grn(&genome);
             let species_id = self.create_species(lifeform_id, &genome, 0);
-            self.attach_lifeform(lifeform_id, species_id, Vec::new(), genome.clone(), grn.clone());
+            self.attach_lifeform(lifeform_id, species_id, genome.clone(), grn.clone());
 
-            let cell_idx = cells.len();
             let cell = Self::create_seed_cell(&mut rng, &bounds, lifeform_id);
             cells.push(cell);
-
-            if let Some(lifeform) = self.lifeforms.get_mut(&lifeform_id) {
-                lifeform.cell_idxs.push(cell_idx as u32);
-            }
         }
 
         cells
@@ -113,7 +108,7 @@ impl GeneticAlgorithm {
         birth_time: usize,
     ) -> usize {
         let species_id = self.create_species(lifeform_id, &genome, birth_time);
-        self.attach_lifeform(lifeform_id, species_id, Vec::new(), genome, grn);
+        self.attach_lifeform(lifeform_id, species_id,  genome, grn);
         species_id
     }
 
@@ -163,7 +158,7 @@ impl GeneticAlgorithm {
             parent_species_id.unwrap()
         };
 
-        self.attach_lifeform(lifeform_id, species_id, Vec::new(), genome, grn);
+        self.attach_lifeform(lifeform_id, species_id,  genome, grn);
         species_id
     }
 
@@ -237,7 +232,6 @@ impl GeneticAlgorithm {
         &mut self,
         lifeform_id: usize,
         species_id: usize,
-        cell_idxs: Vec<u32>,
         genome: Genome,
         grn: GeneRegulatoryNetwork,
     ) {
@@ -247,7 +241,7 @@ impl GeneticAlgorithm {
                 self.living_species.insert(species_id);
             }
         }
-        let lifeform = Lifeform::new(lifeform_id, species_id, cell_idxs, genome, grn);
+        let lifeform = Lifeform::new(lifeform_id, species_id, genome, grn);
         self.lifeforms.insert(lifeform_id, lifeform);
     }
 }

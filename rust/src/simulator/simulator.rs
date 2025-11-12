@@ -25,7 +25,7 @@ use crate::gpu::buffers::GpuBuffers;
 use crate::gpu::pipelines::{ComputePipelines, RenderPipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
-use crate::gpu::structures::{Cell, DivisionRequest};
+use crate::gpu::structures::{Cell, CellEvent, DivisionRequest, Link, LinkEvent};
 use crate::simulator::environment::Environment;
 use crate::simulator::lifeform_registry::{LifeformMetadata, LifeformRegistry};
 use crate::simulator::state::{GpuTransferState, PauseState, PopulationState, SpawnState, SubmissionState};
@@ -39,6 +39,7 @@ const MAX_SPAWN_PER_STEP: usize = 50;
 enum SpawnKind {
     RandomNew,
     Division { parent_lifeform_id: usize, request: DivisionRequest },
+    NewLifeform { parent_lifeform_id: Option<usize>, event: CellEvent },
 }
 
 struct PendingSpawn {
@@ -61,6 +62,11 @@ pub struct Simulation {
     lifeforms: LifeformRegistry,
     spawn: SpawnState,
     pending_division_requests: VecDeque<DivisionRequest>,
+    cell_division_events: Vec<CellEvent>,
+    cell_death_events: Vec<CellEvent>,
+    non_adhesive_divisions: Vec<CellEvent>,
+    link_events: Vec<LinkEvent>,
+    pending_link_writes: Vec<(usize, Link)>,
     
     // Simulation parameters
     workgroup_size: u32,
@@ -115,6 +121,11 @@ impl Simulation {
             lifeforms,
             spawn: SpawnState::new(spawn_capacity),
             pending_division_requests: VecDeque::new(),
+            cell_division_events: Vec::new(),
+            cell_death_events: Vec::new(),
+            non_adhesive_divisions: Vec::new(),
+            link_events: Vec::new(),
+            pending_link_writes: Vec::new(),
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
             submission: SubmissionState::new(4, Duration::from_micros(500)),
@@ -249,6 +260,20 @@ impl Simulation {
                 for _ in 0..iterations {
                     compute_pass.dispatch_workgroups(workgroups, 1, 1);
                 }
+
+                let link_capacity = self.buffers.link_capacity() as u32;
+                if link_capacity > 0 {
+                    compute_pass.set_pipeline(&self.compute_pipelines.update_links);
+                    compute_pass.set_bind_group(
+                        0,
+                        &self.compute_pipelines.update_cells_bind_group,
+                        &[],
+                    );
+                    let link_workgroups = (link_capacity + self.workgroup_size - 1) / self.workgroup_size;
+                    for _ in 0..iterations {
+                        compute_pass.dispatch_workgroups(link_workgroups, 1, 1);
+                    }
+                }
             }
 
             if !self.transfers.alive_counter_pending {
@@ -267,6 +292,27 @@ impl Simulation {
                 self.buffers
                     .schedule_division_requests_copy(&mut encoder);
                 self.transfers.division_requests_pending = true;
+            }
+
+            let ring_size = self.buffers.event_staging_ring_size();
+            if ring_size > 0 {
+                let cell_slot = self.transfers.next_cell_event_staging % ring_size;
+                if !self.transfers.cell_events_pending[cell_slot] {
+                    self.buffers
+                        .schedule_cell_events_copy(&mut encoder, cell_slot);
+                    self.transfers.cell_events_pending[cell_slot] = true;
+                    self.transfers.next_cell_event_staging =
+                        (cell_slot + 1) % ring_size;
+                }
+
+                let link_slot = self.transfers.next_link_event_staging % ring_size;
+                if !self.transfers.link_events_pending[link_slot] {
+                    self.buffers
+                        .schedule_link_events_copy(&mut encoder, link_slot);
+                    self.transfers.link_events_pending[link_slot] = true;
+                    self.transfers.next_link_event_staging =
+                        (link_slot + 1) % ring_size;
+                }
             }
 
             encoder.finish()
@@ -295,6 +341,7 @@ impl Simulation {
         }
 
         let mut counters_need_poll = false;
+        let mut events_need_poll = false;
 
         if self.transfers.alive_counter_pending {
             {
@@ -312,7 +359,21 @@ impl Simulation {
             counters_need_poll = true;
         }
 
-        if counters_need_poll {
+        let ring_size = self.buffers.event_staging_ring_size();
+        for slot in 0..ring_size {
+            if self.transfers.cell_events_pending[slot] {
+                profile_scope!("Begin Cell Events Map");
+                self.buffers.begin_cell_events_map(slot);
+                events_need_poll = true;
+            }
+            if self.transfers.link_events_pending[slot] {
+                profile_scope!("Begin Link Events Map");
+                self.buffers.begin_link_events_map(slot);
+                events_need_poll = true;
+            }
+        }
+
+        if counters_need_poll || events_need_poll {
             profile_scope!("Poll GPU Counters");
             let _ = self.device.poll(wgpu::MaintainBase::Poll);
         }
@@ -353,6 +414,23 @@ impl Simulation {
             }
         }
 
+        for slot in 0..ring_size {
+            if self.transfers.cell_events_pending[slot] {
+                profile_scope!("Consume Cell Events");
+                if let Some(events) = self.buffers.try_consume_cell_events(slot) {
+                    self.handle_cell_events(events);
+                    self.transfers.cell_events_pending[slot] = false;
+                }
+            }
+            if self.transfers.link_events_pending[slot] {
+                profile_scope!("Consume Link Events");
+                if let Some(events) = self.buffers.try_consume_link_events(slot) {
+                    self.handle_link_events(events);
+                    self.transfers.link_events_pending[slot] = false;
+                }
+            }
+        }
+
         if self.pause.is_paused() {
             return;
         }
@@ -367,6 +445,8 @@ impl Simulation {
         let mut pending_spawns: Vec<PendingSpawn> = Vec::with_capacity(scaled_spawn_cap);
         let mut rng = rand::thread_rng();
         let mut spawn_reads_need_poll = false;
+
+        self.drain_non_adhesive_divisions(&mut pending_spawns, scaled_spawn_cap);
 
         if self.transfers.division_requests_pending {
             {
@@ -468,8 +548,14 @@ impl Simulation {
         if submitted == 0 {
             profile_scope!("Release Rejected Spawn Slots");
             for spawn in pending_spawns {
-                if let SpawnKind::Division { request, .. } = spawn.kind {
-                    self.pending_division_requests.push_back(request);
+                match spawn.kind {
+                    SpawnKind::Division { request, .. } => {
+                        self.pending_division_requests.push_back(request);
+                    }
+                    SpawnKind::NewLifeform { event, .. } => {
+                        self.non_adhesive_divisions.push(event);
+                    }
+                    SpawnKind::RandomNew => {}
                 }
                 self.lifeforms.release_slot(spawn.slot);
             }
@@ -480,18 +566,26 @@ impl Simulation {
             self.population.predicted_alive.saturating_add(submitted as u32);
         let mut random_new_slots = Vec::new();
         let mut division_infos = Vec::new();
+        let mut new_lifeform_infos = Vec::new();
 
         {
             profile_scope!("Categorize Spawn Results");
             for spawn in pending_spawns.iter().take(submitted) {
-                match spawn.kind {
+                match &spawn.kind {
                     SpawnKind::RandomNew => {
                         random_new_slots.push(spawn.slot);
                     }
                     SpawnKind::Division {
                         parent_lifeform_id, ..
                     } => {
-                        division_infos.push((spawn.slot, parent_lifeform_id));
+                        division_infos.push((spawn.slot, *parent_lifeform_id));
+                    }
+                    SpawnKind::NewLifeform {
+                        parent_lifeform_id,
+                        event,
+                    } => {
+                        new_lifeform_infos
+                            .push((spawn.slot, *parent_lifeform_id, *event));
                     }
                 }
             }
@@ -521,23 +615,46 @@ impl Simulation {
             {
                 profile_scope!("Register Division Offspring");
                 for (slot, parent_id) in division_infos {
-                if let Some((child_id, species_id)) =
-                    ga.register_division_offspring(parent_id, birth_time, &mut rng)
-                {
-                        self.lifeforms.assign_id_to_slot(
-                            slot,
-                            child_id,
-                            LifeformMetadata {
-                                species_id: Some(species_id),
-                                genome_id: None,
-                            },
-                        );
-                        _new_lifeforms += 1;
+                    let metadata = self
+                        .lifeforms
+                        .metadata(parent_id)
+                        .cloned()
+                        .unwrap_or(LifeformMetadata {
+                            species_id: None,
+                            genome_id: None,
+                        });
+                    self.lifeforms
+                        .assign_id_to_slot(slot, parent_id, metadata);
+                }
+            }
+            {
+                profile_scope!("Register New Lifeforms");
+                for (slot, parent_id, _event) in new_lifeform_infos {
+                    let (lifeform_id, species_id) = if let Some(parent_id) = parent_id {
+                        match ga.register_division_offspring(parent_id, birth_time, &mut rng) {
+                            Some(result) => result,
+                            None => {
+                                self.lifeforms.release_slot(slot);
+                                self.population.predicted_alive =
+                                    self.population.predicted_alive.saturating_sub(1);
+                                continue;
+                            }
+                        }
                     } else {
-                        self.lifeforms.release_slot(slot);
-                        self.population.predicted_alive =
-                            self.population.predicted_alive.saturating_sub(1);
-                    }
+                        ga.spawn_random_lifeform(&mut rng, birth_time)
+                    };
+
+                    self.lifeforms.assign_id_to_slot(
+                        slot,
+                        lifeform_id,
+                        LifeformMetadata {
+                            species_id: Some(species_id),
+                            genome_id: None,
+                        },
+                    );
+                    self.population.predicted_lifeform =
+                        self.population.predicted_lifeform.saturating_add(1);
+                    _new_lifeforms += 1;
                 }
             }
         }
@@ -547,12 +664,21 @@ impl Simulation {
         {
             profile_scope!("Release Excess Spawn Slots");
             for spawn in pending_spawns.iter().skip(submitted) {
-                if let SpawnKind::Division { request, .. } = spawn.kind {
-                    self.pending_division_requests.push_back(request);
+                match &spawn.kind {
+                    SpawnKind::Division { request, .. } => {
+                        self.pending_division_requests.push_back(*request);
+                    }
+                    SpawnKind::NewLifeform { event, .. } => {
+                        self.non_adhesive_divisions.push(*event);
+                    }
+                    SpawnKind::RandomNew => {}
                 }
                 self.lifeforms.release_slot(spawn.slot);
             }
         }
+
+        self.flush_pending_gpu_writes();
+        self.process_event_bookkeeping();
     }
 
     fn process_division_request(
@@ -582,6 +708,7 @@ impl Simulation {
 
         let mut cell = Cell::new(request.pos, request.radius, slot, request.energy);
         cell.random_force = [0.0, 0.0];
+        cell.metadata = request.cell_index.saturating_add(1);
         pending_spawns.push(PendingSpawn {
             cell,
             slot,
@@ -591,6 +718,133 @@ impl Simulation {
             },
         });
         None
+    }
+
+    fn handle_cell_events(&mut self, events: Vec<CellEvent>) {
+        if events.is_empty() {
+            return;
+        }
+        profile_scope!("Handle Cell Events");
+        for event in events {
+            if event.kind == 0 {
+                continue;
+            }
+            match event.kind {
+                kind if kind == CellEvent::KIND_DIVISION => {
+                    if (event.flags & CellEvent::FLAG_ADHESIVE) != 0 {
+                        self.cell_division_events.push(event);
+                    } else {
+                        self.non_adhesive_divisions.push(event);
+                    }
+                }
+                kind if kind == CellEvent::KIND_DEATH => {
+                    self.cell_death_events.push(event);
+                }
+                _ => {
+                    // Unknown event type - ignore for now
+                }
+            }
+        }
+    }
+
+    fn handle_link_events(&mut self, events: Vec<LinkEvent>) {
+        if events.is_empty() {
+            return;
+        }
+        profile_scope!("Handle Link Events");
+        for event in events {
+            if event.kind == 0 {
+                continue;
+            }
+            self.link_events.push(event);
+        }
+    }
+
+    fn flush_pending_gpu_writes(&mut self) {
+        if self.pending_link_writes.is_empty() {
+            return;
+        }
+        profile_scope!("Flush Pending Link Writes");
+        for (offset, link) in self.pending_link_writes.drain(..) {
+            self.buffers
+                .write_links(&self.queue, offset, std::slice::from_ref(&link));
+        }
+    }
+
+    fn process_event_bookkeeping(&mut self) {
+        if self.cell_death_events.is_empty()
+            && self.cell_division_events.is_empty()
+            && self.link_events.is_empty()
+        {
+            return;
+        }
+        profile_scope!("Process Event Bookkeeping");
+
+        if !self.cell_death_events.is_empty() {
+            let deaths = self.cell_death_events.len() as u32;
+            self.population.predicted_alive = self
+                .population
+                .predicted_alive
+                .saturating_sub(deaths);
+            self.cell_death_events.clear();
+        }
+
+        if !self.cell_division_events.is_empty() {
+            // Adhesive divisions stay within existing lifeforms; adjust alive prediction only.
+            let divisions = self.cell_division_events.len() as u32;
+            self.population.predicted_alive = self
+                .population
+                .predicted_alive
+                .saturating_add(divisions);
+            self.cell_division_events.clear();
+        }
+
+        // Link events will be handled in future passes when GPU emits link lifecycle data.
+        if !self.link_events.is_empty() {
+            self.link_events.clear();
+        }
+    }
+
+    fn drain_non_adhesive_divisions(
+        &mut self,
+        pending_spawns: &mut Vec<PendingSpawn>,
+        spawn_limit: usize,
+    ) {
+        if self.non_adhesive_divisions.is_empty() || pending_spawns.len() >= spawn_limit {
+            return;
+        }
+        profile_scope!("Drain Non-Adhesive Divisions");
+        let mut remaining_capacity = spawn_limit.saturating_sub(pending_spawns.len());
+        while remaining_capacity > 0 {
+            let event = match self.non_adhesive_divisions.pop() {
+                Some(event) => event,
+                None => break,
+            };
+
+            let slot = match self.lifeforms.reserve_slot() {
+                Some(slot) => slot,
+                None => {
+                    // No capacity left; push the event back and stop trying.
+                    self.non_adhesive_divisions.push(event);
+                    break;
+                }
+            };
+
+            let mut cell = Cell::new(event.position, event.radius, slot, event.energy);
+            cell.random_force = [0.0, 0.0];
+
+            let parent_id = self.lifeforms.id_for_slot(event.parent_lifeform_slot);
+            pending_spawns.push(PendingSpawn {
+                cell,
+                slot,
+                kind: SpawnKind::NewLifeform {
+                    parent_lifeform_id: parent_id,
+                    event,
+                },
+            });
+
+            remaining_capacity = spawn_limit.saturating_sub(pending_spawns.len());
+        }
     }
 }
 
@@ -672,9 +926,16 @@ impl Application {
             buffers.lifeform_active_flags_buffer(),
             buffers.division_request_count_buffer(),
             buffers.division_requests_buffer(),
+            buffers.link_buffer(),
+            buffers.link_free_count_buffer(),
+            buffers.link_free_list_buffer(),
+            buffers.link_event_count_buffer(),
+            buffers.link_events_buffer(),
+            buffers.cell_event_count_buffer(),
+            buffers.cell_events_buffer(),
             buffers.nutrient_grid_buffer(),
         );
-        let speed = Arc::new(parking_lot::Mutex::new(1.0));
+        let speed = Arc::new(parking_lot::Mutex::new(0.05));
 
         let simulation_inner = Simulation::new(
             device,

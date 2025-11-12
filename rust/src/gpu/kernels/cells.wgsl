@@ -8,7 +8,39 @@ struct Cell {
     cell_wall_thickness: f32,
     is_alive: u32,
     lifeform_slot: u32,
-    padding: u32,
+    metadata: u32,
+}
+
+struct Link {
+    a: u32,
+    b: u32,
+    flags: u32,
+    _padding0: u32,
+    rest_length: f32,
+    stiffness: f32,
+    energy_transfer_rate: f32,
+    _padding1: f32,
+}
+
+struct CellEvent {
+    kind: u32,
+    parent_cell_index: u32,
+    parent_lifeform_slot: u32,
+    flags: u32,
+    position: vec2<f32>,
+    radius: f32,
+    energy: f32,
+}
+
+struct LinkEvent {
+    kind: u32,
+    link_index: u32,
+    cell_a: u32,
+    cell_b: u32,
+    rest_length: f32,
+    stiffness: f32,
+    energy_transfer_rate: f32,
+    _padding: f32,
 }
 
 // Uniforms struct must match Rust struct layout exactly (including padding)
@@ -77,11 +109,42 @@ struct NutrientGrid {
 @group(0) @binding(9)
 var<storage, read_write> nutrient_grid: NutrientGrid;
 
+@group(0) @binding(10)
+var<storage, read_write> links: array<Link>;
+
+@group(0) @binding(11)
+var<storage, read_write> link_free_count: Counter;
+
+@group(0) @binding(12)
+var<storage, read_write> link_free_list: array<u32>;
+
+@group(0) @binding(13)
+var<storage, read_write> link_event_count: Counter;
+
+@group(0) @binding(14)
+var<storage, read_write> link_events: array<LinkEvent>;
+
+@group(0) @binding(15)
+var<storage, read_write> cell_event_count: Counter;
+
+@group(0) @binding(16)
+var<storage, read_write> cell_events: array<CellEvent>;
+
 const DIVISION_PROBABILITY: f32 = 0.0001;
 const RANDOM_DEATH_PROBABILITY: f32 = 0.00005;
 const MAX_DIVISION_REQUESTS: u32 = 512u;
 const LIFEFORM_CAPACITY: u32 = 4096u;
 const MIN_DIVISION_ENERGY: f32 = 20.0;
+
+const CELL_EVENT_KIND_DIVISION: u32 = 1u;
+const CELL_EVENT_KIND_DEATH: u32 = 2u;
+const CELL_EVENT_FLAG_ADHESIVE: u32 = 1u;
+
+const LINK_EVENT_KIND_CREATE: u32 = 1u;
+const LINK_EVENT_KIND_REMOVE: u32 = 2u;
+
+const LINK_FLAG_ALIVE: u32 = 1u;
+const LINK_FLAG_ADHESIVE: u32 = 1u << 1u;
 
 
 fn rand(seed: vec2<u32>) -> f32 {
@@ -89,6 +152,31 @@ fn rand(seed: vec2<u32>) -> f32 {
     var y = seed.y * 22695477u + 1u;
     let n = x ^ y;
     return f32(n & 0x00FFFFFFu) / f32(0x01000000u);
+}
+
+fn push_cell_event(
+    kind: u32,
+    parent_cell_index: u32,
+    parent_lifeform_slot: u32,
+    flags: u32,
+    position: vec2<f32>,
+    radius: f32,
+    energy: f32,
+) {
+    let event_index = atomicAdd(&cell_event_count.value, 1u);
+    if event_index < arrayLength(&cell_events) {
+        cell_events[event_index] = CellEvent(
+            kind,
+            parent_cell_index,
+            parent_lifeform_slot,
+            flags,
+            position,
+            radius,
+            energy,
+        );
+    } else {
+        atomicSub(&cell_event_count.value, 1u);
+    }
 }
 
 
@@ -177,6 +265,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 division_requests[request_index].pos = cell.pos;
                 division_requests[request_index].radius = cell.radius;
                 division_requests[request_index].energy = child_energy;
+                push_cell_event(
+                    CELL_EVENT_KIND_DIVISION,
+                    index,
+                    cell.lifeform_slot,
+                    CELL_EVENT_FLAG_ADHESIVE,
+                    cell.pos,
+                    cell.radius,
+                    child_energy,
+                );
             } else {
                 // Restore energy if we couldn't record the division
                 atomicSub(&division_request_count.value, 1u);
@@ -206,6 +303,8 @@ fn spawn_cells() {
         if request_exchange.old_value == prev_requests && request_exchange.exchanged {
             let spawn_idx = desired_requests;
             var new_cell = spawn_requests[spawn_idx];
+            let parent_marker = new_cell.metadata;
+            new_cell.metadata = 0u;
             var spawned = false;
             loop {
                 let free_prev = atomicLoad(&cell_free_list.count);
@@ -228,6 +327,58 @@ fn spawn_cells() {
                     if lf_idx < LIFEFORM_CAPACITY {
                         atomicStore(&lifeform_active.values[lf_idx], 1u);
                     }
+                    if parent_marker != 0u {
+                        let parent_index = parent_marker - 1u;
+                        if parent_index < arrayLength(&cells) {
+                            var link_created = false;
+                            loop {
+                                let link_prev = atomicLoad(&link_free_count.value);
+                                if link_prev == 0u {
+                                    break;
+                                }
+                                let link_desired = link_prev - 1u;
+                                let link_exchange = atomicCompareExchangeWeak(
+                                    &link_free_count.value,
+                                    link_prev,
+                                    link_desired,
+                                );
+                                if link_exchange.old_value == link_prev && link_exchange.exchanged {
+                                    let link_slot = link_free_list[link_desired];
+                                    let parent_cell = cells[parent_index];
+                                    let rest_length =
+                                        parent_cell.radius + new_cell.radius;
+                                    links[link_slot].a = parent_index;
+                                    links[link_slot].b = slot_index;
+                                    links[link_slot].flags =
+                                        LINK_FLAG_ALIVE | LINK_FLAG_ADHESIVE;
+                                    links[link_slot].rest_length = rest_length;
+                                    links[link_slot].stiffness = 0.6;
+                                    links[link_slot].energy_transfer_rate = 0.0;
+                                    links[link_slot]._padding1 = 0.0;
+                                    link_created = true;
+                                    break;
+                                }
+                            }
+                            if !link_created {
+                                let event_index =
+                                    atomicAdd(&link_event_count.value, 1u);
+                                if event_index < arrayLength(&link_events) {
+                                    link_events[event_index] = LinkEvent(
+                                        LINK_EVENT_KIND_CREATE,
+                                        0u,
+                                        parent_index,
+                                        slot_index,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                    );
+                                } else {
+                                    atomicSub(&link_event_count.value, 1u);
+                                }
+                            }
+                        }
+                    }
                     spawned = true;
                     break;
                 }
@@ -241,6 +392,15 @@ fn spawn_cells() {
 
 fn kill_cell(index: u32) {
     var cell = cells[index];
+    push_cell_event(
+        CELL_EVENT_KIND_DEATH,
+        index,
+        cell.lifeform_slot,
+        0u,
+        cell.pos,
+        cell.radius,
+        cell.energy,
+    );
     cell.energy = 0.0;
     cell.is_alive = 0u;
     cells[index] = cell;

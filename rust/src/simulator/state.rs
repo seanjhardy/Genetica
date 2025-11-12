@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use crate::gpu::buffers::EVENT_STAGING_RING_SIZE;
 use crate::gpu::structures::Cell;
 
 /// Tracks the current population counters for cells and lifeforms.
@@ -35,11 +36,29 @@ impl PopulationState {
 }
 
 /// Tracks which GPU readbacks and copies are still pending.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct GpuTransferState {
     pub alive_counter_pending: bool,
     pub lifeform_flags_pending: bool,
     pub division_requests_pending: bool,
+    pub cell_events_pending: [bool; EVENT_STAGING_RING_SIZE],
+    pub link_events_pending: [bool; EVENT_STAGING_RING_SIZE],
+    pub next_cell_event_staging: usize,
+    pub next_link_event_staging: usize,
+}
+
+impl Default for GpuTransferState {
+    fn default() -> Self {
+        Self {
+            alive_counter_pending: false,
+            lifeform_flags_pending: false,
+            division_requests_pending: false,
+            cell_events_pending: [false; EVENT_STAGING_RING_SIZE],
+            link_events_pending: [false; EVENT_STAGING_RING_SIZE],
+            next_cell_event_staging: 0,
+            next_link_event_staging: 0,
+        }
+    }
 }
 
 /// Batches command buffer submissions to avoid excessive queue submits.

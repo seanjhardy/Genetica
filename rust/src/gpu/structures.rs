@@ -17,7 +17,7 @@ pub struct Cell {
     pub cell_wall_thickness: f32,
     pub is_alive: u32,
     pub lifeform_slot: u32,
-    pub _padding: u32,
+    pub metadata: u32,
 }
 
 impl Cell {
@@ -31,13 +31,97 @@ impl Cell {
             cell_wall_thickness: 0.1,
             is_alive: 1,
             lifeform_slot,
-            _padding: 0,
+            metadata: 0,
         }
     }
 }
 
 const _: [(); 48] = [(); std::mem::size_of::<Cell>()];
 const _: [(); 16] = [(); std::mem::align_of::<Cell>()];
+
+/// Link that connects two cells together.
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Link {
+    pub a: u32,
+    pub b: u32,
+    pub flags: u32,
+    pub _padding0: u32,
+    pub rest_length: f32,
+    pub stiffness: f32,
+    pub energy_transfer_rate: f32,
+    pub _padding1: f32,
+}
+
+impl Link {
+    pub const FLAG_ALIVE: u32 = 1 << 0;
+    pub const FLAG_ADHESIVE: u32 = 1 << 1;
+
+    pub fn new(a: u32, b: u32, rest_length: f32, stiffness: f32, energy_transfer_rate: f32) -> Self {
+        Self {
+            a,
+            b,
+            flags: Self::FLAG_ALIVE,
+            _padding0: 0,
+            rest_length,
+            stiffness,
+            energy_transfer_rate,
+            _padding1: 0.0,
+        }
+    }
+}
+
+const _: [(); 32] = [(); std::mem::size_of::<Link>()];
+const _: [(); 16] = [(); std::mem::align_of::<Link>()];
+
+/// Event emitted by GPU about cell lifecycle changes.
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct CellEvent {
+    /// Event kind (see constants below).
+    pub kind: u32,
+    /// Cell index that emitted the event (usually the parent).
+    pub parent_cell_index: u32,
+    /// Lifeform slot the parent belongs to.
+    pub parent_lifeform_slot: u32,
+    /// Misc flags (e.g. adhesion request).
+    pub flags: u32,
+    pub position: [f32; 2],
+    pub radius: f32,
+    pub energy: f32,
+}
+
+impl CellEvent {
+    pub const KIND_DIVISION: u32 = 1;
+    pub const KIND_DEATH: u32 = 2;
+
+    pub const FLAG_ADHESIVE: u32 = 1 << 0;
+}
+
+const _: [(); 32] = [(); std::mem::size_of::<CellEvent>()];
+const _: [(); 16] = [(); std::mem::align_of::<CellEvent>()];
+
+/// Event describing mutations to the link graph that require CPU involvement.
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LinkEvent {
+    pub kind: u32,
+    pub link_index: u32,
+    pub cell_a: u32,
+    pub cell_b: u32,
+    pub rest_length: f32,
+    pub stiffness: f32,
+    pub energy_transfer_rate: f32,
+    pub _padding: f32,
+}
+
+impl LinkEvent {
+    pub const KIND_CREATE: u32 = 1;
+    pub const KIND_REMOVE: u32 = 2;
+}
+
+const _: [(); 32] = [(); std::mem::size_of::<LinkEvent>()];
+const _: [(); 16] = [(); std::mem::align_of::<LinkEvent>()];
 
 
 /// Lifeform structure for GPU processing
@@ -46,7 +130,6 @@ const _: [(); 16] = [(); std::mem::align_of::<Cell>()];
 pub struct Lifeform {
     pub lifeform_id: usize,
     pub species_id: usize,
-    pub cell_idxs: Vec<u32>,
     pub is_alive: bool,
     pub genome: Genome,
     pub grn: GeneRegulatoryNetwork,
@@ -56,14 +139,12 @@ impl Lifeform {
     pub fn new(
         lifeform_id: usize,
         species_id: usize,
-        cell_idxs: Vec<u32>,
         genome: Genome,
         grn: GeneRegulatoryNetwork,
     ) -> Self {
         Self {
             lifeform_id,
             species_id,
-            cell_idxs,
             is_alive: true,
             genome,
             grn,

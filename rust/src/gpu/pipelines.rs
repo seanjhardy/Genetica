@@ -8,6 +8,7 @@ pub struct ComputePipelines {
     pub update_cells_bind_group: wgpu::BindGroup,
     pub update_nutrients: wgpu::ComputePipeline,
     pub update_nutrients_bind_group: wgpu::BindGroup,
+    pub update_links: wgpu::ComputePipeline,
 }
 
 impl ComputePipelines {
@@ -22,6 +23,13 @@ impl ComputePipelines {
         lifeform_active_flags_buffer: &wgpu::Buffer,
         division_request_count_buffer: &wgpu::Buffer,
         division_requests_buffer: &wgpu::Buffer,
+        link_buffer: &wgpu::Buffer,
+        link_free_count_buffer: &wgpu::Buffer,
+        link_free_list_buffer: &wgpu::Buffer,
+        link_event_count_buffer: &wgpu::Buffer,
+        link_events_buffer: &wgpu::Buffer,
+        cell_event_count_buffer: &wgpu::Buffer,
+        cell_events_buffer: &wgpu::Buffer,
         nutrient_grid_buffer: &wgpu::Buffer,
     ) -> Self {
         // Create shader module
@@ -134,6 +142,76 @@ impl ComputePipelines {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 10,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 11,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 12,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 13,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 14,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 15,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 16,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -147,6 +225,20 @@ impl ComputePipelines {
             label: Some("Update Compute Pipeline"),
             layout: Some(&cells_pipeline_layout),
             module: &cells_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let links_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Links Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("kernels/links.wgsl").into()),
+        });
+
+        let update_links = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Update Links Pipeline"),
+            layout: Some(&cells_pipeline_layout),
+            module: &links_shader,
             entry_point: Some("main"),
             compilation_options: Default::default(),
             cache: None,
@@ -195,6 +287,34 @@ impl ComputePipelines {
                 wgpu::BindGroupEntry {
                     binding: 9,
                     resource: nutrient_grid_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: link_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 11,
+                    resource: link_free_count_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 12,
+                    resource: link_free_list_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 13,
+                    resource: link_event_count_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 14,
+                    resource: link_events_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 15,
+                    resource: cell_event_count_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 16,
+                    resource: cell_events_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -265,6 +385,7 @@ impl ComputePipelines {
             update_cells_bind_group,
             update_nutrients,
             update_nutrients_bind_group,
+            update_links,
         }
     }
 }

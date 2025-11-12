@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
@@ -12,7 +12,7 @@ pub struct LifeformRegistry {
     free_slots: Vec<u32>,
     free_slot_listed: Vec<bool>,
     slot_to_id: Vec<Option<usize>>,
-    id_to_slot: HashMap<usize, u32>,
+    id_to_slots: HashMap<usize, HashSet<u32>>,
     alive_slots: Vec<bool>,
     metadata: HashMap<usize, LifeformMetadata>,
 }
@@ -29,7 +29,7 @@ impl LifeformRegistry {
             free_slots: (0..capacity as u32).rev().collect(),
             free_slot_listed: vec![true; capacity],
             slot_to_id: vec![None; capacity],
-            id_to_slot: HashMap::new(),
+            id_to_slots: HashMap::new(),
             alive_slots: vec![false; capacity],
             metadata: HashMap::new(),
         }
@@ -46,7 +46,10 @@ impl LifeformRegistry {
         }
         self.alive_slots[slot as usize] = true;
         self.slot_to_id[slot as usize] = Some(lifeform_id);
-        self.id_to_slot.insert(lifeform_id, slot);
+        self.id_to_slots
+            .entry(lifeform_id)
+            .or_insert_with(HashSet::new)
+            .insert(slot);
         self.metadata.insert(lifeform_id, metadata);
         if self.free_slot_listed.get(slot as usize).copied().unwrap_or(false) {
             if let Some(pos) = self.free_slots.iter().position(|&s| s == slot) {
@@ -90,7 +93,10 @@ impl LifeformRegistry {
             return;
         }
         self.slot_to_id[slot as usize] = Some(lifeform_id);
-        self.id_to_slot.insert(lifeform_id, slot);
+        self.id_to_slots
+            .entry(lifeform_id)
+            .or_insert_with(HashSet::new)
+            .insert(slot);
         self.metadata.insert(lifeform_id, metadata);
         if let Some(entry) = self.free_slot_listed.get_mut(slot as usize) {
             *entry = false;
@@ -102,10 +108,18 @@ impl LifeformRegistry {
             return None;
         }
         self.alive_slots[slot as usize] = false;
-        let id = self.slot_to_id[slot as usize].take();
-        if let Some(lifeform_id) = id {
-            self.id_to_slot.remove(&lifeform_id);
-            self.metadata.remove(&lifeform_id);
+        let mut extinct_id = None;
+        if let Some(lifeform_id) = self.slot_to_id[slot as usize].take() {
+            if let Some(slots) = self.id_to_slots.get_mut(&lifeform_id) {
+                slots.remove(&slot);
+                if slots.is_empty() {
+                    self.id_to_slots.remove(&lifeform_id);
+                    self.metadata.remove(&lifeform_id);
+                    extinct_id = Some(lifeform_id);
+                }
+            }
+        } else {
+            return None;
         }
         if let Some(entry) = self.free_slot_listed.get_mut(slot as usize) {
             if !*entry {
@@ -115,26 +129,29 @@ impl LifeformRegistry {
         } else {
             self.free_slots.push(slot);
         }
-        id
+        extinct_id
     }
 
     pub fn apply_gpu_flags(&mut self, flags: &[u32]) -> RegistryUpdate {
         let limit = self.alive_slots.len().min(flags.len());
-        let mut active_total = 0u32;
         let mut extinct_ids = Vec::new();
         for slot in 0..limit {
             if flags[slot] != 0 {
                 self.alive_slots[slot] = true;
-                active_total += 1;
                 if let Some(entry) = self.free_slot_listed.get_mut(slot) {
                     *entry = false;
                 }
             } else if self.alive_slots[slot] {
                 self.alive_slots[slot] = false;
                 if let Some(id) = self.slot_to_id[slot].take() {
-                    self.id_to_slot.remove(&id);
-                    self.metadata.remove(&id);
-                    extinct_ids.push(id);
+                    if let Some(slots) = self.id_to_slots.get_mut(&id) {
+                        slots.remove(&(slot as u32));
+                        if slots.is_empty() {
+                            self.id_to_slots.remove(&id);
+                            self.metadata.remove(&id);
+                            extinct_ids.push(id);
+                        }
+                    }
                 }
                 let slot_u32 = slot as u32;
                 if let Some(entry) = self.free_slot_listed.get_mut(slot) {
@@ -148,7 +165,7 @@ impl LifeformRegistry {
             }
         }
         RegistryUpdate {
-            active_total,
+            active_total: self.id_to_slots.len() as u32,
             extinct_ids,
         }
     }
@@ -167,7 +184,7 @@ impl LifeformRegistry {
     }
 
     pub fn active_count(&self) -> u32 {
-        self.alive_slots.iter().filter(|alive| **alive).count() as u32
+        self.id_to_slots.len() as u32
     }
 
     #[allow(dead_code)]
