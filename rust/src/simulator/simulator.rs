@@ -67,6 +67,7 @@ pub struct Simulation {
     non_adhesive_divisions: Vec<CellEvent>,
     link_events: Vec<LinkEvent>,
     pending_link_writes: Vec<(usize, Link)>,
+    current_bounds: Rect,
     
     // Simulation parameters
     workgroup_size: u32,
@@ -88,9 +89,12 @@ impl Simulation {
         let initial_alive = buffers.initial_alive_count();
         let spawn_capacity = buffers.spawn_capacity();
         let lifeform_capacity = buffers.lifeform_capacity();
-        let existing_lifeform_entries = {
+        let (existing_lifeform_entries, initial_bounds) = {
             let env_guard = environment.lock();
-            env_guard.genetic_algorithm.list_active_lifeforms()
+            (
+                env_guard.genetic_algorithm.list_active_lifeforms(),
+                env_guard.get_bounds(),
+            )
         };
         let mut lifeforms = LifeformRegistry::new(lifeform_capacity);
         for (lifeform_id, species_id) in existing_lifeform_entries {
@@ -107,7 +111,7 @@ impl Simulation {
                 },
             );
         }
-        let initial_lifeforms = lifeforms.active_count();
+        let initial_lifeforms = lifeforms.active_lifeform_count();
         Self {
             device,
             queue,
@@ -126,6 +130,7 @@ impl Simulation {
             non_adhesive_divisions: Vec::new(),
             link_events: Vec::new(),
             pending_link_writes: Vec::new(),
+            current_bounds: initial_bounds,
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
             submission: SubmissionState::new(4, Duration::from_micros(500)),
@@ -251,26 +256,49 @@ impl Simulation {
                     timestamp_writes: None,
                 });
 
-                compute_pass.set_pipeline(&self.compute_pipelines.update_cells);
-                compute_pass.set_bind_group(0, &self.compute_pipelines.update_cells_bind_group, &[]);
-
                 let num_cells = self.buffers.cell_capacity() as u32;
-                let workgroups = (num_cells + self.workgroup_size - 1) / self.workgroup_size;
+                let cell_workgroups = (num_cells + self.workgroup_size - 1) / self.workgroup_size;
+                let hash_table_size = self.buffers.cell_hash_table_size() as u32;
+                let hash_workgroups =
+                    (hash_table_size + self.workgroup_size - 1) / self.workgroup_size;
+                let link_capacity = self.buffers.link_capacity() as u32;
+                let link_workgroups =
+                    (link_capacity + self.workgroup_size - 1) / self.workgroup_size;
 
                 for _ in 0..iterations {
-                    compute_pass.dispatch_workgroups(workgroups, 1, 1);
-                }
-
-                let link_capacity = self.buffers.link_capacity() as u32;
-                if link_capacity > 0 {
-                    compute_pass.set_pipeline(&self.compute_pipelines.update_links);
+                    compute_pass.set_pipeline(&self.compute_pipelines.reset_cell_hash);
                     compute_pass.set_bind_group(
                         0,
                         &self.compute_pipelines.update_cells_bind_group,
                         &[],
                     );
-                    let link_workgroups = (link_capacity + self.workgroup_size - 1) / self.workgroup_size;
-                    for _ in 0..iterations {
+                    compute_pass.dispatch_workgroups(hash_workgroups, 1, 1);
+
+                    if cell_workgroups > 0 {
+                        compute_pass.set_pipeline(&self.compute_pipelines.build_cell_hash);
+                        compute_pass.set_bind_group(
+                            0,
+                            &self.compute_pipelines.update_cells_bind_group,
+                            &[],
+                        );
+                        compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
+
+                        compute_pass.set_pipeline(&self.compute_pipelines.update_cells);
+                        compute_pass.set_bind_group(
+                            0,
+                            &self.compute_pipelines.update_cells_bind_group,
+                            &[],
+                        );
+                        compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
+                    }
+
+                    if link_capacity > 0 {
+                        compute_pass.set_pipeline(&self.compute_pipelines.update_links);
+                        compute_pass.set_bind_group(
+                            0,
+                            &self.compute_pipelines.update_cells_bind_group,
+                            &[],
+                        );
                         compute_pass.dispatch_workgroups(link_workgroups, 1, 1);
                     }
                 }
@@ -404,10 +432,9 @@ impl Simulation {
                     // The GPU lifeform flags reflect the authoritative set of active cells.
                     // Use them to keep both the lifeform and cell counters from drifting high
                     // when a stale alive-counter readback fails to arrive.
-                    let active_total = update.active_total;
-                    self.population.sync_lifeforms(active_total);
-                    if self.population.last_alive != active_total {
-                        self.population.sync_alive(active_total);
+                    self.population.sync_lifeforms(update.active_lifeforms);
+                    if self.population.last_alive != update.active_cells {
+                        self.population.sync_alive(update.active_cells);
                     }
                 }
                 self.transfers.lifeform_flags_pending = false;
@@ -502,6 +529,10 @@ impl Simulation {
             let env = self.environment.lock();
             env.get_bounds()
         };
+
+        if bounds != self.current_bounds {
+            self.handle_bounds_resize(bounds);
+        }
 
         if scaled_spawn_cap > 0 && alive_estimate < MIN_ACTIVE_CELLS {
             profile_scope!("Queue Random Spawns");
@@ -659,7 +690,7 @@ impl Simulation {
             }
         }
 
-        self.population.predicted_lifeform = self.lifeforms.active_count();
+        self.population.predicted_lifeform = self.lifeforms.active_lifeform_count();
 
         {
             profile_scope!("Release Excess Spawn Slots");
@@ -805,6 +836,41 @@ impl Simulation {
         }
     }
 
+    fn handle_bounds_resize(&mut self, bounds: Rect) {
+        profile_scope!("Handle Bounds Resize");
+        let new_nutrient_buffer = {
+            profile_scope!("Resize Nutrient Grid Buffer");
+            self.buffers
+                .resize_nutrient_grid(&self.device, bounds)
+        };
+
+        profile_scope!("Rebuild Compute Pipelines");
+        self.compute_pipelines = ComputePipelines::new(
+            &self.device,
+            self.buffers.cell_buffer_write(),
+            &self.buffers.uniform_buffer,
+            self.buffers.cell_free_list_buffer_write(),
+            self.buffers.alive_counter_buffer(),
+            self.buffers.spawn_request_count_buffer(),
+            self.buffers.spawn_requests_buffer(),
+            self.buffers.lifeform_active_flags_buffer(),
+            self.buffers.division_request_count_buffer(),
+            self.buffers.division_requests_buffer(),
+            self.buffers.cell_hash_bucket_heads_buffer(),
+            self.buffers.cell_hash_next_indices_buffer(),
+            self.buffers.link_buffer(),
+            self.buffers.link_free_count_buffer(),
+            self.buffers.link_free_list_buffer(),
+            self.buffers.link_event_count_buffer(),
+            self.buffers.link_events_buffer(),
+            self.buffers.cell_event_count_buffer(),
+            self.buffers.cell_events_buffer(),
+            new_nutrient_buffer.as_ref(),
+        );
+
+        self.current_bounds = bounds;
+    }
+
     fn drain_non_adhesive_divisions(
         &mut self,
         pending_spawns: &mut Vec<PendingSpawn>,
@@ -878,6 +944,7 @@ pub struct Application {
     fps: f32,
     last_cleanup: Instant,
     cleanup_interval: std::time::Duration,
+    last_nutrient_dims: (u32, u32),
     
     // Simulation time tracking
     real_time: f32,
@@ -915,6 +982,8 @@ impl Application {
         // Actually, let's clone the pipeline references by creating new pipelines
         // For now, we'll pass the same compute_pipelines to Simulation and store a reference here
         // Since Simulation needs to own them, we'll need to clone/create them separately
+        let nutrient_buffer = buffers.nutrient_grid_buffer();
+
         let compute_pipelines_for_sim = ComputePipelines::new(
             &gpu.device,
             buffers.cell_buffer_write(), // Compute writes to write buffer
@@ -926,6 +995,8 @@ impl Application {
             buffers.lifeform_active_flags_buffer(),
             buffers.division_request_count_buffer(),
             buffers.division_requests_buffer(),
+            buffers.cell_hash_bucket_heads_buffer(),
+            buffers.cell_hash_next_indices_buffer(),
             buffers.link_buffer(),
             buffers.link_free_count_buffer(),
             buffers.link_free_list_buffer(),
@@ -933,15 +1004,17 @@ impl Application {
             buffers.link_events_buffer(),
             buffers.cell_event_count_buffer(),
             buffers.cell_events_buffer(),
-            buffers.nutrient_grid_buffer(),
+            nutrient_buffer.as_ref(),
         );
         let speed = Arc::new(parking_lot::Mutex::new(0.05));
+
+        let initial_nutrient_dims = buffers.nutrient_grid_dimensions();
 
         let simulation_inner = Simulation::new(
             device,
             queue,
             compute_pipelines_for_sim,
-            buffers,
+            buffers.clone(),
             environment.clone(),
             speed.clone(),
         );
@@ -970,6 +1043,7 @@ impl Application {
             fps: 0.0,
             last_cleanup: Instant::now(),
             cleanup_interval: std::time::Duration::from_secs(5),
+            last_nutrient_dims: initial_nutrient_dims,
             pending_resize: None,
             real_time: 0.0,
             speed,
@@ -1054,6 +1128,22 @@ impl Application {
                 (current_step, buffers, bounds, alive_count, lifeform_count)
             }
         };
+
+        let nutrient_dims = buffers.nutrient_grid_dimensions();
+        if nutrient_dims != self.last_nutrient_dims {
+            profile_scope!("Rebuild Render Pipelines");
+            let nutrient_buffer = buffers.nutrient_grid_buffer();
+            self.render_pipelines = RenderPipelines::new(
+                &self.gpu.device,
+                &self.gpu.config,
+                buffers.cell_buffer(),
+                &buffers.uniform_buffer,
+                buffers.cell_free_list_buffer(),
+                buffers.link_buffer(),
+                nutrient_buffer.as_ref(),
+            );
+            self.last_nutrient_dims = nutrient_dims;
+        }
         
         // Calculate simulation rate
         let _steps_per_frame = current_step - self.last_render_step_count;
@@ -1180,6 +1270,7 @@ impl Application {
         // Use actual cell size (number of initialized cells) instead of capacity
         // This ensures we only render the cells that actually exist
         let num_cells_to_render = buffers.cell_capacity();
+        let num_links_to_render = buffers.link_capacity();
         
         // Get surface texture and create encoder
         let output = {
@@ -1213,6 +1304,7 @@ impl Application {
                 camera_pos,
                 zoom,
                 num_cells_to_render,
+                num_links_to_render,
                 self.show_grid,
                 &mut encoder,
             );
@@ -1639,13 +1731,15 @@ impl Application {
         buffers.update_uniforms(&gpu.queue, bytemuck::cast_slice(&[initial_uniforms]));
 
 
+        let render_nutrient_buffer = buffers.nutrient_grid_buffer();
         let render_pipelines = RenderPipelines::new(
             &gpu.device,
             &gpu.config,
             buffers.cell_buffer(),
             &buffers.uniform_buffer,
             buffers.cell_free_list_buffer(),
-            buffers.nutrient_grid_buffer(),
+            buffers.link_buffer(),
+            render_nutrient_buffer.as_ref(),
         );
 
         // Initialize bounds renderer (includes planet background)

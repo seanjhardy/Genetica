@@ -9,17 +9,18 @@ struct Cell {
     is_alive: u32,
     lifeform_slot: u32,
     metadata: u32,
+    color: vec4<f32>,
 }
 
 struct Link {
     a: u32,
     b: u32,
     flags: u32,
-    _padding0: u32,
+    generation_a: u32,
     rest_length: f32,
     stiffness: f32,
     energy_transfer_rate: f32,
-    _padding1: f32,
+    generation_b: u32,
 }
 
 struct Uniforms {
@@ -127,17 +128,90 @@ var<storage, read_write> cell_event_count: Counter;
 @group(0) @binding(16)
 var<storage, read_write> cell_events: array<CellEvent>;
 
+@group(0) @binding(17)
+var<storage, read_write> cell_bucket_heads: array<atomic<i32>>;
+
+@group(0) @binding(18)
+var<storage, read_write> cell_hash_next: array<i32>;
+
 const LINK_FLAG_ALIVE: u32 = 1u;
 const LINK_FLAG_ADHESIVE: u32 = 1u << 1u;
 
+const LINK_EVENT_KIND_CREATE: u32 = 1u;
+const LINK_EVENT_KIND_REMOVE: u32 = 2u;
+
+fn compute_cell_color(energy: f32) -> vec4<f32> {
+    let energy_normalized = clamp(energy / 100.0, 0.0, 1.0);
+    let brightness = 0.1 + energy_normalized * 0.9;
+    let r = (1.0 - brightness) * 0.5;
+    let g = brightness;
+    let b = brightness;
+    return vec4<f32>(r, g, b, 1.0);
+}
+
+fn push_link_event(
+    kind: u32,
+    link_index: u32,
+    cell_a: u32,
+    cell_b: u32,
+    rest_length: f32,
+    stiffness: f32,
+    energy_transfer_rate: f32,
+) {
+    let event_index = atomicAdd(&link_event_count.value, 1u);
+    if event_index < arrayLength(&link_events) {
+        link_events[event_index] = LinkEvent(
+            kind,
+            link_index,
+            cell_a,
+            cell_b,
+            rest_length,
+            stiffness,
+            energy_transfer_rate,
+            0.0,
+        );
+    } else {
+        atomicSub(&link_event_count.value, 1u);
+    }
+}
+
 fn release_link(index: u32) {
-    links[index].flags = 0u;
+    if index >= arrayLength(&links) {
+        return;
+    }
+
+    let existing = links[index];
+    if (existing.flags & LINK_FLAG_ALIVE) == 0u {
+        return;
+    }
+
+    var cleared = existing;
+    cleared.flags = 0u;
+    cleared.a = 0u;
+    cleared.b = 0u;
+    cleared.generation_a = 0u;
+    cleared.rest_length = 0.0;
+    cleared.stiffness = 0.0;
+    cleared.energy_transfer_rate = 0.0;
+    cleared.generation_b = 0u;
+    links[index] = cleared;
+
     let free_index = atomicAdd(&link_free_count.value, 1u);
     if free_index < arrayLength(&link_free_list) {
         link_free_list[free_index] = index;
     } else {
         atomicSub(&link_free_count.value, 1u);
     }
+
+    push_link_event(
+        LINK_EVENT_KIND_REMOVE,
+        index,
+        existing.a,
+        existing.b,
+        existing.rest_length,
+        existing.stiffness,
+        existing.energy_transfer_rate,
+    );
 }
 
 @compute @workgroup_size(128)
@@ -160,6 +234,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var cell_a = cells[link.a];
     var cell_b = cells[link.b];
 
+    if link.generation_a != cell_a.metadata || link.generation_b != cell_b.metadata {
+        release_link(index);
+        return;
+    }
+
     if cell_a.is_alive == 0u || cell_b.is_alive == 0u {
         release_link(index);
         return;
@@ -172,6 +251,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     let dist = sqrt(dist_sq);
+    let max_distance = (cell_a.radius + cell_b.radius) * 2.0;
+    if dist > max_distance {
+        release_link(index);
+        return;
+    }
+
     let rest_length = link.rest_length;
     if rest_length == 0.0 {
         return;
@@ -188,9 +273,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     cell_a.pos += adjustment;
     cell_b.pos -= adjustment;
 
+    let energy_transfer_rate = link.energy_transfer_rate;
+    let energy_difference = cell_a.energy - cell_b.energy;
+    let energy_transfer = clamp(-energy_transfer_rate, energy_difference, energy_transfer_rate);
+    cell_a.energy -= energy_transfer;
+    cell_b.energy += energy_transfer;
+
+    cell_a.color = compute_cell_color(cell_a.energy);
+    cell_b.color = compute_cell_color(cell_b.energy);
+
     cells[link.a] = cell_a;
     cells[link.b] = cell_b;
-    cells[link.a].energy += 0.2;
-    cells[link.b].energy += 0.2;
 }
 

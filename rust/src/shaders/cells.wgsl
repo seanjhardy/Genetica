@@ -8,7 +8,8 @@ struct Cell {
     cell_wall_thickness: f32,
     is_alive: u32,
     lifeform_slot: u32,
-    padding: u32,
+    metadata: u32,
+    color: vec4<f32>,
 }
 
 // Uniforms struct must match Rust struct layout exactly (including padding)
@@ -40,7 +41,7 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) cell_index: f32,
     @location(1) uv: vec2<f32>,
-    @location(2) energy: f32,
+    @location(2) color: vec4<f32>,
     @location(3) cell_wall_thickness: f32,
 }
 
@@ -58,7 +59,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
         out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 0.0);
         out.cell_index = 0.0;
         out.uv = vec2<f32>(0.0);
-        out.energy = 0.0;
+        out.color = vec4<f32>(0.0);
         out.cell_wall_thickness = 0.0;
         return out;
     }
@@ -117,7 +118,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     out.clip_position = vec4<f32>(clip_x + offset.x, clip_y + offset.y, 0.0, 1.0);
     out.cell_index = f32(cell_idx);
     out.uv = uv_offset;
-    out.energy = cell.energy;
+    out.color = cell.color;
     out.cell_wall_thickness = cell.cell_wall_thickness;
     return out;
 }
@@ -134,18 +135,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
     
-    // Color based on energy (subtle brightness variation)
-    // Energy is normalized (assuming max 100.0 starting energy)
-    let energy_normalized = clamp(in.energy / 100.0, 0.0, 1.0);
-    
-    // All cells should be similar bright cyan color
-    // Use energy for subtle brightness variation only
-    let brightness = 0.1 + energy_normalized * 0.9; // Range from 0.7 to 1.0
-    let r = (1 - brightness) * 0.5;
-    let g = brightness;
-    let b = brightness;
-    let cell_color = vec4<f32>(r, g, b, 1.0);
-    var final_color = cell_color;
+    var final_color = in.color;
 
     // Darken the border of the cell
     if dist > radius - in.cell_wall_thickness {

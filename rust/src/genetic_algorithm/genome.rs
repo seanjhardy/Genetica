@@ -57,12 +57,8 @@ impl Genome {
 
     #[allow(dead_code)]
     pub fn mutate(&mut self) {
-        let mut rng = rand::thread_rng();
-        self.mutate_with_rng(&mut rng);
-    }
-
-    pub fn mutate_with_rng<R: Rng>(&mut self, rng: &mut R) {
         profile_scope!("Genome Mutate");
+        let mut rng = rand::thread_rng();
         let clone_gene_threshold =
             Self::probability_to_threshold(GeneticAlgorithm::CLONE_GENE_CHANCE);
         let insert_gene_threshold =
@@ -87,7 +83,7 @@ impl Genome {
                     cloned_gene = Some(gene_entry.clone());
                 }
                 if rng.gen::<u32>() < insert_gene_threshold {
-                    inserted_gene = Some(Self::generate_random_gene(rng, Self::INITIAL_HOX_SIZE));
+                    inserted_gene = Some(Self::generate_random_gene(&mut rng, Self::INITIAL_HOX_SIZE));
                 }
 
                 profile_scope!("Apply Base Mutations");
@@ -100,24 +96,24 @@ impl Genome {
                         GeneticAlgorithm::DELETE_BASE_CHANCE as f64 * original_len as f64;
 
                     let mutation_count =
-                        Self::sample_poisson(mutate_avg, rng).min(original_len as u64) as usize;
+                        Self::sample_poisson(mutate_avg, &mut rng).min(original_len as u64) as usize;
                     if mutation_count > 0 {
                         profile_scope!("Apply Mutations");
                         let mutation_positions =
-                            Self::sample_unique_positions(mutation_count, gene_entry.len(), rng);
+                            Self::sample_unique_positions(mutation_count, gene_entry.len(), &mut rng);
                         for idx in mutation_positions {
                             profile_scope!("Mutate Base");
-                            gene_entry[idx] = Self::random_base(rng);
+                            gene_entry[idx] = Self::random_base(&mut rng);
                         }
                     }
 
                     let deletion_count =
-                        Self::sample_poisson(delete_avg, rng).min(gene_entry.len() as u64)
+                        Self::sample_poisson(delete_avg, &mut rng).min(gene_entry.len() as u64)
                             as usize;
                     if deletion_count > 0 {
                         profile_scope!("Apply Deletions");
                         let mut deletion_positions =
-                            Self::sample_unique_positions(deletion_count, gene_entry.len(), rng);
+                            Self::sample_unique_positions(deletion_count, gene_entry.len(), &mut rng);
                         deletion_positions.sort_unstable_by(|a, b| b.cmp(a));
                         for idx in deletion_positions {
                             profile_scope!("Delete Base");
@@ -129,21 +125,21 @@ impl Genome {
                 let insert_candidates = gene_entry.len() + 1;
                 let insert_avg =
                     GeneticAlgorithm::INSERT_BASE_CHANCE as f64 * insert_candidates as f64;
-                let insertion_count = Self::sample_poisson(insert_avg, rng) as usize;
+                let insertion_count = Self::sample_poisson(insert_avg, &mut rng) as usize;
                 if insertion_count > 0 {
                     profile_scope!("Apply Insertions");
                     let mut insert_positions =
-                        Self::sample_positions(insertion_count, insert_candidates, rng);
+                        Self::sample_positions(insertion_count, insert_candidates, &mut rng);
                     insert_positions.sort_unstable();
                     for (offset, position) in insert_positions.into_iter().enumerate() {
                         profile_scope!("Insert Base");
-                        let value = Self::random_base(rng);
+                        let value = Self::random_base(&mut rng);
                         gene_entry.insert(position + offset, value);
                     }
                 }
 
                 let delete_gene =
-                    gene_entry.is_empty() || rng.gen::<u32>() < delete_gene_threshold;
+                    gene_entry.is_empty() || (&mut rng).gen::<u32>() < delete_gene_threshold;
 
                 delete_gene
             };
@@ -271,7 +267,7 @@ impl Genome {
                 gene_difference += 1;
             }
         }
-        
+
         (gene_difference as f32) * GeneticAlgorithm::GENE_DIFFERENCE_SCALAR + base_difference * GeneticAlgorithm::BASE_DIFFERENCE_SCALAR
     }
 

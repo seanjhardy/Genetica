@@ -19,7 +19,6 @@ pub struct GeneticAlgorithm {
     lifeforms: HashMap<usize, Lifeform>,
     species: HashMap<usize, Species>,
     living_species: HashSet<usize>
-    
 }
 
 impl GeneticAlgorithm {
@@ -188,10 +187,7 @@ impl GeneticAlgorithm {
     ) -> Option<(usize, usize)> {
         profile_scope!("GA Register Division Offspring");
         let mut child_genome = self.lifeforms.get(&parent_lifeform_id)?.genome.clone();
-        {
-            profile_scope!("Mutate Child Genome");
-            child_genome.mutate_with_rng(rng);
-        }
+        child_genome.mutate(rng);
         let child_grn = sequence_grn(&child_genome);
         let child_lifeform_id = GeneticAlgorithm::next_lifeform_id();
         let species_id = self.register_child_lifeform(

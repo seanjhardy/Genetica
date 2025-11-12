@@ -2,15 +2,17 @@
 
 use wgpu;
 use wgpu::util::DeviceExt;
-use parking_lot::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use parking_lot::{Mutex, RwLock};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use bytemuck::{pod_read_unaligned, Zeroable};
 use crate::gpu::structures::{Cell, CellEvent, DivisionRequest, Link, LinkEvent};
 use crate::utils::math::Rect;
 use crate::utils::gpu::gpu_vector::GpuVector;
 
-const CELL_CAPACITY: usize = 20_000;
+const CELL_CAPACITY: usize = 200_000;
+const CELL_HASH_TABLE_SIZE: usize = 1 << 16; // 65_536 buckets
 const MAX_SPAWN_REQUESTS: usize = 512;
 const LIFEFORM_CAPACITY: usize = 20_000;
 const MAX_DIVISION_REQUESTS: usize = 512;
@@ -54,9 +56,11 @@ pub struct GpuBuffers {
     link_event_staging: Vec<wgpu::Buffer>,
     link_event_readback: Vec<Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>>,
     initial_alive_count: u32,
-    nutrient_grid: wgpu::Buffer,
-    nutrient_grid_width: u32,
-    nutrient_grid_height: u32,
+    nutrient_grid: RwLock<Arc<wgpu::Buffer>>,
+    nutrient_grid_width: AtomicU32,
+    nutrient_grid_height: AtomicU32,
+    spatial_hash_bucket_heads: wgpu::Buffer,
+    spatial_hash_next_indices: wgpu::Buffer,
 }
 
 impl GpuBuffers {
@@ -284,6 +288,20 @@ impl GpuBuffers {
             link_event_readback.push(Mutex::new(None));
         }
 
+        let spatial_hash_init = vec![-1i32; CELL_HASH_TABLE_SIZE];
+        let spatial_hash_bucket_heads = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Cell Spatial Hash Bucket Heads"),
+            contents: bytemuck::cast_slice(&spatial_hash_init),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let spatial_hash_next_indices_init = vec![-1i32; CELL_CAPACITY];
+        let spatial_hash_next_indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Cell Spatial Hash Next Indices"),
+            contents: bytemuck::cast_slice(&spatial_hash_next_indices_init),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
         let grid_width = (bounds.width / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
         let grid_height = (bounds.height / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
         let nutrient_grid_size = (grid_width * grid_height) as usize;
@@ -295,6 +313,7 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
         });
+        let nutrient_grid = Arc::new(nutrient_grid);
 
         Self {
             cell_vector_a,
@@ -328,9 +347,11 @@ impl GpuBuffers {
             link_event_staging,
             link_event_readback,
             initial_alive_count: initial_count,
-            nutrient_grid,
-            nutrient_grid_width: grid_width,
-            nutrient_grid_height: grid_height,
+            nutrient_grid: RwLock::new(Arc::clone(&nutrient_grid)),
+            nutrient_grid_width: AtomicU32::new(grid_width),
+            nutrient_grid_height: AtomicU32::new(grid_height),
+            spatial_hash_bucket_heads,
+            spatial_hash_next_indices,
         }
     }
     
@@ -951,12 +972,15 @@ impl GpuBuffers {
         queue.write_buffer(&self.uniform_buffer, 0, uniforms);
     }
 
-    pub fn nutrient_grid_buffer(&self) -> &wgpu::Buffer {
-        &self.nutrient_grid
+    pub fn nutrient_grid_buffer(&self) -> Arc<wgpu::Buffer> {
+        self.nutrient_grid.read().clone()
     }
 
     pub fn nutrient_grid_dimensions(&self) -> (u32, u32) {
-        (self.nutrient_grid_width, self.nutrient_grid_height)
+        (
+            self.nutrient_grid_width.load(Ordering::Relaxed),
+            self.nutrient_grid_height.load(Ordering::Relaxed),
+        )
     }
 
     pub fn nutrient_cell_size(&self) -> u32 {
@@ -964,6 +988,18 @@ impl GpuBuffers {
     }
     pub fn nutrient_scale(&self) -> u32 {
         NUTRIENT_UNIT_SCALE
+    }
+
+    pub fn cell_hash_bucket_heads_buffer(&self) -> &wgpu::Buffer {
+        &self.spatial_hash_bucket_heads
+    }
+
+    pub fn cell_hash_next_indices_buffer(&self) -> &wgpu::Buffer {
+        &self.spatial_hash_next_indices
+    }
+
+    pub fn cell_hash_table_size(&self) -> usize {
+        CELL_HASH_TABLE_SIZE
     }
 
     pub fn write_links(&self, queue: &wgpu::Queue, offset: usize, links: &[Link]) {
@@ -982,6 +1018,38 @@ impl GpuBuffers {
             byte_offset,
             bytemuck::cast_slice(links),
         );
+    }
+
+    pub fn resize_nutrient_grid(
+        &self,
+        device: &wgpu::Device,
+        bounds: Rect,
+    ) -> Arc<wgpu::Buffer> {
+        let grid_width = (bounds.width / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
+        let grid_height = (bounds.height / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
+        let grid_size = (grid_width * grid_height) as usize;
+
+        let initial_nutrients = vec![NUTRIENT_UNIT_SCALE; grid_size.max(1)];
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Nutrient Grid Buffer"),
+            contents: bytemuck::cast_slice(&initial_nutrients),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+        let buffer = Arc::new(buffer);
+
+        {
+            let mut guard = self.nutrient_grid.write();
+            *guard = buffer.clone();
+        }
+
+        self.nutrient_grid_width
+            .store(grid_width.max(1), Ordering::Relaxed);
+        self.nutrient_grid_height
+            .store(grid_height.max(1), Ordering::Relaxed);
+
+        buffer
     }
 
 }

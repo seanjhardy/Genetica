@@ -28,6 +28,7 @@ impl Renderer {
         camera_pos: Vec2,
         zoom: f32,
         num_points: usize,
+        num_links: usize,
         show_grid: bool,
         encoder: &mut wgpu::CommandEncoder,
     ) -> bool {
@@ -143,7 +144,7 @@ impl Renderer {
             }
         }
         
-        // Render simulation cells to viewport texture (on top of planet background)
+        // Render simulation links and cells to viewport texture (on top of planet background)
         {
             profile_scope!("Render Cells");
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -161,6 +162,12 @@ impl Renderer {
                 timestamp_writes: None,
                 ..Default::default()
             });
+
+            if num_links > 0 {
+                render_pass.set_pipeline(&render_pipelines.links);
+                render_pass.set_bind_group(0, &render_pipelines.link_bind_group, &[]);
+                render_pass.draw(0..4, 0..(num_links as u32));
+            }
 
             render_pass.set_pipeline(&render_pipelines.points);
             render_pass.set_bind_group(0, &render_pipelines.render_bind_group, &[]);

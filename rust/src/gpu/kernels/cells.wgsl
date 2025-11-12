@@ -9,17 +9,18 @@ struct Cell {
     is_alive: u32,
     lifeform_slot: u32,
     metadata: u32,
+    color: vec4<f32>,
 }
 
 struct Link {
     a: u32,
     b: u32,
     flags: u32,
-    _padding0: u32,
+    generation_a: u32,
     rest_length: f32,
     stiffness: f32,
     energy_transfer_rate: f32,
-    _padding1: f32,
+    generation_b: u32,
 }
 
 struct CellEvent {
@@ -130,6 +131,12 @@ var<storage, read_write> cell_event_count: Counter;
 @group(0) @binding(16)
 var<storage, read_write> cell_events: array<CellEvent>;
 
+@group(0) @binding(17)
+var<storage, read_write> cell_bucket_heads: array<atomic<i32>>;
+
+@group(0) @binding(18)
+var<storage, read_write> cell_hash_next: array<i32>;
+
 const DIVISION_PROBABILITY: f32 = 0.0001;
 const RANDOM_DEATH_PROBABILITY: f32 = 0.00005;
 const MAX_DIVISION_REQUESTS: u32 = 512u;
@@ -145,6 +152,18 @@ const LINK_EVENT_KIND_REMOVE: u32 = 2u;
 
 const LINK_FLAG_ALIVE: u32 = 1u;
 const LINK_FLAG_ADHESIVE: u32 = 1u << 1u;
+
+const HASH_CELL_SIZE: f32 = 8.0;
+const COLLISION_EPSILON: f32 = 0.0001;
+
+fn compute_cell_color(energy: f32) -> vec4<f32> {
+    let energy_normalized = clamp(energy / 100.0, 0.0, 1.0);
+    let brightness = 0.1 + energy_normalized * 0.9;
+    let r = (1.0 - brightness) * 0.5;
+    let g = brightness;
+    let b = brightness;
+    return vec4<f32>(r, g, b, 1.0);
+}
 
 
 fn rand(seed: vec2<u32>) -> f32 {
@@ -177,8 +196,94 @@ fn push_cell_event(
     } else {
         atomicSub(&cell_event_count.value, 1u);
     }
+}s
+
+fn hash_cell_position(pos: vec2<f32>) -> u32 {
+    let bucket_count = arrayLength(&cell_bucket_heads);
+    if bucket_count == 0u {
+        return 0u;
+    }
+    let grid = vec2<i32>(floor(pos / HASH_CELL_SIZE));
+    let hashed = (grid.x * 73856093) ^ (grid.y * 19349663);
+    let mask = bucket_count - 1u;
+    return u32(hashed) & mask;
 }
 
+fn compute_collision_correction(index: u32, position: vec2<f32>, radius: f32) -> vec2<f32> {
+    let bucket_count = arrayLength(&cell_bucket_heads);
+    if bucket_count == 0u {
+        return vec2<f32>(0.0, 0.0);
+    }
+
+    let cell_capacity = arrayLength(&cells);
+    let next_length = arrayLength(&cell_hash_next);
+
+    var correction = vec2<f32>(0.0, 0.0);
+
+    var dx: i32 = -1;
+    loop {
+        if dx > 1 {
+            break;
+        }
+
+        var dy: i32 = -1;
+        loop {
+            if dy > 1 {
+                break;
+            }
+
+            let neighbor_pos = position + vec2<f32>(f32(dx), f32(dy)) * HASH_CELL_SIZE;
+            let neighbor_hash = hash_cell_position(neighbor_pos);
+
+            var head = atomicLoad(&cell_bucket_heads[neighbor_hash]);
+            loop {
+                if head == -1 {
+                    break;
+                }
+
+                let neighbor_index = u32(head);
+                if neighbor_index != index && neighbor_index < cell_capacity {
+                    let neighbor = cells[neighbor_index];
+                    if neighbor.is_alive != 0u {
+                        let delta = position - neighbor.pos;
+                        let dist_sq = dot(delta, delta);
+                        let min_dist = radius + neighbor.radius;
+                        if min_dist > 0.0 && dist_sq < (min_dist * min_dist) {
+                            let dist = sqrt(max(dist_sq, COLLISION_EPSILON));
+                            var push_dir = vec2<f32>(0.0, 0.0);
+                            if dist > 0.0 {
+                                push_dir = delta / dist;
+                            }
+                            if push_dir.x == 0.0 && push_dir.y == 0.0 {
+                                if index < neighbor_index {
+                                    push_dir = vec2<f32>(1.0, 0.0);
+                                } else {
+                                    push_dir = vec2<f32>(-1.0, 0.0);
+                                }
+                            }
+                            let overlap = min_dist - dist;
+                            if overlap > 0.0 {
+                                correction += push_dir * (overlap * 0.5);
+                            }
+                        }
+                    }
+                }
+
+                var next_head: i32 = -1;
+                if neighbor_index < next_length {
+                    next_head = cell_hash_next[neighbor_index];
+                }
+                head = next_head;
+            }
+
+            dy = dy + 1;
+        }
+
+        dx = dx + 1;
+    }
+
+    return correction;
+}
 
 @compute @workgroup_size(128)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -202,7 +307,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Decrease energy over time (metabolic rate)
     var energy_change_rate = 0.0;
     energy_change_rate -= 0.2 + 0.3 / cell.radius; // Metabolism proportional to size
-    energy_change_rate += 1000.0 * absorb_nutrients(index, 0.001 * cell.radius); // Eat nutrients from the environemnt
+    energy_change_rate += 1000.0 * absorb_nutrients(index, 0.001 * cell.radius * cell.radius); // Eat nutrients from the environemnt
     cell.energy += energy_change_rate * dt;
     cell.energy = clamp(cell.energy, 0.0, cell.radius * 100.0);
 
@@ -228,6 +333,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     cell.prev_pos = cell.pos;
     cell.pos = new_pos;
     
+    let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
+    if (collision_correction.x != 0.0) || (collision_correction.y != 0.0) {
+        cell.pos += collision_correction;
+        cell.prev_pos += collision_correction;
+    }
+    
     // Boundary constraints
     // Note: bounds is [left, top, right, bottom]
     let radius = cell.radius;
@@ -252,7 +363,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         cell.pos.y = max_y;
     }
 
-
     if cell.energy > MIN_DIVISION_ENERGY {
         if random.w < DIVISION_PROBABILITY && cell.lifeform_slot < LIFEFORM_CAPACITY {
             let original_energy = cell.energy;
@@ -269,7 +379,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     CELL_EVENT_KIND_DIVISION,
                     index,
                     cell.lifeform_slot,
-                    CELL_EVENT_FLAG_ADHESIVE,
+                    0u,
                     cell.pos,
                     cell.radius,
                     child_energy,
@@ -284,6 +394,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
 
+    cell.color = compute_cell_color(cell.energy);
     cells[index] = cell;
 }
 
@@ -304,7 +415,7 @@ fn spawn_cells() {
             let spawn_idx = desired_requests;
             var new_cell = spawn_requests[spawn_idx];
             let parent_marker = new_cell.metadata;
-            new_cell.metadata = 0u;
+            new_cell.color = compute_cell_color(new_cell.energy);
             var spawned = false;
             loop {
                 let free_prev = atomicLoad(&cell_free_list.count);
@@ -320,6 +431,8 @@ fn spawn_cells() {
                 );
                 if free_exchange.old_value == free_prev && free_exchange.exchanged {
                     let slot_index = cell_free_list.indices[free_desired];
+                    let previous_generation = cells[slot_index].metadata;
+                    new_cell.metadata = previous_generation;
                     new_cell.is_alive = 1u;
                     cells[slot_index] = new_cell;
                     atomicAdd(&alive_counter.value, 1u);
@@ -351,10 +464,11 @@ fn spawn_cells() {
                                     links[link_slot].b = slot_index;
                                     links[link_slot].flags =
                                         LINK_FLAG_ALIVE | LINK_FLAG_ADHESIVE;
+                                    links[link_slot].generation_a = parent_cell.metadata;
                                     links[link_slot].rest_length = rest_length;
                                     links[link_slot].stiffness = 0.6;
                                     links[link_slot].energy_transfer_rate = 0.0;
-                                    links[link_slot]._padding1 = 0.0;
+                                    links[link_slot].generation_b = new_cell.metadata;
                                     link_created = true;
                                     break;
                                 }
@@ -401,8 +515,11 @@ fn kill_cell(index: u32) {
         cell.radius,
         cell.energy,
     );
+
+    cell.metadata = cell.metadata + 1u;
     cell.energy = 0.0;
     cell.is_alive = 0u;
+    cell.color = compute_cell_color(cell.energy);
     cells[index] = cell;
 
     let next_free_index = atomicAdd(&cell_free_list.count, 1u);
@@ -487,3 +604,44 @@ fn absorb_nutrients(index: u32, absorption_rate: f32) -> f32 {
     }
     return 0.0;
 }
+
+@compute @workgroup_size(128)
+fn reset_bucket_heads(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    let bucket_count = arrayLength(&cell_bucket_heads);
+    if bucket_count == 0u || index >= bucket_count {
+        return;
+    }
+    atomicStore(&cell_bucket_heads[index], -1);
+}
+
+@compute @workgroup_size(128)
+fn build_spatial_hash(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    let cell_count = arrayLength(&cells);
+    if index >= cell_count {
+        return;
+    }
+
+    let next_length = arrayLength(&cell_hash_next);
+    if index < next_length {
+        cell_hash_next[index] = -1;
+    }
+
+    let cell = cells[index];
+    if cell.is_alive == 0u {
+        return;
+    }
+
+    let bucket_index = hash_cell_position(cell.pos);
+    let bucket_count = arrayLength(&cell_bucket_heads);
+    if bucket_count == 0u || bucket_index >= bucket_count {
+        return;
+    }
+
+    let previous = atomicExchange(&cell_bucket_heads[bucket_index], i32(index));
+    if index < next_length {
+        cell_hash_next[index] = previous;
+    }
+}
+

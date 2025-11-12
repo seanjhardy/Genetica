@@ -5,7 +5,6 @@ use crate::utils::math::{Rect, Vec2};
 use crate::utils::ui::DragHandler;
 use crate::genetic_algorithm::GeneticAlgorithm;
 use crate::simulator::planet::Planet;
-use wgpu::Buffer;
 
 /// Environment manages the simulation bounds and genetic data (genomes/GRNs)
 /// NOTE: Cells and lifeforms are stored on GPU in GpuBuffers, not here

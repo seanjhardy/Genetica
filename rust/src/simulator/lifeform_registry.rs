@@ -18,7 +18,8 @@ pub struct LifeformRegistry {
 }
 
 pub struct RegistryUpdate {
-    pub active_total: u32,
+    pub active_cells: u32,
+    pub active_lifeforms: u32,
     pub extinct_ids: Vec<usize>,
 }
 
@@ -135,9 +136,11 @@ impl LifeformRegistry {
     pub fn apply_gpu_flags(&mut self, flags: &[u32]) -> RegistryUpdate {
         let limit = self.alive_slots.len().min(flags.len());
         let mut extinct_ids = Vec::new();
+        let mut active_cells = 0u32;
         for slot in 0..limit {
             if flags[slot] != 0 {
                 self.alive_slots[slot] = true;
+                active_cells += 1;
                 if let Some(entry) = self.free_slot_listed.get_mut(slot) {
                     *entry = false;
                 }
@@ -165,7 +168,8 @@ impl LifeformRegistry {
             }
         }
         RegistryUpdate {
-            active_total: self.id_to_slots.len() as u32,
+            active_cells,
+            active_lifeforms: self.id_to_slots.len() as u32,
             extinct_ids,
         }
     }
@@ -183,9 +187,10 @@ impl LifeformRegistry {
             .unwrap_or(false)
     }
 
-    pub fn active_count(&self) -> u32 {
+    pub fn active_lifeform_count(&self) -> u32 {
         self.id_to_slots.len() as u32
     }
+
 
     #[allow(dead_code)]
     pub fn metadata(&self, id: usize) -> Option<&LifeformMetadata> {

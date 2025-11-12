@@ -4,6 +4,8 @@ use wgpu;
 
 /// Compute pipelines for physics simulation
 pub struct ComputePipelines {
+    pub reset_cell_hash: wgpu::ComputePipeline,
+    pub build_cell_hash: wgpu::ComputePipeline,
     pub update_cells: wgpu::ComputePipeline,
     pub update_cells_bind_group: wgpu::BindGroup,
     pub update_nutrients: wgpu::ComputePipeline,
@@ -23,6 +25,8 @@ impl ComputePipelines {
         lifeform_active_flags_buffer: &wgpu::Buffer,
         division_request_count_buffer: &wgpu::Buffer,
         division_requests_buffer: &wgpu::Buffer,
+        spatial_hash_bucket_heads_buffer: &wgpu::Buffer,
+        spatial_hash_next_indices_buffer: &wgpu::Buffer,
         link_buffer: &wgpu::Buffer,
         link_free_count_buffer: &wgpu::Buffer,
         link_free_list_buffer: &wgpu::Buffer,
@@ -212,6 +216,26 @@ impl ComputePipelines {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 17,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 18,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -219,6 +243,24 @@ impl ComputePipelines {
             label: Some("Compute Pipeline Layout"),
             bind_group_layouts: &[&cells_bind_group_layout],
             push_constant_ranges: &[],
+        });
+
+        let reset_cell_hash = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Reset Cell Hash Pipeline"),
+            layout: Some(&cells_pipeline_layout),
+            module: &cells_shader,
+            entry_point: Some("reset_bucket_heads"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let build_cell_hash = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Build Cell Hash Pipeline"),
+            layout: Some(&cells_pipeline_layout),
+            module: &cells_shader,
+            entry_point: Some("build_spatial_hash"),
+            compilation_options: Default::default(),
+            cache: None,
         });
 
         let update_cells = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -316,6 +358,14 @@ impl ComputePipelines {
                     binding: 16,
                     resource: cell_events_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 17,
+                    resource: spatial_hash_bucket_heads_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 18,
+                    resource: spatial_hash_next_indices_buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -381,6 +431,8 @@ impl ComputePipelines {
         });
 
         Self {
+            reset_cell_hash,
+            build_cell_hash,
             update_cells,
             update_cells_bind_group,
             update_nutrients,
@@ -394,6 +446,8 @@ impl ComputePipelines {
 pub struct RenderPipelines {
     pub points: wgpu::RenderPipeline,
     pub render_bind_group: wgpu::BindGroup,
+    pub links: wgpu::RenderPipeline,
+    pub link_bind_group: wgpu::BindGroup,
     pub nutrient_overlay: wgpu::RenderPipeline,
     pub nutrient_bind_group: wgpu::BindGroup,
 }
@@ -405,11 +459,17 @@ impl RenderPipelines {
         cell_buffer: &wgpu::Buffer,
         uniform_buffer: &wgpu::Buffer,
         cell_free_list_buffer: &wgpu::Buffer,
+        link_buffer: &wgpu::Buffer,
         nutrient_buffer: &wgpu::Buffer,
     ) -> Self {
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Cells Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/cells.wgsl").into()),
+        });
+
+        let link_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Link Render Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/links.wgsl").into()),
         });
 
         let nutrient_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -419,6 +479,42 @@ impl RenderPipelines {
 
         let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Render Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let link_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Link Render Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -479,10 +575,60 @@ impl RenderPipelines {
             ],
         });
 
+        let link_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Link Render Pipeline Layout"),
+            bind_group_layouts: &[&link_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
             bind_group_layouts: &[&render_bind_group_layout],
             push_constant_ranges: &[],
+        });
+
+        let nutrient_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Nutrient Overlay Pipeline Layout"),
+            bind_group_layouts: &[&nutrient_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let links = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Link Render Pipeline"),
+            layout: Some(&link_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &link_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &link_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            cache: None,
+            multiview: None,
         });
 
         let points = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -521,12 +667,6 @@ impl RenderPipelines {
             },
             cache: None,
             multiview: None,
-        });
-
-        let nutrient_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Nutrient Overlay Pipeline Layout"),
-            bind_group_layouts: &[&nutrient_bind_group_layout],
-            push_constant_ranges: &[],
         });
 
         let nutrient_overlay = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -597,6 +737,25 @@ impl RenderPipelines {
             ],
         });
 
+        let link_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Link Render Bind Group"),
+            layout: &link_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: cell_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: link_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         let nutrient_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Nutrient Overlay Bind Group"),
             layout: &nutrient_bind_group_layout,
@@ -615,6 +774,8 @@ impl RenderPipelines {
         Self {
             points,
             render_bind_group,
+            links,
+            link_bind_group,
             nutrient_overlay,
             nutrient_bind_group,
         }

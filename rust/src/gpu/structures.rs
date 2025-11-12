@@ -18,11 +18,12 @@ pub struct Cell {
     pub is_alive: u32,
     pub lifeform_slot: u32,
     pub metadata: u32,
+    pub color: [f32; 4],
 }
 
 impl Cell {
     pub fn new(pos: [f32; 2], radius: f32, lifeform_slot: u32, initial_energy: f32) -> Self {
-        Self {
+        let mut cell = Self {
             pos,
             prev_pos: pos,
             random_force: [0.0, 0.0],
@@ -32,11 +33,28 @@ impl Cell {
             is_alive: 1,
             lifeform_slot,
             metadata: 0,
-        }
+            color: [0.0; 4],
+        };
+        cell.update_color_from_energy();
+        cell
+    }
+
+    #[inline]
+    fn energy_to_color(energy: f32) -> [f32; 4] {
+        let energy_normalized = (energy / 100.0).clamp(0.0, 1.0);
+        let brightness = 0.1 + energy_normalized * 0.9;
+        let r = (1.0 - brightness) * 0.5;
+        let g = brightness;
+        let b = brightness;
+        [r, g, b, 1.0]
+    }
+
+    pub fn update_color_from_energy(&mut self) {
+        self.color = Self::energy_to_color(self.energy);
     }
 }
 
-const _: [(); 48] = [(); std::mem::size_of::<Cell>()];
+const _: [(); 64] = [(); std::mem::size_of::<Cell>()];
 const _: [(); 16] = [(); std::mem::align_of::<Cell>()];
 
 /// Link that connects two cells together.
@@ -46,11 +64,11 @@ pub struct Link {
     pub a: u32,
     pub b: u32,
     pub flags: u32,
-    pub _padding0: u32,
+    pub generation_a: u32,
     pub rest_length: f32,
     pub stiffness: f32,
     pub energy_transfer_rate: f32,
-    pub _padding1: f32,
+    pub generation_b: u32,
 }
 
 impl Link {
@@ -62,11 +80,11 @@ impl Link {
             a,
             b,
             flags: Self::FLAG_ALIVE,
-            _padding0: 0,
+            generation_a: 0,
             rest_length,
             stiffness,
             energy_transfer_rate,
-            _padding1: 0.0,
+            generation_b: 0,
         }
     }
 }
