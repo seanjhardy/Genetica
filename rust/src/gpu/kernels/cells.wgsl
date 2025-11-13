@@ -1,3 +1,9 @@
+const MAX_GRN_RECEPTOR_INPUTS: u32 = 16u;
+const MAX_GRN_REGULATORY_UNITS: u32 = 16u;
+const MAX_GRN_INPUTS_PER_UNIT: u32 = 8u;
+const MAX_GRN_STATE_SIZE: u32 = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
+const GRN_EVALUATION_FALLBACK: u32 = 8u;
+const LIFEFORM_STATE_FLAG_ACTIVE: u32 = 1u;
 // Compute shader for cell updates
 struct Cell {
     pos: vec2<f32>,
@@ -10,6 +16,48 @@ struct Cell {
     lifeform_slot: u32,
     metadata: u32,
     color: vec4<f32>,
+    grn_receptor_count: u32,
+    grn_unit_count: u32,
+    grn_timer: u32,
+    _grn_padding: u32,
+    grn_state: array<f32, MAX_GRN_STATE_SIZE>,
+}
+
+struct GrnInput {
+    weight: f32,
+    index: u32,
+    promoter_type: u32,
+    _pad: u32,
+}
+
+struct CompiledRegulatoryUnit {
+    input_count: u32,
+    output_index: u32,
+    flags: u32,
+    _padding: u32,
+    inputs: array<GrnInput, MAX_GRN_INPUTS_PER_UNIT>,
+}
+
+struct GrnDescriptor {
+    receptor_count: u32,
+    unit_count: u32,
+    state_stride: u32,
+    unit_offset: u32,
+    evaluation_interval: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+}
+
+struct LifeformState {
+    lifeform_id: u32,
+    first_cell_slot: u32,
+    cell_count: u32,
+    grn_descriptor_slot: u32,
+    grn_unit_offset: u32,
+    grn_unit_count: u32,
+    flags: u32,
+    _pad: u32,
 }
 
 struct Link {
@@ -137,10 +185,19 @@ var<storage, read_write> cell_bucket_heads: array<atomic<i32>>;
 @group(0) @binding(18)
 var<storage, read_write> cell_hash_next: array<i32>;
 
+@group(0) @binding(19)
+var<storage, read> grn_descriptors: array<GrnDescriptor>;
+
+@group(0) @binding(20)
+var<storage, read> grn_units: array<CompiledRegulatoryUnit>;
+
+@group(0) @binding(21)
+var<storage, read> lifeform_states: array<LifeformState>;
+
 const DIVISION_PROBABILITY: f32 = 0.0001;
 const RANDOM_DEATH_PROBABILITY: f32 = 0.00005;
 const MAX_DIVISION_REQUESTS: u32 = 512u;
-const LIFEFORM_CAPACITY: u32 = 4096u;
+const LIFEFORM_CAPACITY: u32 = 20000u;
 const MIN_DIVISION_ENERGY: f32 = 20.0;
 
 const CELL_EVENT_KIND_DIVISION: u32 = 1u;
@@ -173,6 +230,55 @@ fn rand(seed: vec2<u32>) -> f32 {
     return f32(n & 0x00FFFFFFu) / f32(0x01000000u);
 }
 
+fn run_compiled_grn(
+    descriptor: GrnDescriptor,
+    receptors: u32,
+    units: u32,
+    stride: u32,
+    cell: ptr<function, Cell>,
+) {
+    if units == 0u || stride == 0u {
+        return;
+    }
+    let base_unit = descriptor.unit_offset;
+    let total_units = arrayLength(&grn_units);
+    if base_unit >= total_units {
+        return;
+    }
+    let available_units = total_units - base_unit;
+    let actual_units = min(units, available_units);
+    for (var unit_idx: u32 = 0u; unit_idx < actual_units; unit_idx = unit_idx + 1u) {
+        let unit = grn_units[base_unit + unit_idx];
+        var additive_sum: f32 = 0.0;
+        var multiplicative_acc: f32 = 1.0;
+        var has_multiplicative: bool = false;
+        let limit = min(unit.input_count, MAX_GRN_INPUTS_PER_UNIT);
+        for (var input_idx: u32 = 0u; input_idx < limit; input_idx = input_idx + 1u) {
+            let input = unit.inputs[input_idx];
+            if input.index >= stride {
+                continue;
+            }
+            let value = (*cell).grn_state[input.index];
+            let weighted = value * input.weight;
+            if input.promoter_type == 1u {
+                additive_sum = additive_sum + weighted;
+            } else {
+                has_multiplicative = true;
+                let multiplicative_component = max(1.0 + weighted, 0.0);
+                multiplicative_acc = multiplicative_acc * multiplicative_component;
+            }
+        }
+        var output = additive_sum;
+        if has_multiplicative {
+            output = output + (multiplicative_acc - 1.0);
+        }
+        let target_index = receptors + unit_idx;
+        if target_index < MAX_GRN_STATE_SIZE {
+            (*cell).grn_state[target_index] = output;
+        }
+    }
+}
+
 fn push_cell_event(
     kind: u32,
     parent_cell_index: u32,
@@ -196,7 +302,7 @@ fn push_cell_event(
     } else {
         atomicSub(&cell_event_count.value, 1u);
     }
-}s
+}
 
 fn hash_cell_position(pos: vec2<f32>) -> u32 {
     let bucket_count = arrayLength(&cell_bucket_heads);
@@ -302,6 +408,42 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var cell = cells[index];
     if cell.is_alive == 0u {
         return;
+    }
+
+    if cell.lifeform_slot < LIFEFORM_CAPACITY && cell.lifeform_slot < arrayLength(&lifeform_states) {
+        let lf_state = lifeform_states[cell.lifeform_slot];
+        if (lf_state.flags & LIFEFORM_STATE_FLAG_ACTIVE) == 0u || lf_state.grn_descriptor_slot >= arrayLength(&grn_descriptors) {
+            cell.grn_receptor_count = 0u;
+            cell.grn_unit_count = 0u;
+            cell.grn_timer = 0u;
+        } else {
+            let descriptor = grn_descriptors[lf_state.grn_descriptor_slot];
+            let receptors = min(descriptor.receptor_count, MAX_GRN_RECEPTOR_INPUTS);
+            let units = min(descriptor.unit_count, MAX_GRN_REGULATORY_UNITS);
+            let stride = min(descriptor.state_stride, MAX_GRN_STATE_SIZE);
+            if stride == 0u || units == 0u {
+                cell.grn_receptor_count = receptors;
+                cell.grn_unit_count = units;
+                cell.grn_timer = 0u;
+            } else {
+                if cell.grn_receptor_count != receptors || cell.grn_unit_count != units {
+                    cell.grn_receptor_count = receptors;
+                    cell.grn_unit_count = units;
+                    let start = min(stride, MAX_GRN_STATE_SIZE);
+                    for (var i: u32 = start; i < MAX_GRN_STATE_SIZE; i = i + 1u) {
+                        cell.grn_state[i] = 0.0;
+                    }
+                    cell.grn_timer = 0u;
+                }
+                if cell.grn_timer == 0u {
+                    let interval = select(descriptor.evaluation_interval, GRN_EVALUATION_FALLBACK, descriptor.evaluation_interval == 0u);
+                    run_compiled_grn(descriptor, receptors, units, stride, &cell);
+                    cell.grn_timer = max(interval, 1u);
+                } else {
+                    cell.grn_timer = cell.grn_timer - 1u;
+                }
+            }
+        }
     }
 
     // Decrease energy over time (metabolic rate)
@@ -416,6 +558,7 @@ fn spawn_cells() {
             var new_cell = spawn_requests[spawn_idx];
             let parent_marker = new_cell.metadata;
             new_cell.color = compute_cell_color(new_cell.energy);
+            new_cell.grn_timer = 0u;
             var spawned = false;
             loop {
                 let free_prev = atomicLoad(&cell_free_list.count);
@@ -519,6 +662,12 @@ fn kill_cell(index: u32) {
     cell.metadata = cell.metadata + 1u;
     cell.energy = 0.0;
     cell.is_alive = 0u;
+    cell.grn_receptor_count = 0u;
+    cell.grn_unit_count = 0u;
+    cell.grn_timer = 0u;
+    for (var i: u32 = 0u; i < MAX_GRN_STATE_SIZE; i = i + 1u) {
+        cell.grn_state[i] = 0.0;
+    }
     cell.color = compute_cell_color(cell.energy);
     cells[index] = cell;
 

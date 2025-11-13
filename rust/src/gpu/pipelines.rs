@@ -35,6 +35,9 @@ impl ComputePipelines {
         cell_event_count_buffer: &wgpu::Buffer,
         cell_events_buffer: &wgpu::Buffer,
         nutrient_grid_buffer: &wgpu::Buffer,
+        grn_descriptor_buffer: &wgpu::Buffer,
+        grn_units_buffer: &wgpu::Buffer,
+        lifeform_states_buffer: &wgpu::Buffer,
     ) -> Self {
         // Create shader module
         let cells_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -236,6 +239,36 @@ impl ComputePipelines {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 19,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 20,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 21,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -365,6 +398,18 @@ impl ComputePipelines {
                 wgpu::BindGroupEntry {
                     binding: 18,
                     resource: spatial_hash_next_indices_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 19,
+                    resource: grn_descriptor_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 20,
+                    resource: grn_units_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 21,
+                    resource: lifeform_states_buffer.as_entire_binding(),
                 },
             ],
         });

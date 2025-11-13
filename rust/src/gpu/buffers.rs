@@ -7,7 +7,19 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use bytemuck::{pod_read_unaligned, Zeroable};
-use crate::gpu::structures::{Cell, CellEvent, DivisionRequest, Link, LinkEvent};
+use puffin::profile_scope;
+use crate::gpu::structures::{
+    Cell,
+    CellEvent,
+    CompiledGrn,
+    CompiledRegulatoryUnit,
+    DivisionRequest,
+    GrnDescriptor,
+    Link,
+    LinkEvent,
+    LifeformState,
+    MAX_GRN_REGULATORY_UNITS,
+};
 use crate::utils::math::Rect;
 use crate::utils::gpu::gpu_vector::GpuVector;
 
@@ -23,6 +35,86 @@ const MAX_LINK_EVENTS: usize = 1_024;
 pub const EVENT_STAGING_RING_SIZE: usize = 3;
 const NUTRIENT_CELL_SIZE: u32 = 20;
 const NUTRIENT_UNIT_SCALE: u32 = 4_000_000_000; // annoyingly we can't do atomicSubCompareExchangeWeak with f32 :sadge:
+const AVERAGE_GRN_UNITS_PER_LIFEFORM: usize = 16;
+const MAX_TOTAL_GRN_UNITS: usize = LIFEFORM_CAPACITY * AVERAGE_GRN_UNITS_PER_LIFEFORM;
+
+struct GrnAllocationState {
+    units: Vec<CompiledRegulatoryUnit>,
+    free_lists: Vec<Vec<u32>>,
+    next_free_offset: u32,
+    slot_ranges: Vec<Option<(u32, u32)>>,
+}
+
+impl GrnAllocationState {
+    fn new(units: Vec<CompiledRegulatoryUnit>) -> Self {
+        let mut free_lists = Vec::with_capacity(MAX_GRN_REGULATORY_UNITS + 1);
+        free_lists.resize_with(MAX_GRN_REGULATORY_UNITS + 1, Vec::new);
+        Self {
+            units,
+            free_lists,
+            next_free_offset: 0,
+            slot_ranges: vec![None; LIFEFORM_CAPACITY],
+        }
+    }
+
+    fn release_slot(&mut self, slot: usize) {
+        if slot >= self.slot_ranges.len() {
+            return;
+        }
+        if let Some((offset, len)) = self.slot_ranges[slot].take() {
+            if len == 0 {
+                return;
+            }
+            let len_usize = len as usize;
+            if len_usize < self.free_lists.len() {
+                self.free_lists[len_usize].push(offset);
+            }
+        }
+    }
+
+    fn allocate_slot(&mut self, slot: usize, len: u32) -> Option<u32> {
+        if slot >= self.slot_ranges.len() {
+            return None;
+        }
+        self.release_slot(slot);
+        if len == 0 {
+            return Some(0);
+        }
+        let len_usize = len as usize;
+        if len_usize >= self.free_lists.len() {
+            return None;
+        }
+
+        if let Some(offset) = self.free_lists[len_usize].pop() {
+            self.slot_ranges[slot] = Some((offset, len));
+            return Some(offset);
+        }
+
+        for larger in (len_usize + 1)..self.free_lists.len() {
+            if let Some(offset) = self.free_lists[larger].pop() {
+                let remaining = (larger as u32).saturating_sub(len);
+                if remaining > 0 {
+                    let rem_usize = remaining as usize;
+                    if rem_usize < self.free_lists.len() {
+                        self.free_lists[rem_usize].push(offset + len);
+                    }
+                }
+                self.slot_ranges[slot] = Some((offset, len));
+                return Some(offset);
+            }
+        }
+
+        let total_units = self.units.len() as u32;
+        if self.next_free_offset + len <= total_units {
+            let offset = self.next_free_offset;
+            self.next_free_offset += len;
+            self.slot_ranges[slot] = Some((offset, len));
+            return Some(offset);
+        }
+
+        None
+    }
+}
 
 pub struct GpuBuffers {
     pub cell_vector_a: GpuVector<Cell>,
@@ -61,6 +153,12 @@ pub struct GpuBuffers {
     nutrient_grid_height: AtomicU32,
     spatial_hash_bucket_heads: wgpu::Buffer,
     spatial_hash_next_indices: wgpu::Buffer,
+    grn_descriptors: wgpu::Buffer,
+    grn_units: wgpu::Buffer,
+    grn_state: Mutex<GrnAllocationState>,
+    grn_descriptors_cpu: Mutex<Vec<GrnDescriptor>>,
+    lifeform_states: wgpu::Buffer,
+    lifeform_states_cpu: Mutex<Vec<LifeformState>>,
 }
 
 impl GpuBuffers {
@@ -302,6 +400,34 @@ impl GpuBuffers {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
+        let grn_descriptor_init = vec![GrnDescriptor::zeroed(); LIFEFORM_CAPACITY];
+        let grn_descriptors = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("GRN Descriptor Buffer"),
+            contents: bytemuck::cast_slice(&grn_descriptor_init),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let grn_units_cpu = vec![CompiledRegulatoryUnit::zeroed(); MAX_TOTAL_GRN_UNITS];
+        let grn_units = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("GRN Units Buffer"),
+            contents: bytemuck::cast_slice(&grn_units_cpu),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let lifeform_states_cpu = vec![LifeformState::inactive(); LIFEFORM_CAPACITY];
+        let lifeform_states = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Lifeform States Buffer"),
+            contents: bytemuck::cast_slice(&lifeform_states_cpu),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+        let grn_state = Mutex::new(GrnAllocationState::new(grn_units_cpu));
+
         let grid_width = (bounds.width / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
         let grid_height = (bounds.height / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
         let nutrient_grid_size = (grid_width * grid_height) as usize;
@@ -352,6 +478,12 @@ impl GpuBuffers {
             nutrient_grid_height: AtomicU32::new(grid_height),
             spatial_hash_bucket_heads,
             spatial_hash_next_indices,
+            grn_descriptors,
+            grn_units,
+            grn_state,
+            grn_descriptors_cpu: Mutex::new(vec![GrnDescriptor::zeroed(); LIFEFORM_CAPACITY]),
+            lifeform_states,
+            lifeform_states_cpu: Mutex::new(lifeform_states_cpu),
         }
     }
     
@@ -1018,6 +1150,157 @@ impl GpuBuffers {
             byte_offset,
             bytemuck::cast_slice(links),
         );
+    }
+
+    pub fn grn_descriptor_buffer(&self) -> &wgpu::Buffer {
+        &self.grn_descriptors
+    }
+
+    pub fn grn_units_buffer(&self) -> &wgpu::Buffer {
+        &self.grn_units
+    }
+
+    pub fn lifeform_states_buffer(&self) -> &wgpu::Buffer {
+        &self.lifeform_states
+    }
+
+    pub fn grn_descriptor_cpu(&self, slot: u32) -> GrnDescriptor {
+        let descriptors = self.grn_descriptors_cpu.lock();
+        descriptors
+            .get(slot as usize)
+            .copied()
+            .unwrap_or_else(GrnDescriptor::zeroed)
+    }
+
+    pub fn write_lifeform_state(&self, queue: &wgpu::Queue, slot: u32, state: LifeformState) {
+        let slot_idx = slot as usize;
+        if slot_idx >= LIFEFORM_CAPACITY {
+            return;
+        }
+
+        {
+            let mut cpu = self.lifeform_states_cpu.lock();
+            if let Some(entry) = cpu.get_mut(slot_idx) {
+                *entry = state;
+            }
+        }
+
+        let offset = (slot_idx * std::mem::size_of::<LifeformState>()) as u64;
+        queue.write_buffer(
+            &self.lifeform_states,
+            offset,
+            bytemuck::cast_slice(std::slice::from_ref(&state)),
+        );
+    }
+
+    pub fn clear_lifeform_state(&self, queue: &wgpu::Queue, slot: u32) {
+        self.write_lifeform_state(queue, slot, LifeformState::inactive());
+    }
+
+    pub fn write_grn_slot(&self, queue: &wgpu::Queue, slot: u32, compiled: &CompiledGrn) -> GrnDescriptor {
+        profile_scope!("Write GRN Slot");
+        let slot_idx = slot as usize;
+        if slot_idx >= LIFEFORM_CAPACITY {
+            return GrnDescriptor::zeroed();
+        }
+
+        let mut descriptor = compiled.descriptor;
+        let mut state = {
+            profile_scope!("Acquire GRN Allocator");
+            self.grn_state.lock()
+        };
+        descriptor.unit_count = compiled.units.len() as u32;
+        if descriptor.unit_count == 0 {
+            descriptor.unit_offset = 0;
+            {
+                profile_scope!("Release Empty Slot");
+                state.release_slot(slot_idx);
+            }
+            drop(state);
+            self.write_grn_descriptor(queue, slot_idx, &descriptor);
+            return descriptor;
+        }
+
+        if descriptor.unit_count as usize > MAX_TOTAL_GRN_UNITS {
+            drop(state);
+            eprintln!(
+                "GRN allocation exceeds global capacity (slot {}, units {}).",
+                slot_idx, descriptor.unit_count
+            );
+            self.write_grn_descriptor(queue, slot_idx, &GrnDescriptor::zeroed());
+            return GrnDescriptor::zeroed();
+        }
+
+        match {
+            profile_scope!("Allocate GRN Range");
+            state.allocate_slot(slot_idx, descriptor.unit_count)
+        } {
+            Some(offset) => {
+                let start = offset as usize;
+                let end = start + descriptor.unit_count as usize;
+                if end > state.units.len() {
+                    drop(state);
+                    eprintln!(
+                        "GRN allocation out of bounds for slot {} (offset {}, count {}).",
+                        slot_idx, offset, descriptor.unit_count
+                    );
+                    self.write_grn_descriptor(queue, slot_idx, &GrnDescriptor::zeroed());
+                    return GrnDescriptor::zeroed();
+                }
+                state.units[start..end].copy_from_slice(&compiled.units);
+                descriptor.unit_offset = offset;
+
+                let unit_byte_offset =
+                    (start * std::mem::size_of::<CompiledRegulatoryUnit>()) as u64;
+                let bytes = bytemuck::cast_slice(&compiled.units);
+                drop(state);
+
+                self.write_grn_descriptor(queue, slot_idx, &descriptor);
+                {
+                    profile_scope!("Upload GRN Units");
+                    queue.write_buffer(&self.grn_units, unit_byte_offset, bytes);
+                }
+                descriptor
+            }
+            None => {
+                drop(state);
+                eprintln!(
+                    "Unable to allocate GRN storage for slot {} (requested {}).",
+                    slot_idx, descriptor.unit_count
+                );
+                self.write_grn_descriptor(queue, slot_idx, &GrnDescriptor::zeroed());
+                GrnDescriptor::zeroed()
+            }
+        }
+    }
+
+    pub fn clear_grn_slot(&self, queue: &wgpu::Queue, slot: u32) {
+        profile_scope!("Clear GRN Slot");
+        let slot_idx = slot as usize;
+        if slot_idx >= LIFEFORM_CAPACITY {
+            return;
+        }
+        {
+            let mut state = self.grn_state.lock();
+            state.release_slot(slot_idx);
+        }
+        self.write_grn_descriptor(queue, slot_idx, &GrnDescriptor::zeroed());
+    }
+
+    fn write_grn_descriptor(&self, queue: &wgpu::Queue, slot_idx: usize, descriptor: &GrnDescriptor) {
+        profile_scope!("Upload GRN Descriptor");
+        let descriptor_offset = (slot_idx * std::mem::size_of::<GrnDescriptor>()) as u64;
+        queue.write_buffer(
+            &self.grn_descriptors,
+            descriptor_offset,
+            bytemuck::cast_slice(std::slice::from_ref(descriptor)),
+        );
+        {
+            let mut cpu = self.grn_descriptors_cpu.lock();
+            if let Some(entry) = cpu.get_mut(slot_idx) {
+                *entry = *descriptor;
+            }
+        }
     }
 
     pub fn resize_nutrient_grid(

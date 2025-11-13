@@ -702,32 +702,78 @@ impl UiRenderer {
         }
         
         for (_z_index, elements) in z_index_groups {
-            for element in elements {
-                // Render shadow first (behind element)
-                if element.width > 0.0 && element.height > 0.0 {
-                    if element.shadow.blur > 0.0 || element.shadow.spread > 0.0 {
-                        self.vertices.clear();
-                        self.indices.clear();
-                        self.add_shadow_rect(element.x, element.y, element.width, element.height, &element.shadow, 
-                            element.border_radius_tl, element.border_radius_tr, element.border_radius_br, element.border_radius_bl);
-                        if !self.vertices.is_empty() {
-                            self.render_rectangles(device, encoder, view);
-                        }
-                    }
+            // Batch render shadows for this z-layer
+            self.vertices.clear();
+            self.indices.clear();
+            for element in &elements {
+                if element.width > 0.0
+                    && element.height > 0.0
+                    && (element.shadow.blur > 0.0 || element.shadow.spread > 0.0)
+                {
+                    self.add_shadow_rect(
+                        element.x,
+                        element.y,
+                        element.width,
+                        element.height,
+                        &element.shadow,
+                        element.border_radius_tl,
+                        element.border_radius_tr,
+                        element.border_radius_br,
+                        element.border_radius_bl,
+                    );
+                }
+            }
+            if !self.vertices.is_empty() && !self.indices.is_empty() {
+                self.render_rectangles(device, encoder, view);
+            }
+
+            // Batch render backgrounds for this z-layer
+            self.vertices.clear();
+            self.indices.clear();
+            for element in &elements {
+                if element.width <= 0.0
+                    || element.height <= 0.0
+                    || element.background_color.a <= 0.001
+                {
+                    continue;
                 }
 
-                // Render background
-                if element.width > 0.0 && element.height > 0.0 && element.background_color.a > 0.001 {
-                    self.vertices.clear();
-                    self.indices.clear();
-                    
-                    // Use per-corner rendering if any corners have different radii
-                    let has_uniform_radius = element.border_radius_tl == element.border_radius_tr &&
-                                            element.border_radius_tr == element.border_radius_br &&
-                                            element.border_radius_br == element.border_radius_bl;
-                    
-                    if has_uniform_radius {
-                        // Use optimized uniform radius rendering
+                let has_uniform_radius = element.border_radius_tl == element.border_radius_tr
+                    && element.border_radius_tr == element.border_radius_br
+                    && element.border_radius_br == element.border_radius_bl;
+
+                if has_uniform_radius {
+                    self.add_rounded_rect(
+                        element.x,
+                        element.y,
+                        element.width,
+                        element.height,
+                        element.border_radius_tl,
+                        element.border_radius_tr,
+                        element.border_radius_br,
+                        element.border_radius_bl,
+                        element.background_color,
+                    );
+                } else {
+                    let max_dim = element.width.min(element.height) / 2.0;
+                    let clamped_radius_tl = element.border_radius_tl.min(max_dim);
+                    let clamped_radius_tr = element.border_radius_tr.min(max_dim);
+                    let clamped_radius_br = element.border_radius_br.min(max_dim);
+                    let clamped_radius_bl = element.border_radius_bl.min(max_dim);
+
+                    if clamped_radius_tl <= 1.0
+                        && clamped_radius_tr <= 1.0
+                        && clamped_radius_br <= 1.0
+                        && clamped_radius_bl <= 1.0
+                    {
+                        self.add_simple_rect(
+                            element.x,
+                            element.y,
+                            element.width,
+                            element.height,
+                            element.background_color,
+                        );
+                    } else {
                         self.add_rounded_rect(
                             element.x,
                             element.y,
@@ -739,44 +785,22 @@ impl UiRenderer {
                             element.border_radius_bl,
                             element.background_color,
                         );
-                    } else {
-                        // Use per-corner rendering
-                        let clamped_radius_tl = element.border_radius_tl.min(element.width.min(element.height) / 2.0);
-                        let clamped_radius_tr = element.border_radius_tr.min(element.width.min(element.height) / 2.0);
-                        let clamped_radius_br = element.border_radius_br.min(element.width.min(element.height) / 2.0);
-                        let clamped_radius_bl = element.border_radius_bl.min(element.width.min(element.height) / 2.0);
-                        
-                        if clamped_radius_tl <= 1.0 && clamped_radius_tr <= 1.0 && clamped_radius_br <= 1.0 && clamped_radius_bl <= 1.0 {
-                            self.add_simple_rect(element.x, element.y, element.width, element.height, element.background_color);
-                        } else {
-                            self.add_rounded_rect(
-                                element.x,
-                                element.y,
-                                element.width,
-                                element.height,
-                                element.border_radius_tl,
-                                element.border_radius_tr,
-                                element.border_radius_br,
-                                element.border_radius_bl,
-                                element.background_color,
-                            );
-                        }
                     }
-                    
-                    self.render_rectangles(device, encoder, view);
                 }
+            }
+            if !self.vertices.is_empty() && !self.indices.is_empty() {
+                self.render_rectangles(device, encoder, view);
+            }
 
-                // Render image texture
+            // Render images for this z-layer (per element due to texture bindings)
+            for element in &elements {
                 if let Some(ref image_data) = element.image {
                     if image_data.dest_width > 0.0 && image_data.dest_height > 0.0 {
-                        // Load texture if not already in cache
                         if !self.image_cache.contains_key(&image_data.source) {
                             self.load_image_texture(device, queue, &image_data.source);
                         }
-                        
-                        // Check if texture is available and render
-                        let has_texture = self.image_cache.contains_key(&image_data.source);
-                        if has_texture {
+
+                        if self.image_cache.contains_key(&image_data.source) {
                             self.render_image(
                                 device,
                                 encoder,
@@ -791,116 +815,125 @@ impl UiRenderer {
                         }
                     }
                 }
+            }
 
-                // Render viewport texture (if this is a viewport)
-                if element.is_viewport {
-                    if let Some(viewport_id) = &element.viewport_id {
-                        if element.width > 0.0 && element.height > 0.0 {
-                            // Fetch texture view from viewport component (get reference first)
-                            let texture_view_opt = self.get_viewport_texture_view(component, viewport_id);
-                            
-                            if let Some(texture_view) = texture_view_opt {
-                                // Now clear and prepare vertices (after getting the reference)
-                                self.texture_vertices.clear();
-                                self.texture_indices.clear();
-                                self.add_texture_quad(element.x, element.y, element.width, element.height);
-                                
-                                // Create bind group on the fly for this viewport texture
-                                let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                                    label: Some(&format!("Viewport Texture Bind Group: {}", viewport_id)),
-                                    layout: &self.texture_bind_group_layout,
-                                    entries: &[
-                                        wgpu::BindGroupEntry {
-                                            binding: 0,
-                                            resource: wgpu::BindingResource::TextureView(texture_view),
-                                        },
-                                        wgpu::BindGroupEntry {
-                                            binding: 1,
-                                            resource: wgpu::BindingResource::Sampler(&self.texture_sampler),
-                                        },
-                                        wgpu::BindGroupEntry {
-                                            binding: 2,
-                                            resource: self.uniform_buffer.as_entire_binding(),
-                                        },
-                                    ],
-                                });
-
-                                let texture_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                    label: Some("Viewport Texture Vertex Buffer"),
-                                    contents: bytemuck::cast_slice(&self.texture_vertices),
-                                    usage: wgpu::BufferUsages::VERTEX,
-                                });
-
-                                let texture_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                    label: Some("Viewport Texture Index Buffer"),
-                                    contents: bytemuck::cast_slice(&self.texture_indices),
-                                    usage: wgpu::BufferUsages::INDEX,
-                                });
-
-                                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                    label: Some("Viewport Texture Render Pass"),
-                                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                        view,
-                                        resolve_target: None,
-                                        ops: wgpu::Operations {
-                                            load: wgpu::LoadOp::Load,
-                                            store: wgpu::StoreOp::Store,
-                                        },
-                                    })],
-                                    depth_stencil_attachment: None,
-                                    occlusion_query_set: None,
-                                    timestamp_writes: None,
-                                    ..Default::default()
-                                });
-
-                                render_pass.set_pipeline(&self.texture_pipeline);
-                                render_pass.set_bind_group(0, &bind_group, &[]);
-                                render_pass.set_vertex_buffer(0, texture_vertex_buffer.slice(..));
-                                render_pass.set_index_buffer(texture_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                                render_pass.draw_indexed(0..(self.texture_indices.len() as u32), 0, 0..1);
-                            }
-                        }
-                    }
+            // Render viewport textures (per element due to unique textures)
+            for element in &elements {
+                if !element.is_viewport {
+                    continue;
                 }
 
-                // Render border (on top)
-                if element.width > 0.0 && element.height > 0.0 {
-                    if element.border.width > 0.0 {
-                        self.vertices.clear();
-                        self.indices.clear();
-                        self.add_border_rect(
-                            element.x,
-                            element.y,
-                            element.width,
-                            element.height,
-                            element.border_radius_tl,
-                            element.border_radius_tr,
-                            element.border_radius_br,
-                            element.border_radius_bl,
-                            element.border.width,
-                            element.border.color,
-                        );
-                        if !self.vertices.is_empty() {
-                            self.render_rectangles(device, encoder, view);
-                        }
-                    }
+                let Some(viewport_id) = &element.viewport_id else {
+                    continue;
+                };
+
+                if element.width <= 0.0 || element.height <= 0.0 {
+                    continue;
                 }
 
-                // Queue text
+                if let Some(texture_view) = self.get_viewport_texture_view(component, viewport_id) {
+                    self.texture_vertices.clear();
+                    self.texture_indices.clear();
+                    self.add_texture_quad(element.x, element.y, element.width, element.height);
+
+                    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some(&format!("Viewport Texture Bind Group: {}", viewport_id)),
+                        layout: &self.texture_bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(texture_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&self.texture_sampler),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: self.uniform_buffer.as_entire_binding(),
+                            },
+                        ],
+                    });
+
+                    let texture_vertex_buffer =
+                        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Viewport Texture Vertex Buffer"),
+                            contents: bytemuck::cast_slice(&self.texture_vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+
+                    let texture_index_buffer =
+                        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Viewport Texture Index Buffer"),
+                            contents: bytemuck::cast_slice(&self.texture_indices),
+                            usage: wgpu::BufferUsages::INDEX,
+                        });
+
+                    let mut render_pass =
+                        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("Viewport Texture Render Pass"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: None,
+                            occlusion_query_set: None,
+                            timestamp_writes: None,
+                            ..Default::default()
+                        });
+
+                    render_pass.set_pipeline(&self.texture_pipeline);
+                    render_pass.set_bind_group(0, &bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, texture_vertex_buffer.slice(..));
+                    render_pass
+                        .set_index_buffer(texture_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    render_pass.draw_indexed(0..(self.texture_indices.len() as u32), 0, 0..1);
+                }
+            }
+
+            // Batch render borders for this z-layer
+            self.vertices.clear();
+            self.indices.clear();
+            for element in &elements {
+                if element.width <= 0.0 || element.height <= 0.0 {
+                    continue;
+                }
+                if element.border.width <= 0.0 {
+                    continue;
+                }
+
+                self.add_border_rect(
+                    element.x,
+                    element.y,
+                    element.width,
+                    element.height,
+                    element.border_radius_tl,
+                    element.border_radius_tr,
+                    element.border_radius_br,
+                    element.border_radius_bl,
+                    element.border.width,
+                    element.border.color,
+                );
+            }
+            if !self.vertices.is_empty() && !self.indices.is_empty() {
+                self.render_rectangles(device, encoder, view);
+            }
+
+            // Queue text for this z-layer
+            for element in &elements {
                 if let Some((content, font_size, color)) = &element.text_content {
-                    // Convert color to array, ensuring visibility
-                    // If color is very dark/black (low RGB values and high alpha), convert to white for visibility
                     let color_arr = if color.a < 0.01 {
-                        // Transparent - use white
                         [1.0, 1.0, 1.0, 1.0]
                     } else if color.r < 0.1 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9 {
-                        // Very dark/black - convert to white for visibility
                         [1.0, 1.0, 1.0, color.a]
                     } else {
                         color.to_array()
                     };
-                    
-                    // Only render if content is not empty and color has sufficient alpha
+
                     if !content.is_empty() && color_arr[3] > 0.01 {
                         self.text_renderer.queue_text_with_size(
                             queue,

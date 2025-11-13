@@ -1,4 +1,8 @@
 // Render shader for drawing links between cells as trapezoids
+const MAX_GRN_RECEPTOR_INPUTS: u32 = 16u;
+const MAX_GRN_REGULATORY_UNITS: u32 = 16u;
+const MAX_GRN_STATE_SIZE: u32 = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
+
 struct Cell {
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
@@ -10,6 +14,11 @@ struct Cell {
     lifeform_slot: u32,
     metadata: u32,
     color: vec4<f32>,
+    grn_receptor_count: u32,
+    grn_unit_count: u32,
+    grn_timer: u32,
+    _grn_padding: u32,
+    grn_state: array<f32, MAX_GRN_STATE_SIZE>,
 }
 
 struct Link {

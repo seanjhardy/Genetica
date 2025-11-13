@@ -7,6 +7,7 @@ use rand::Rng;
 // Genetic algorithm module - manages genomes, lifeforms, and gene regulatory networks
 use crate::genetic_algorithm::sequence_grn;
 use crate::genetic_algorithm::systems::GeneRegulatoryNetwork;
+use crate::genetic_algorithm::systems::morphology::compile_grn::compile_grn;
 use crate::gpu::structures::{Cell, Lifeform};
 use crate::utils::math::Rect;
 use crate::genetic_algorithm::{Genome, Species};
@@ -179,6 +180,10 @@ impl GeneticAlgorithm {
             .collect()
     }
 
+    pub fn compiled_grn(&self, lifeform_id: usize) -> Option<&crate::gpu::structures::CompiledGrn> {
+        self.lifeforms.get(&lifeform_id).map(|lf| lf.compiled_grn())
+    }
+
     pub fn register_division_offspring<R: Rng>(
         &mut self,
         parent_lifeform_id: usize,
@@ -187,7 +192,7 @@ impl GeneticAlgorithm {
     ) -> Option<(usize, usize)> {
         profile_scope!("GA Register Division Offspring");
         let mut child_genome = self.lifeforms.get(&parent_lifeform_id)?.genome.clone();
-        child_genome.mutate(rng);
+        child_genome.mutate();
         let child_grn = sequence_grn(&child_genome);
         let child_lifeform_id = GeneticAlgorithm::next_lifeform_id();
         let species_id = self.register_child_lifeform(
@@ -237,7 +242,8 @@ impl GeneticAlgorithm {
                 self.living_species.insert(species_id);
             }
         }
-        let lifeform = Lifeform::new(lifeform_id, species_id, genome, grn);
+        let compiled = compile_grn(lifeform_id as u32, &grn);
+        let lifeform = Lifeform::new(lifeform_id, species_id, genome, grn, compiled);
         self.lifeforms.insert(lifeform_id, lifeform);
     }
 }

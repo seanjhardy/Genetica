@@ -1,4 +1,8 @@
 // Render shader for drawing cells as quads
+const MAX_GRN_RECEPTOR_INPUTS: u32 = 16u;
+const MAX_GRN_REGULATORY_UNITS: u32 = 16u;
+const MAX_GRN_STATE_SIZE: u32 = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
+
 struct Cell {
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
@@ -10,6 +14,11 @@ struct Cell {
     lifeform_slot: u32,
     metadata: u32,
     color: vec4<f32>,
+    grn_receptor_count: u32,
+    grn_unit_count: u32,
+    grn_timer: u32,
+    _grn_padding: u32,
+    grn_state: array<f32, MAX_GRN_STATE_SIZE>,
 }
 
 // Uniforms struct must match Rust struct layout exactly (including padding)
@@ -43,6 +52,7 @@ struct VertexOutput {
     @location(1) uv: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) cell_wall_thickness: f32,
+    @location(4) radius: f32,
 }
 
 // Generate a quad for each cell using instanced rendering
@@ -120,6 +130,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     out.uv = uv_offset;
     out.color = cell.color;
     out.cell_wall_thickness = cell.cell_wall_thickness;
+    out.radius = cell.radius;
     return out;
 }
 
@@ -139,6 +150,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Darken the border of the cell
     if dist > radius - in.cell_wall_thickness {
+        final_color = final_color * 0.2;
+    }
+
+    // Add nucleus
+    if dist < 0.2 / in.radius {
         final_color = final_color * 0.2;
     }
 

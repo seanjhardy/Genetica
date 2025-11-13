@@ -25,7 +25,16 @@ use crate::gpu::buffers::GpuBuffers;
 use crate::gpu::pipelines::{ComputePipelines, RenderPipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
-use crate::gpu::structures::{Cell, CellEvent, DivisionRequest, Link, LinkEvent};
+use crate::gpu::structures::{
+    Cell,
+    CellEvent,
+    CompiledGrn,
+    DivisionRequest,
+    Link,
+    LinkEvent,
+    GrnDescriptor,
+    LifeformState,
+};
 use crate::simulator::environment::Environment;
 use crate::simulator::lifeform_registry::{LifeformMetadata, LifeformRegistry};
 use crate::simulator::state::{GpuTransferState, PauseState, PopulationState, SpawnState, SubmissionState};
@@ -97,7 +106,7 @@ impl Simulation {
             )
         };
         let mut lifeforms = LifeformRegistry::new(lifeform_capacity);
-        for (lifeform_id, species_id) in existing_lifeform_entries {
+        for &(lifeform_id, species_id) in existing_lifeform_entries.iter() {
             let slot = lifeform_id as u32;
             if (slot as usize) >= lifeform_capacity {
                 continue;
@@ -112,7 +121,7 @@ impl Simulation {
             );
         }
         let initial_lifeforms = lifeforms.active_lifeform_count();
-        Self {
+        let mut simulation = Self {
             device,
             queue,
             compute_pipelines,
@@ -134,7 +143,27 @@ impl Simulation {
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
             submission: SubmissionState::new(4, Duration::from_micros(500)),
+        };
+
+        {
+            let env_guard = simulation.environment.lock();
+            for &(lifeform_id, _) in existing_lifeform_entries.iter() {
+                let slot = lifeform_id as u32;
+                if (slot as usize) >= lifeform_capacity {
+                    continue;
+                }
+                if let Some(compiled) = env_guard.genetic_algorithm.compiled_grn(lifeform_id) {
+                    let descriptor = simulation
+                        .buffers
+                        .write_grn_slot(simulation.queue.as_ref(), slot, compiled);
+                    simulation.update_lifeform_state(slot, lifeform_id, descriptor);
+                } else {
+                    simulation.clear_grn_for_slot(slot);
+                }
+            }
         }
+
+        simulation
     }
     
     pub fn set_paused(&mut self, paused: bool) {
@@ -209,12 +238,16 @@ impl Simulation {
 
 
     fn flush_pending_submissions(&mut self) {
+        profile_scope!("Flush Pending Submissions");
         if self.submission.pending_command_buffers.is_empty() {
             return;
         }
 
-        self.queue
-            .submit(self.submission.pending_command_buffers.drain(..));
+        {
+            profile_scope!("wgpu::Queue::submit");
+            self.queue
+                .submit(self.submission.pending_command_buffers.drain(..));
+        }
         self.submission.record_submission_time();
     }
 
@@ -226,9 +259,12 @@ impl Simulation {
         // Submit simulation compute pass (non-blocking - GPU operations are async)
         let command_buffer = {
             profile_scope!("Encode Cell Simulation");
-            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Simulation Encoder"),
-            });
+            let mut encoder = {
+                profile_scope!("Create Command Encoder");
+                self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Simulation Encoder"),
+                })
+            };
 
             {
                 profile_scope!("Dispatch Nutrient Regeneration");
@@ -343,12 +379,16 @@ impl Simulation {
                 }
             }
 
+            profile_scope!("Finish Command Encoder");
             encoder.finish()
         };
 
         {
             profile_scope!("Submit Simulation Commands");
-            self.submission.pending_command_buffers.push(command_buffer);
+            {
+                profile_scope!("Queue Command Buffer");
+                self.submission.pending_command_buffers.push(command_buffer);
+            }
             if self.submission.pending_command_buffers.len() >= self.submission.submission_batch_size
                 || self.submission.last_submission.elapsed() >= self.submission.max_submission_delay
             {
@@ -435,6 +475,9 @@ impl Simulation {
                     self.population.sync_lifeforms(update.active_lifeforms);
                     if self.population.last_alive != update.active_cells {
                         self.population.sync_alive(update.active_cells);
+                    }
+                    for slot in update.released_slots.iter().copied() {
+                        self.clear_grn_for_slot(slot);
                     }
                 }
                 self.transfers.lifeform_flags_pending = false;
@@ -624,6 +667,7 @@ impl Simulation {
 
         let birth_time = self.step_count.load(Ordering::Relaxed) as usize;
         let mut _new_lifeforms = 0u32;
+        let mut grn_uploads: Vec<(u32, Option<(CompiledGrn, usize)>)> = Vec::new();
         {
             profile_scope!("Register Lifeforms");
             let mut environment = self.environment.lock();
@@ -641,6 +685,11 @@ impl Simulation {
                         },
                     );
                     _new_lifeforms += 1;
+                    if let Some(compiled) = ga.compiled_grn(lifeform_id).cloned() {
+                        grn_uploads.push((slot, Some((compiled, lifeform_id))));
+                    } else {
+                        grn_uploads.push((slot, None));
+                    }
                 }
             }
             {
@@ -666,6 +715,7 @@ impl Simulation {
                             Some(result) => result,
                             None => {
                                 self.lifeforms.release_slot(slot);
+                                self.clear_grn_for_slot(slot);
                                 self.population.predicted_alive =
                                     self.population.predicted_alive.saturating_sub(1);
                                 continue;
@@ -686,6 +736,25 @@ impl Simulation {
                     self.population.predicted_lifeform =
                         self.population.predicted_lifeform.saturating_add(1);
                     _new_lifeforms += 1;
+                    if let Some(compiled) = ga.compiled_grn(lifeform_id).cloned() {
+                        grn_uploads.push((slot, Some((compiled, lifeform_id))));
+                    } else {
+                        grn_uploads.push((slot, None));
+                    }
+                }
+            }
+        }
+
+        for (slot, entry) in grn_uploads {
+            match entry {
+                Some((compiled, lifeform_id)) => {
+                    let descriptor =
+                        self.buffers
+                            .write_grn_slot(self.queue.as_ref(), slot, &compiled);
+                    self.update_lifeform_state(slot, lifeform_id, descriptor);
+                }
+                None => {
+                    self.clear_grn_for_slot(slot);
                 }
             }
         }
@@ -705,6 +774,7 @@ impl Simulation {
                     SpawnKind::RandomNew => {}
                 }
                 self.lifeforms.release_slot(spawn.slot);
+                self.clear_grn_for_slot(spawn.slot);
             }
         }
 
@@ -802,6 +872,21 @@ impl Simulation {
         }
     }
 
+    fn update_lifeform_state(&self, slot: u32, lifeform_id: usize, descriptor: GrnDescriptor) {
+        let state = LifeformState::from_descriptor(lifeform_id as u32, slot, &descriptor);
+        self.buffers
+            .write_lifeform_state(self.queue.as_ref(), slot, state);
+    }
+
+    fn clear_lifeform_state(&self, slot: u32) {
+        self.buffers.clear_lifeform_state(self.queue.as_ref(), slot);
+    }
+
+    fn clear_grn_for_slot(&self, slot: u32) {
+        self.buffers.clear_grn_slot(self.queue.as_ref(), slot);
+        self.clear_lifeform_state(slot);
+    }
+
     fn process_event_bookkeeping(&mut self) {
         if self.cell_death_events.is_empty()
             && self.cell_division_events.is_empty()
@@ -866,6 +951,9 @@ impl Simulation {
             self.buffers.cell_event_count_buffer(),
             self.buffers.cell_events_buffer(),
             new_nutrient_buffer.as_ref(),
+            self.buffers.grn_descriptor_buffer(),
+            self.buffers.grn_units_buffer(),
+            self.buffers.lifeform_states_buffer(),
         );
 
         self.current_bounds = bounds;
@@ -1005,6 +1093,9 @@ impl Application {
             buffers.cell_event_count_buffer(),
             buffers.cell_events_buffer(),
             nutrient_buffer.as_ref(),
+            buffers.grn_descriptor_buffer(),
+            buffers.grn_units_buffer(),
+            buffers.lifeform_states_buffer(),
         );
         let speed = Arc::new(parking_lot::Mutex::new(0.05));
 
@@ -1803,4 +1894,5 @@ impl Application {
         )
     }
 }
+
 
