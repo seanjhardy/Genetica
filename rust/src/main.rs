@@ -4,7 +4,6 @@
 mod utils;
 mod simulator;
 mod gpu;
-mod genetic_algorithm;
 mod ui;
 
 use simulator::Simulator;

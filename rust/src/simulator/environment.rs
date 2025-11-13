@@ -3,7 +3,6 @@
 use crate::utils::gpu::GpuDevice;
 use crate::utils::math::{Rect, Vec2};
 use crate::utils::ui::DragHandler;
-use crate::genetic_algorithm::GeneticAlgorithm;
 use crate::simulator::planet::Planet;
 
 /// Environment manages the simulation bounds and genetic data (genomes/GRNs)
@@ -16,7 +15,6 @@ pub struct Environment {
     drag_handler: DragHandler,
     /// Planet background renderer
     planet: Planet,
-    pub genetic_algorithm: GeneticAlgorithm,
 }
 
 impl Environment {
@@ -28,7 +26,6 @@ impl Environment {
             bounds: _initial_bounds,
             drag_handler: DragHandler::new(),
             planet,
-            genetic_algorithm: GeneticAlgorithm::new(&gpu.device),
         }
     }
 

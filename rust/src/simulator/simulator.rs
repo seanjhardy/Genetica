@@ -1,12 +1,10 @@
 // Simulator module - main simulation loop and window management
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use rand::Rng;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -25,38 +23,12 @@ use crate::gpu::buffers::GpuBuffers;
 use crate::gpu::pipelines::{ComputePipelines, RenderPipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
-use crate::gpu::structures::{
-    Cell,
-    CellEvent,
-    CompiledGrn,
-    DivisionRequest,
-    Link,
-    LinkEvent,
-    GrnDescriptor,
-    LifeformState,
-};
+use crate::gpu::structures::{Cell, CellEvent, LifeformEvent, LinkEvent, SpeciesEvent};
 use crate::simulator::environment::Environment;
-use crate::simulator::lifeform_registry::{LifeformMetadata, LifeformRegistry};
-use crate::simulator::state::{GpuTransferState, PauseState, PopulationState, SpawnState, SubmissionState};
+use crate::simulator::state::{GpuTransferState, PauseState, PopulationState, SubmissionState};
 use crate::simulator::renderer::Renderer;
 
 const SIMULATION_DELTA_TIME: f32 = 0.1; // 100ms per simulation step
-const MIN_ACTIVE_CELLS: usize = 20;
-const MAX_SPAWN_PER_STEP: usize = 50;
-
-#[derive(Copy, Clone)]
-enum SpawnKind {
-    RandomNew,
-    Division { parent_lifeform_id: usize, request: DivisionRequest },
-    NewLifeform { parent_lifeform_id: Option<usize>, event: CellEvent },
-}
-
-struct PendingSpawn {
-    cell: Cell,
-    slot: u32,
-    kind: SpawnKind,
-}
-
 /// Simulation structure
 pub struct Simulation {
     device: Arc<wgpu::Device>,
@@ -68,14 +40,9 @@ pub struct Simulation {
     speed: Arc<parking_lot::Mutex<f32>>, // Shared speed for thread-safe access
     population: PopulationState,
     transfers: GpuTransferState,
-    lifeforms: LifeformRegistry,
-    spawn: SpawnState,
-    pending_division_requests: VecDeque<DivisionRequest>,
     cell_division_events: Vec<CellEvent>,
     cell_death_events: Vec<CellEvent>,
-    non_adhesive_divisions: Vec<CellEvent>,
     link_events: Vec<LinkEvent>,
-    pending_link_writes: Vec<(usize, Link)>,
     current_bounds: Rect,
     
     // Simulation parameters
@@ -96,31 +63,8 @@ impl Simulation {
         speed: Arc<parking_lot::Mutex<f32>>,
     ) -> Self {
         let initial_alive = buffers.initial_alive_count();
-        let spawn_capacity = buffers.spawn_capacity();
-        let lifeform_capacity = buffers.lifeform_capacity();
-        let (existing_lifeform_entries, initial_bounds) = {
-            let env_guard = environment.lock();
-            (
-                env_guard.genetic_algorithm.list_active_lifeforms(),
-                env_guard.get_bounds(),
-            )
-        };
-        let mut lifeforms = LifeformRegistry::new(lifeform_capacity);
-        for &(lifeform_id, species_id) in existing_lifeform_entries.iter() {
-            let slot = lifeform_id as u32;
-            if (slot as usize) >= lifeform_capacity {
-                continue;
-            }
-            lifeforms.bootstrap_slot(
-                slot,
-                lifeform_id,
-                LifeformMetadata {
-                    species_id: Some(species_id),
-                    genome_id: None,
-                },
-            );
-        }
-        let initial_lifeforms = lifeforms.active_lifeform_count();
+        let initial_bounds = environment.lock().get_bounds();
+        let initial_lifeforms = 0;
         let mut simulation = Self {
             device,
             queue,
@@ -129,39 +73,16 @@ impl Simulation {
             environment,
             pause: PauseState::new(false),
             speed,
-            population: PopulationState::new(initial_alive, initial_lifeforms),
+            population: PopulationState::new(initial_alive, initial_lifeforms, 0),
             transfers: GpuTransferState::default(),
-            lifeforms,
-            spawn: SpawnState::new(spawn_capacity),
-            pending_division_requests: VecDeque::new(),
             cell_division_events: Vec::new(),
             cell_death_events: Vec::new(),
-            non_adhesive_divisions: Vec::new(),
             link_events: Vec::new(),
-            pending_link_writes: Vec::new(),
             current_bounds: initial_bounds,
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
             submission: SubmissionState::new(4, Duration::from_micros(500)),
         };
-
-        {
-            let env_guard = simulation.environment.lock();
-            for &(lifeform_id, _) in existing_lifeform_entries.iter() {
-                let slot = lifeform_id as u32;
-                if (slot as usize) >= lifeform_capacity {
-                    continue;
-                }
-                if let Some(compiled) = env_guard.genetic_algorithm.compiled_grn(lifeform_id) {
-                    let descriptor = simulation
-                        .buffers
-                        .write_grn_slot(simulation.queue.as_ref(), slot, compiled);
-                    simulation.update_lifeform_state(slot, lifeform_id, descriptor);
-                } else {
-                    simulation.clear_grn_for_slot(slot);
-                }
-            }
-        }
 
         simulation
     }
@@ -205,7 +126,7 @@ impl Simulation {
 
         let iterations = (10.0 * speed).max(1.0).floor() as u32;
         self.run_compute_batch(iterations);
-        self.maintain_minimum_cell_population(iterations);
+        self.maintain_minimum_cell_population();
     }
     
     pub fn get_step_count(&self) -> u64 {
@@ -230,6 +151,10 @@ impl Simulation {
 
     pub fn last_lifeform_count(&self) -> u32 {
         self.population.last_lifeform
+    }
+
+    pub fn last_species_count(&self) -> u32 {
+        self.population.last_species
     }
 
     pub fn enqueue_spawn_requests(&self, cells: &[Cell]) -> usize {
@@ -352,12 +277,6 @@ impl Simulation {
                 self.transfers.lifeform_flags_pending = true;
             }
 
-            if !self.transfers.division_requests_pending {
-                self.buffers
-                    .schedule_division_requests_copy(&mut encoder);
-                self.transfers.division_requests_pending = true;
-            }
-
             let ring_size = self.buffers.event_staging_ring_size();
             if ring_size > 0 {
                 let cell_slot = self.transfers.next_cell_event_staging % ring_size;
@@ -376,6 +295,26 @@ impl Simulation {
                     self.transfers.link_events_pending[link_slot] = true;
                     self.transfers.next_link_event_staging =
                         (link_slot + 1) % ring_size;
+                }
+
+                let lifeform_slot =
+                    self.transfers.next_lifeform_event_staging % ring_size;
+                if !self.transfers.lifeform_events_pending[lifeform_slot] {
+                    self.buffers
+                        .schedule_lifeform_events_copy(&mut encoder, lifeform_slot);
+                    self.transfers.lifeform_events_pending[lifeform_slot] = true;
+                    self.transfers.next_lifeform_event_staging =
+                        (lifeform_slot + 1) % ring_size;
+                }
+
+                let species_slot =
+                    self.transfers.next_species_event_staging % ring_size;
+                if !self.transfers.species_events_pending[species_slot] {
+                    self.buffers
+                        .schedule_species_events_copy(&mut encoder, species_slot);
+                    self.transfers.species_events_pending[species_slot] = true;
+                    self.transfers.next_species_event_staging =
+                        (species_slot + 1) % ring_size;
                 }
             }
 
@@ -402,7 +341,7 @@ impl Simulation {
 
     }
 
-    fn maintain_minimum_cell_population(&mut self, iteration_multiplier: u32) {
+    fn maintain_minimum_cell_population(&mut self) {
         if !self.submission.pending_command_buffers.is_empty() {
             profile_scope!("Flush Pending Command Buffers");
             self.flush_pending_submissions();
@@ -439,6 +378,16 @@ impl Simulation {
                 self.buffers.begin_link_events_map(slot);
                 events_need_poll = true;
             }
+            if self.transfers.lifeform_events_pending[slot] {
+                profile_scope!("Begin Lifeform Events Map");
+                self.buffers.begin_lifeform_events_map(slot);
+                events_need_poll = true;
+            }
+            if self.transfers.species_events_pending[slot] {
+                profile_scope!("Begin Species Events Map");
+                self.buffers.begin_species_events_map(slot);
+                events_need_poll = true;
+            }
         }
 
         if counters_need_poll || events_need_poll {
@@ -457,29 +406,8 @@ impl Simulation {
         if self.transfers.lifeform_flags_pending {
             profile_scope!("Consume Lifeform Flags");
             if let Some(flags) = self.buffers.try_consume_lifeform_flags() {
-                {
-                    profile_scope!("Apply Lifeform Flags");
-                    let update = self.lifeforms.apply_gpu_flags(&flags);
-                    if !update.extinct_ids.is_empty() {
-                        profile_scope!("Process Extinct Lifeforms");
-                        let death_time = self.step_count.load(Ordering::Relaxed) as usize;
-                        let mut environment = self.environment.lock();
-                        let ga = &mut environment.genetic_algorithm;
-                        for id in update.extinct_ids {
-                            ga.remove_lifeform(id, death_time);
-                        }
-                    }
-                    // The GPU lifeform flags reflect the authoritative set of active cells.
-                    // Use them to keep both the lifeform and cell counters from drifting high
-                    // when a stale alive-counter readback fails to arrive.
-                    self.population.sync_lifeforms(update.active_lifeforms);
-                    if self.population.last_alive != update.active_cells {
-                        self.population.sync_alive(update.active_cells);
-                    }
-                    for slot in update.released_slots.iter().copied() {
-                        self.clear_grn_for_slot(slot);
-                    }
-                }
+                let active_lifeforms = flags.iter().filter(|value| **value != 0).count() as u32;
+                self.population.sync_lifeforms(active_lifeforms);
                 self.transfers.lifeform_flags_pending = false;
             }
         }
@@ -499,71 +427,19 @@ impl Simulation {
                     self.transfers.link_events_pending[slot] = false;
                 }
             }
-        }
-
-        if self.pause.is_paused() {
-            return;
-        }
-
-        let alive_estimate = self.population.predicted_alive as usize;
-        let spawn_multiplier = iteration_multiplier.max(1) as usize;
-        let base_spawn_cap = MAX_SPAWN_PER_STEP.min(self.spawn.capacity);
-        let scaled_spawn_cap = base_spawn_cap
-            .saturating_mul(spawn_multiplier)
-            .min(self.spawn.capacity);
-
-        let mut pending_spawns: Vec<PendingSpawn> = Vec::with_capacity(scaled_spawn_cap);
-        let mut rng = rand::thread_rng();
-        let mut spawn_reads_need_poll = false;
-
-        self.drain_non_adhesive_divisions(&mut pending_spawns, scaled_spawn_cap);
-
-        if self.transfers.division_requests_pending {
-            {
-                profile_scope!("Begin Division Requests Map");
-                self.buffers.begin_division_requests_map();
-            }
-            spawn_reads_need_poll = true;
-        }
-
-        if spawn_reads_need_poll {
-            profile_scope!("Poll Division Requests");
-            let _ = self.device.poll(wgpu::MaintainBase::Poll);
-        }
-
-        if self.transfers.division_requests_pending {
-            profile_scope!("Consume Division Requests");
-            if let Some(requests) = self.buffers.try_consume_division_requests() {
-                self.transfers.division_requests_pending = false;
-                profile_scope!("Queue Division Spawns");
-                for request in requests {
-                    if let Some(requeue) = self.process_division_request(
-                        request,
-                        &mut pending_spawns,
-                        scaled_spawn_cap,
-                    ) {
-                        self.pending_division_requests.push_back(requeue);
-                    }
+            if self.transfers.lifeform_events_pending[slot] {
+                profile_scope!("Consume Lifeform Events");
+                if let Some(events) = self.buffers.try_consume_lifeform_events(slot) {
+                    self.handle_lifeform_events(events);
+                    self.transfers.lifeform_events_pending[slot] = false;
                 }
             }
-        }
-
-        {
-            profile_scope!("Drain Pending Division Queue");
-            let mut iterations = self.pending_division_requests.len();
-            while pending_spawns.len() < scaled_spawn_cap && iterations > 0 {
-                if let Some(request) = self.pending_division_requests.pop_front() {
-                    if let Some(requeue) =
-                        self.process_division_request(request, &mut pending_spawns, scaled_spawn_cap)
-                    {
-                        self.pending_division_requests.push_back(requeue);
-                        break;
-                    }
+            if self.transfers.species_events_pending[slot] {
+                profile_scope!("Consume Species Events");
+                if let Some(events) = self.buffers.try_consume_species_events(slot) {
+                    self.handle_species_events(events);
+                    self.transfers.species_events_pending[slot] = false;
                 }
-                if self.pending_division_requests.is_empty() {
-                    break;
-                }
-                iterations -= 1;
             }
         }
 
@@ -576,249 +452,7 @@ impl Simulation {
         if bounds != self.current_bounds {
             self.handle_bounds_resize(bounds);
         }
-
-        if scaled_spawn_cap > 0 && alive_estimate < MIN_ACTIVE_CELLS {
-            profile_scope!("Queue Random Spawns");
-            let deficit = MIN_ACTIVE_CELLS - alive_estimate;
-            let available_slots = scaled_spawn_cap
-                .saturating_sub(pending_spawns.len());
-            if available_slots > 0 {
-                let desired_spawns = deficit
-                    .min(scaled_spawn_cap)
-                    .min(available_slots);
-
-                for _ in 0..desired_spawns {
-                    let slot = match self.lifeforms.reserve_slot() {
-                        Some(slot) => slot,
-                        None => break,
-                    };
-                    let x = rng.gen_range(bounds.left..bounds.right());
-                    let y = rng.gen_range(bounds.top..bounds.bottom());
-                    let radius = rng.gen_range(0.5..4.0);
-                    let energy = rng.gen_range(50.0..120.0);
-                    let mut cell = Cell::new([x, y], radius, slot, energy);
-                    cell.random_force = [0.0, 0.0];
-                    pending_spawns.push(PendingSpawn {
-                        cell,
-                        slot,
-                        kind: SpawnKind::RandomNew,
-                    });
-                }
-            }
-        }
-
-        if pending_spawns.is_empty() {
-            return;
-        }
-
-        self.spawn.scratch.clear();
-        self.spawn.scratch
-            .extend(pending_spawns.iter().map(|spawn| spawn.cell));
-        let submitted = {
-            profile_scope!("Submit Spawn Requests");
-            self.enqueue_spawn_requests(&self.spawn.scratch)
-        };
-
-        if submitted == 0 {
-            profile_scope!("Release Rejected Spawn Slots");
-            for spawn in pending_spawns {
-                match spawn.kind {
-                    SpawnKind::Division { request, .. } => {
-                        self.pending_division_requests.push_back(request);
-                    }
-                    SpawnKind::NewLifeform { event, .. } => {
-                        self.non_adhesive_divisions.push(event);
-                    }
-                    SpawnKind::RandomNew => {}
-                }
-                self.lifeforms.release_slot(spawn.slot);
-            }
-            return;
-        }
-
-        self.population.predicted_alive =
-            self.population.predicted_alive.saturating_add(submitted as u32);
-        let mut random_new_slots = Vec::new();
-        let mut division_infos = Vec::new();
-        let mut new_lifeform_infos = Vec::new();
-
-        {
-            profile_scope!("Categorize Spawn Results");
-            for spawn in pending_spawns.iter().take(submitted) {
-                match &spawn.kind {
-                    SpawnKind::RandomNew => {
-                        random_new_slots.push(spawn.slot);
-                    }
-                    SpawnKind::Division {
-                        parent_lifeform_id, ..
-                    } => {
-                        division_infos.push((spawn.slot, *parent_lifeform_id));
-                    }
-                    SpawnKind::NewLifeform {
-                        parent_lifeform_id,
-                        event,
-                    } => {
-                        new_lifeform_infos
-                            .push((spawn.slot, *parent_lifeform_id, *event));
-                    }
-                }
-            }
-        }
-
-        let birth_time = self.step_count.load(Ordering::Relaxed) as usize;
-        let mut _new_lifeforms = 0u32;
-        let mut grn_uploads: Vec<(u32, Option<(CompiledGrn, usize)>)> = Vec::new();
-        {
-            profile_scope!("Register Lifeforms");
-            let mut environment = self.environment.lock();
-            let ga = &mut environment.genetic_algorithm;
-            {
-                profile_scope!("Register Random Lifeforms");
-                for slot in random_new_slots {
-                    let (lifeform_id, species_id) = ga.spawn_random_lifeform(&mut rng, birth_time);
-                    self.lifeforms.assign_id_to_slot(
-                        slot,
-                        lifeform_id,
-                        LifeformMetadata {
-                            species_id: Some(species_id),
-                            genome_id: None,
-                        },
-                    );
-                    _new_lifeforms += 1;
-                    if let Some(compiled) = ga.compiled_grn(lifeform_id).cloned() {
-                        grn_uploads.push((slot, Some((compiled, lifeform_id))));
-                    } else {
-                        grn_uploads.push((slot, None));
-                    }
-                }
-            }
-            {
-                profile_scope!("Register Division Offspring");
-                for (slot, parent_id) in division_infos {
-                    let metadata = self
-                        .lifeforms
-                        .metadata(parent_id)
-                        .cloned()
-                        .unwrap_or(LifeformMetadata {
-                            species_id: None,
-                            genome_id: None,
-                        });
-                    self.lifeforms
-                        .assign_id_to_slot(slot, parent_id, metadata);
-                }
-            }
-            {
-                profile_scope!("Register New Lifeforms");
-                for (slot, parent_id, _event) in new_lifeform_infos {
-                    let (lifeform_id, species_id) = if let Some(parent_id) = parent_id {
-                        match ga.register_division_offspring(parent_id, birth_time, &mut rng) {
-                            Some(result) => result,
-                            None => {
-                                self.lifeforms.release_slot(slot);
-                                self.clear_grn_for_slot(slot);
-                                self.population.predicted_alive =
-                                    self.population.predicted_alive.saturating_sub(1);
-                                continue;
-                            }
-                        }
-                    } else {
-                        ga.spawn_random_lifeform(&mut rng, birth_time)
-                    };
-
-                    self.lifeforms.assign_id_to_slot(
-                        slot,
-                        lifeform_id,
-                        LifeformMetadata {
-                            species_id: Some(species_id),
-                            genome_id: None,
-                        },
-                    );
-                    self.population.predicted_lifeform =
-                        self.population.predicted_lifeform.saturating_add(1);
-                    _new_lifeforms += 1;
-                    if let Some(compiled) = ga.compiled_grn(lifeform_id).cloned() {
-                        grn_uploads.push((slot, Some((compiled, lifeform_id))));
-                    } else {
-                        grn_uploads.push((slot, None));
-                    }
-                }
-            }
-        }
-
-        for (slot, entry) in grn_uploads {
-            match entry {
-                Some((compiled, lifeform_id)) => {
-                    let descriptor =
-                        self.buffers
-                            .write_grn_slot(self.queue.as_ref(), slot, &compiled);
-                    self.update_lifeform_state(slot, lifeform_id, descriptor);
-                }
-                None => {
-                    self.clear_grn_for_slot(slot);
-                }
-            }
-        }
-
-        self.population.predicted_lifeform = self.lifeforms.active_lifeform_count();
-
-        {
-            profile_scope!("Release Excess Spawn Slots");
-            for spawn in pending_spawns.iter().skip(submitted) {
-                match &spawn.kind {
-                    SpawnKind::Division { request, .. } => {
-                        self.pending_division_requests.push_back(*request);
-                    }
-                    SpawnKind::NewLifeform { event, .. } => {
-                        self.non_adhesive_divisions.push(*event);
-                    }
-                    SpawnKind::RandomNew => {}
-                }
-                self.lifeforms.release_slot(spawn.slot);
-                self.clear_grn_for_slot(spawn.slot);
-            }
-        }
-
-        self.flush_pending_gpu_writes();
         self.process_event_bookkeeping();
-    }
-
-    fn process_division_request(
-        &mut self,
-        request: DivisionRequest,
-        pending_spawns: &mut Vec<PendingSpawn>,
-        spawn_limit: usize,
-    ) -> Option<DivisionRequest> {
-        if pending_spawns.len() >= spawn_limit {
-            return Some(request);
-        }
-
-        let parent_slot = request.parent_lifeform_slot;
-        if !self.lifeforms.is_slot_active(parent_slot) {
-            return None;
-        }
-
-        let parent_id = match self.lifeforms.id_for_slot(parent_slot) {
-            Some(id) => id,
-            None => return Some(request),
-        };
-
-        let slot = match self.lifeforms.reserve_slot() {
-            Some(slot) => slot,
-            None => return Some(request),
-        };
-
-        let mut cell = Cell::new(request.pos, request.radius, slot, request.energy);
-        cell.random_force = [0.0, 0.0];
-        cell.metadata = request.cell_index.saturating_add(1);
-        pending_spawns.push(PendingSpawn {
-            cell,
-            slot,
-            kind: SpawnKind::Division {
-                parent_lifeform_id: parent_id,
-                request,
-            },
-        });
-        None
     }
 
     fn handle_cell_events(&mut self, events: Vec<CellEvent>) {
@@ -832,11 +466,7 @@ impl Simulation {
             }
             match event.kind {
                 kind if kind == CellEvent::KIND_DIVISION => {
-                    if (event.flags & CellEvent::FLAG_ADHESIVE) != 0 {
-                        self.cell_division_events.push(event);
-                    } else {
-                        self.non_adhesive_divisions.push(event);
-                    }
+                    self.cell_division_events.push(event);
                 }
                 kind if kind == CellEvent::KIND_DEATH => {
                     self.cell_death_events.push(event);
@@ -861,30 +491,46 @@ impl Simulation {
         }
     }
 
-    fn flush_pending_gpu_writes(&mut self) {
-        if self.pending_link_writes.is_empty() {
+    fn handle_lifeform_events(&mut self, events: Vec<LifeformEvent>) {
+        if events.is_empty() {
             return;
         }
-        profile_scope!("Flush Pending Link Writes");
-        for (offset, link) in self.pending_link_writes.drain(..) {
-            self.buffers
-                .write_links(&self.queue, offset, std::slice::from_ref(&link));
+        profile_scope!("Handle Lifeform Events");
+        for event in events {
+            match event.kind {
+                LifeformEvent::KIND_CREATE => {
+                    self.population.predicted_lifeform =
+                        self.population.predicted_lifeform.saturating_add(1);
+                }
+                LifeformEvent::KIND_DESTROY => {
+                    self.population.predicted_lifeform =
+                        self.population.predicted_lifeform.saturating_sub(1);
+                }
+                _ => {}
+            }
         }
     }
 
-    fn update_lifeform_state(&self, slot: u32, lifeform_id: usize, descriptor: GrnDescriptor) {
-        let state = LifeformState::from_descriptor(lifeform_id as u32, slot, &descriptor);
-        self.buffers
-            .write_lifeform_state(self.queue.as_ref(), slot, state);
-    }
-
-    fn clear_lifeform_state(&self, slot: u32) {
-        self.buffers.clear_lifeform_state(self.queue.as_ref(), slot);
-    }
-
-    fn clear_grn_for_slot(&self, slot: u32) {
-        self.buffers.clear_grn_slot(self.queue.as_ref(), slot);
-        self.clear_lifeform_state(slot);
+    fn handle_species_events(&mut self, events: Vec<SpeciesEvent>) {
+        if events.is_empty() {
+            return;
+        }
+        profile_scope!("Handle Species Events");
+        for event in events {
+            match event.kind {
+                SpeciesEvent::KIND_CREATE => {
+                    let updated = self.population.predicted_species.saturating_add(1);
+                    self.population.predicted_species = updated;
+                    self.population.last_species = updated;
+                }
+                SpeciesEvent::KIND_EXTINCT => {
+                    let updated = self.population.predicted_species.saturating_sub(1);
+                    self.population.predicted_species = updated;
+                    self.population.last_species = updated;
+                }
+                _ => {}
+            }
+        }
     }
 
     fn process_event_bookkeeping(&mut self) {
@@ -906,7 +552,6 @@ impl Simulation {
         }
 
         if !self.cell_division_events.is_empty() {
-            // Adhesive divisions stay within existing lifeforms; adjust alive prediction only.
             let divisions = self.cell_division_events.len() as u32;
             self.population.predicted_alive = self
                 .population
@@ -936,70 +581,32 @@ impl Simulation {
             &self.buffers.uniform_buffer,
             self.buffers.cell_free_list_buffer_write(),
             self.buffers.alive_counter_buffer(),
-            self.buffers.spawn_request_count_buffer(),
-            self.buffers.spawn_requests_buffer(),
+            self.buffers.spawn_buffer(),
             self.buffers.lifeform_active_flags_buffer(),
-            self.buffers.division_request_count_buffer(),
-            self.buffers.division_requests_buffer(),
+            new_nutrient_buffer.as_ref(),
+            self.buffers.link_buffer(),
+            self.buffers.link_free_list_buffer(),
+            self.buffers.link_events_buffer(),
+            self.buffers.cell_events_buffer(),
             self.buffers.cell_hash_bucket_heads_buffer(),
             self.buffers.cell_hash_next_indices_buffer(),
-            self.buffers.link_buffer(),
-            self.buffers.link_free_count_buffer(),
-            self.buffers.link_free_list_buffer(),
-            self.buffers.link_event_count_buffer(),
-            self.buffers.link_events_buffer(),
-            self.buffers.cell_event_count_buffer(),
-            self.buffers.cell_events_buffer(),
-            new_nutrient_buffer.as_ref(),
             self.buffers.grn_descriptor_buffer(),
             self.buffers.grn_units_buffer(),
             self.buffers.lifeform_states_buffer(),
+            self.buffers.lifeform_entries_buffer(),
+            self.buffers.lifeform_free_buffer(),
+            self.buffers.next_lifeform_id_buffer(),
+            self.buffers.genome_buffer(),
+            self.buffers.species_entries_buffer(),
+            self.buffers.species_free_buffer(),
+            self.buffers.next_species_id_buffer(),
+            self.buffers.lifeform_events_buffer(),
+            self.buffers.species_events_buffer(),
         );
 
         self.current_bounds = bounds;
     }
 
-    fn drain_non_adhesive_divisions(
-        &mut self,
-        pending_spawns: &mut Vec<PendingSpawn>,
-        spawn_limit: usize,
-    ) {
-        if self.non_adhesive_divisions.is_empty() || pending_spawns.len() >= spawn_limit {
-            return;
-        }
-        profile_scope!("Drain Non-Adhesive Divisions");
-        let mut remaining_capacity = spawn_limit.saturating_sub(pending_spawns.len());
-        while remaining_capacity > 0 {
-            let event = match self.non_adhesive_divisions.pop() {
-                Some(event) => event,
-                None => break,
-            };
-
-            let slot = match self.lifeforms.reserve_slot() {
-                Some(slot) => slot,
-                None => {
-                    // No capacity left; push the event back and stop trying.
-                    self.non_adhesive_divisions.push(event);
-                    break;
-                }
-            };
-
-            let mut cell = Cell::new(event.position, event.radius, slot, event.energy);
-            cell.random_force = [0.0, 0.0];
-
-            let parent_id = self.lifeforms.id_for_slot(event.parent_lifeform_slot);
-            pending_spawns.push(PendingSpawn {
-                cell,
-                slot,
-                kind: SpawnKind::NewLifeform {
-                    parent_lifeform_id: parent_id,
-                    event,
-                },
-            });
-
-            remaining_capacity = spawn_limit.saturating_sub(pending_spawns.len());
-        }
-    }
 }
 
 /// Application structure - manages rendering at 60 FPS and window events
@@ -1078,24 +685,27 @@ impl Application {
             &buffers.uniform_buffer,
             buffers.cell_free_list_buffer_write(), // Compute uses write buffer's free list
             buffers.alive_counter_buffer(),
-            buffers.spawn_request_count_buffer(),
-            buffers.spawn_requests_buffer(),
+            buffers.spawn_buffer(),
             buffers.lifeform_active_flags_buffer(),
-            buffers.division_request_count_buffer(),
-            buffers.division_requests_buffer(),
+            nutrient_buffer.as_ref(),
+            buffers.link_buffer(),
+            buffers.link_free_list_buffer(),
+            buffers.link_events_buffer(),
+            buffers.cell_events_buffer(),
             buffers.cell_hash_bucket_heads_buffer(),
             buffers.cell_hash_next_indices_buffer(),
-            buffers.link_buffer(),
-            buffers.link_free_count_buffer(),
-            buffers.link_free_list_buffer(),
-            buffers.link_event_count_buffer(),
-            buffers.link_events_buffer(),
-            buffers.cell_event_count_buffer(),
-            buffers.cell_events_buffer(),
-            nutrient_buffer.as_ref(),
             buffers.grn_descriptor_buffer(),
             buffers.grn_units_buffer(),
             buffers.lifeform_states_buffer(),
+            buffers.lifeform_entries_buffer(),
+            buffers.lifeform_free_buffer(),
+            buffers.next_lifeform_id_buffer(),
+            buffers.genome_buffer(),
+            buffers.species_entries_buffer(),
+            buffers.species_free_buffer(),
+            buffers.next_species_id_buffer(),
+            buffers.lifeform_events_buffer(),
+            buffers.species_events_buffer(),
         );
         let speed = Arc::new(parking_lot::Mutex::new(0.05));
 
@@ -1197,7 +807,7 @@ impl Application {
         }
         
         // Get current simulation state and clone buffers
-        let (current_step, buffers, bounds, alive_count, lifeform_count) = {
+        let (current_step, buffers, bounds, alive_count, lifeform_count, species_count) = {
             profile_scope!("Sync Simulation State");
             let mut simulation = self.simulation.lock();
             {
@@ -1213,10 +823,11 @@ impl Application {
                 let buffers = simulation.get_buffers();
                 let alive_count = simulation.last_alive_count();
                 let lifeform_count = simulation.last_lifeform_count();
+                let species_count = simulation.last_species_count();
                 drop(simulation);
                 let environment = self.environment.lock();
                 let bounds = environment.get_bounds();
-                (current_step, buffers, bounds, alive_count, lifeform_count)
+                (current_step, buffers, bounds, alive_count, lifeform_count, species_count)
             }
         };
 
@@ -1324,13 +935,6 @@ impl Application {
                 }
 
                 // Get current simulation state and clone buffers
-                let species_count = {
-                    profile_scope!("Get Genetic Algorithm Species Count");
-                    let environment = self.environment.lock();
-                    let species_count = environment.genetic_algorithm.num_species();
-                    drop(environment);
-                    species_count
-                };
                 let cell_count = alive_count as usize;
                 let lifeform_display_count = lifeform_count as usize;
                 if let Some(species_component) = screen.find_element_by_id("species") {
@@ -1782,8 +1386,8 @@ impl Application {
             Some(initial_bounds),
         );
 
-        // Get initial cells and lifeforms from environment
-        let cells = environment.genetic_algorithm.init(200, environment.get_bounds(), &gpu.device, &gpu.queue);
+        // Start with no pre-existing cells; GPU will populate as needed
+        let cells: Vec<Cell> = Vec::new();
 
         // Initialize GPU buffers with initial data
         let bounds = environment.get_bounds();

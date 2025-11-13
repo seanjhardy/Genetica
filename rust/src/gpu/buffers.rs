@@ -3,119 +3,44 @@
 use wgpu;
 use wgpu::util::DeviceExt;
 use parking_lot::{Mutex, RwLock};
+use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use bytemuck::{pod_read_unaligned, Zeroable};
-use puffin::profile_scope;
+
 use crate::gpu::structures::{
     Cell,
     CellEvent,
-    CompiledGrn,
     CompiledRegulatoryUnit,
-    DivisionRequest,
     GrnDescriptor,
+    GenomeEntry,
+    LifeformEntry,
+    LifeformEvent,
+    LifeformState,
     Link,
     LinkEvent,
-    LifeformState,
+    SpeciesEntry,
+    SpeciesEvent,
     MAX_GRN_REGULATORY_UNITS,
+    MAX_LIFEFORM_EVENTS,
+    MAX_SPECIES_EVENTS,
+    MAX_SPECIES_CAPACITY,
 };
 use crate::utils::math::Rect;
 use crate::utils::gpu::gpu_vector::GpuVector;
 
-const CELL_CAPACITY: usize = 200_000;
+const CELL_CAPACITY: usize = 20_000;
 const CELL_HASH_TABLE_SIZE: usize = 1 << 16; // 65_536 buckets
 const MAX_SPAWN_REQUESTS: usize = 512;
-const LIFEFORM_CAPACITY: usize = 20_000;
-const MAX_DIVISION_REQUESTS: usize = 512;
-const LINK_CAPACITY: usize = 40_000;
+const LIFEFORM_CAPACITY: usize = 5_000;
+const LINK_CAPACITY: usize = 30_000;
 const LINK_FREE_LIST_CAPACITY: usize = LINK_CAPACITY;
 const MAX_CELL_EVENTS: usize = 1_024;
 const MAX_LINK_EVENTS: usize = 1_024;
-pub const EVENT_STAGING_RING_SIZE: usize = 3;
+pub const EVENT_STAGING_RING_SIZE: usize = 2;
 const NUTRIENT_CELL_SIZE: u32 = 20;
 const NUTRIENT_UNIT_SCALE: u32 = 4_000_000_000; // annoyingly we can't do atomicSubCompareExchangeWeak with f32 :sadge:
-const AVERAGE_GRN_UNITS_PER_LIFEFORM: usize = 16;
-const MAX_TOTAL_GRN_UNITS: usize = LIFEFORM_CAPACITY * AVERAGE_GRN_UNITS_PER_LIFEFORM;
-
-struct GrnAllocationState {
-    units: Vec<CompiledRegulatoryUnit>,
-    free_lists: Vec<Vec<u32>>,
-    next_free_offset: u32,
-    slot_ranges: Vec<Option<(u32, u32)>>,
-}
-
-impl GrnAllocationState {
-    fn new(units: Vec<CompiledRegulatoryUnit>) -> Self {
-        let mut free_lists = Vec::with_capacity(MAX_GRN_REGULATORY_UNITS + 1);
-        free_lists.resize_with(MAX_GRN_REGULATORY_UNITS + 1, Vec::new);
-        Self {
-            units,
-            free_lists,
-            next_free_offset: 0,
-            slot_ranges: vec![None; LIFEFORM_CAPACITY],
-        }
-    }
-
-    fn release_slot(&mut self, slot: usize) {
-        if slot >= self.slot_ranges.len() {
-            return;
-        }
-        if let Some((offset, len)) = self.slot_ranges[slot].take() {
-            if len == 0 {
-                return;
-            }
-            let len_usize = len as usize;
-            if len_usize < self.free_lists.len() {
-                self.free_lists[len_usize].push(offset);
-            }
-        }
-    }
-
-    fn allocate_slot(&mut self, slot: usize, len: u32) -> Option<u32> {
-        if slot >= self.slot_ranges.len() {
-            return None;
-        }
-        self.release_slot(slot);
-        if len == 0 {
-            return Some(0);
-        }
-        let len_usize = len as usize;
-        if len_usize >= self.free_lists.len() {
-            return None;
-        }
-
-        if let Some(offset) = self.free_lists[len_usize].pop() {
-            self.slot_ranges[slot] = Some((offset, len));
-            return Some(offset);
-        }
-
-        for larger in (len_usize + 1)..self.free_lists.len() {
-            if let Some(offset) = self.free_lists[larger].pop() {
-                let remaining = (larger as u32).saturating_sub(len);
-                if remaining > 0 {
-                    let rem_usize = remaining as usize;
-                    if rem_usize < self.free_lists.len() {
-                        self.free_lists[rem_usize].push(offset + len);
-                    }
-                }
-                self.slot_ranges[slot] = Some((offset, len));
-                return Some(offset);
-            }
-        }
-
-        let total_units = self.units.len() as u32;
-        if self.next_free_offset + len <= total_units {
-            let offset = self.next_free_offset;
-            self.next_free_offset += len;
-            self.slot_ranges[slot] = Some((offset, len));
-            return Some(offset);
-        }
-
-        None
-    }
-}
-
 pub struct GpuBuffers {
     pub cell_vector_a: GpuVector<Cell>,
     pub cell_vector_b: GpuVector<Cell>,
@@ -127,23 +52,14 @@ pub struct GpuBuffers {
     lifeform_active_flags: wgpu::Buffer,
     lifeform_active_flags_staging: wgpu::Buffer,
     lifeform_active_flags_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
-    spawn_request_count: wgpu::Buffer,
-    spawn_requests: wgpu::Buffer,
-    division_request_count: wgpu::Buffer,
-    division_requests: wgpu::Buffer,
-    division_requests_staging: wgpu::Buffer,
-    division_requests_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
+    spawn_buffer: wgpu::Buffer,
     spawn_capacity: usize,
-    division_capacity: usize,
     link_buffer: wgpu::Buffer,
     link_free_list: wgpu::Buffer,
-    link_free_list_count: wgpu::Buffer,
     link_capacity: usize,
-    cell_event_count: wgpu::Buffer,
     cell_events: wgpu::Buffer,
     cell_event_staging: Vec<wgpu::Buffer>,
     cell_event_readback: Vec<Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>>,
-    link_event_count: wgpu::Buffer,
     link_events: wgpu::Buffer,
     link_event_staging: Vec<wgpu::Buffer>,
     link_event_readback: Vec<Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>>,
@@ -155,10 +71,20 @@ pub struct GpuBuffers {
     spatial_hash_next_indices: wgpu::Buffer,
     grn_descriptors: wgpu::Buffer,
     grn_units: wgpu::Buffer,
-    grn_state: Mutex<GrnAllocationState>,
-    grn_descriptors_cpu: Mutex<Vec<GrnDescriptor>>,
     lifeform_states: wgpu::Buffer,
-    lifeform_states_cpu: Mutex<Vec<LifeformState>>,
+    lifeform_entries: wgpu::Buffer,
+    lifeform_free_list: wgpu::Buffer,
+    next_lifeform_id: wgpu::Buffer,
+    lifeform_events: wgpu::Buffer,
+    lifeform_event_staging: Vec<wgpu::Buffer>,
+    lifeform_event_readback: Vec<Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>>,
+    genome_buffer: wgpu::Buffer,
+    species_entries: wgpu::Buffer,
+    species_free_list: wgpu::Buffer,
+    next_species_id: wgpu::Buffer,
+    species_events: wgpu::Buffer,
+    species_event_staging: Vec<wgpu::Buffer>,
+    species_event_readback: Vec<Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>>,
 }
 
 impl GpuBuffers {
@@ -253,42 +179,16 @@ impl GpuBuffers {
             mapped_at_creation: false,
         });
 
-        let spawn_request_count = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Spawn Request Count"),
-            contents: bytemuck::cast_slice(&[0u32]),
+        let spawn_header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let spawn_buffer_size = spawn_header_size
+            + (MAX_SPAWN_REQUESTS * std::mem::size_of::<Cell>()) as u64;
+        let spawn_zero = vec![0u8; spawn_buffer_size as usize];
+        let spawn_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Spawn Buffer"),
+            contents: &spawn_zero,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
-        });
-
-        let spawn_requests = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Spawn Requests Buffer"),
-            size: (MAX_SPAWN_REQUESTS * std::mem::size_of::<Cell>()) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let division_request_count = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Division Request Count"),
-            contents: bytemuck::cast_slice(&[0u32]),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-        });
-
-        let division_requests = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Division Requests Buffer"),
-            size: (MAX_DIVISION_REQUESTS * std::mem::size_of::<DivisionRequest>()) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-
-        let division_requests_staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Division Requests Staging"),
-            size: (std::mem::size_of::<u32>()
-                + MAX_DIVISION_REQUESTS * std::mem::size_of::<DivisionRequest>()) as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
         });
 
         let link_init = vec![Link::zeroed(); LINK_CAPACITY];
@@ -300,8 +200,10 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_DST,
         });
 
-        let link_free_list_init: Vec<u32> =
-            (0..LINK_FREE_LIST_CAPACITY as u32).rev().collect();
+        let mut link_free_list_init: Vec<u32> = Vec::with_capacity(LINK_FREE_LIST_CAPACITY + 2);
+        link_free_list_init.push(LINK_FREE_LIST_CAPACITY as u32);
+        link_free_list_init.push(0u32);
+        link_free_list_init.extend((0..LINK_FREE_LIST_CAPACITY as u32).rev());
         let link_free_list = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Link Free List"),
             contents: bytemuck::cast_slice(&link_free_list_init),
@@ -310,33 +212,18 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_SRC,
         });
 
-        let link_free_list_count = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Link Free Count"),
-            contents: bytemuck::cast_slice(&[LINK_FREE_LIST_CAPACITY as u32]),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-        });
-
-        let cell_event_count = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Cell Event Count"),
-            contents: bytemuck::cast_slice(&[0u32]),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-        });
-
-        let cell_events = device.create_buffer(&wgpu::BufferDescriptor {
+        let cell_event_header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let cell_event_buffer_size = cell_event_header_size
+            + (MAX_CELL_EVENTS * std::mem::size_of::<CellEvent>()) as u64;
+        let cell_event_zero = vec![0u8; cell_event_buffer_size as usize];
+        let cell_events = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Cell Events Buffer"),
-            size: (MAX_CELL_EVENTS * std::mem::size_of::<CellEvent>()) as u64,
+            contents: &cell_event_zero,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_SRC
                 | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
         });
 
-        let cell_event_staging_size = (std::mem::size_of::<u32>()
-            + MAX_CELL_EVENTS * std::mem::size_of::<CellEvent>()) as u64;
         let mut cell_event_staging = Vec::with_capacity(EVENT_STAGING_RING_SIZE);
         let mut cell_event_readback: Vec<
             Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
@@ -344,7 +231,7 @@ impl GpuBuffers {
         for _ in 0..EVENT_STAGING_RING_SIZE {
             let staging = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Cell Events Staging"),
-                size: cell_event_staging_size,
+                size: cell_event_buffer_size,
                 usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
@@ -352,25 +239,18 @@ impl GpuBuffers {
             cell_event_readback.push(Mutex::new(None));
         }
 
-        let link_event_count = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Link Event Count"),
-            contents: bytemuck::cast_slice(&[0u32]),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-        });
-
-        let link_events = device.create_buffer(&wgpu::BufferDescriptor {
+        let link_event_header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let link_event_buffer_size = link_event_header_size
+            + (MAX_LINK_EVENTS * std::mem::size_of::<LinkEvent>()) as u64;
+        let link_event_zero = vec![0u8; link_event_buffer_size as usize];
+        let link_events = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Link Events Buffer"),
-            size: (MAX_LINK_EVENTS * std::mem::size_of::<LinkEvent>()) as u64,
+            contents: &link_event_zero,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_SRC
                 | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
         });
 
-        let link_event_staging_size = (std::mem::size_of::<u32>()
-            + MAX_LINK_EVENTS * std::mem::size_of::<LinkEvent>()) as u64;
         let mut link_event_staging = Vec::with_capacity(EVENT_STAGING_RING_SIZE);
         let mut link_event_readback: Vec<
             Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
@@ -378,7 +258,7 @@ impl GpuBuffers {
         for _ in 0..EVENT_STAGING_RING_SIZE {
             let staging = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Link Events Staging"),
-                size: link_event_staging_size,
+                size: link_event_buffer_size,
                 usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
@@ -409,24 +289,149 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_SRC,
         });
 
-        let grn_units_cpu = vec![CompiledRegulatoryUnit::zeroed(); MAX_TOTAL_GRN_UNITS];
+        let total_grn_units = LIFEFORM_CAPACITY * MAX_GRN_REGULATORY_UNITS;
+        let grn_units_init = vec![CompiledRegulatoryUnit::zeroed(); total_grn_units];
         let grn_units = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("GRN Units Buffer"),
-            contents: bytemuck::cast_slice(&grn_units_cpu),
+            contents: bytemuck::cast_slice(&grn_units_init),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
         });
 
-        let lifeform_states_cpu = vec![LifeformState::inactive(); LIFEFORM_CAPACITY];
+        let lifeform_states_init = vec![LifeformState::inactive(); LIFEFORM_CAPACITY];
         let lifeform_states = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Lifeform States Buffer"),
-            contents: bytemuck::cast_slice(&lifeform_states_cpu),
+            contents: bytemuck::cast_slice(&lifeform_states_init),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
         });
-        let grn_state = Mutex::new(GrnAllocationState::new(grn_units_cpu));
+
+        let genome_entries_init = vec![GenomeEntry::inactive(); LIFEFORM_CAPACITY];
+        let genome_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Genome Buffer"),
+            contents: bytemuck::cast_slice(&genome_entries_init),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let lifeform_entries_init = vec![LifeformEntry::inactive(); LIFEFORM_CAPACITY];
+        let lifeform_entries = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Lifeform Entries Buffer"),
+            contents: bytemuck::cast_slice(&lifeform_entries_init),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let mut lifeform_free_init: Vec<u32> =
+            Vec::with_capacity(LIFEFORM_CAPACITY + 2);
+        lifeform_free_init.push(LIFEFORM_CAPACITY as u32);
+        lifeform_free_init.push(0u32);
+        lifeform_free_init.extend((0..LIFEFORM_CAPACITY as u32).rev());
+        let lifeform_free_list = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Lifeform Free List"),
+            contents: bytemuck::cast_slice(&lifeform_free_init),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let next_lifeform_id = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Next Lifeform ID"),
+            contents: bytemuck::cast_slice(&[0u32]),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let lifeform_event_header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let lifeform_event_buffer_size =
+            lifeform_event_header_size + (MAX_LIFEFORM_EVENTS * std::mem::size_of::<LifeformEvent>()) as u64;
+        let lifeform_event_zero = vec![0u8; lifeform_event_buffer_size as usize];
+        let lifeform_events = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Lifeform Events Buffer"),
+            contents: &lifeform_event_zero,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let lifeform_event_staging_size = lifeform_event_buffer_size;
+        let mut lifeform_event_staging = Vec::with_capacity(EVENT_STAGING_RING_SIZE);
+        let mut lifeform_event_readback: Vec<
+            Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
+        > = Vec::with_capacity(EVENT_STAGING_RING_SIZE);
+        for _ in 0..EVENT_STAGING_RING_SIZE {
+            let staging = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Lifeform Events Staging"),
+                size: lifeform_event_staging_size,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            lifeform_event_staging.push(staging);
+            lifeform_event_readback.push(Mutex::new(None));
+        }
+
+        let species_entries_init = vec![SpeciesEntry::inactive(); MAX_SPECIES_CAPACITY];
+        let species_entries = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Species Entries Buffer"),
+            contents: bytemuck::cast_slice(&species_entries_init),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let mut species_free_init: Vec<u32> =
+            Vec::with_capacity(MAX_SPECIES_CAPACITY + 2);
+        species_free_init.push(MAX_SPECIES_CAPACITY as u32);
+        species_free_init.push(0u32);
+        species_free_init.extend((0..MAX_SPECIES_CAPACITY as u32).rev());
+        let species_free_list = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Species Free List"),
+            contents: bytemuck::cast_slice(&species_free_init),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let next_species_id = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Next Species ID"),
+            contents: bytemuck::cast_slice(&[0u32]),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let species_event_header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let species_event_buffer_size =
+            species_event_header_size + (MAX_SPECIES_EVENTS * std::mem::size_of::<SpeciesEvent>()) as u64;
+        let species_event_zero = vec![0u8; species_event_buffer_size as usize];
+        let species_events = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Species Events Buffer"),
+            contents: &species_event_zero,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let species_event_staging_size = species_event_buffer_size;
+        let mut species_event_staging = Vec::with_capacity(EVENT_STAGING_RING_SIZE);
+        let mut species_event_readback: Vec<
+            Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
+        > = Vec::with_capacity(EVENT_STAGING_RING_SIZE);
+        for _ in 0..EVENT_STAGING_RING_SIZE {
+            let staging = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Species Events Staging"),
+                size: species_event_staging_size,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            species_event_staging.push(staging);
+            species_event_readback.push(Mutex::new(None));
+        }
 
         let grid_width = (bounds.width / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
         let grid_height = (bounds.height / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
@@ -452,23 +457,14 @@ impl GpuBuffers {
             lifeform_active_flags,
             lifeform_active_flags_staging,
             lifeform_active_flags_readback: Mutex::new(None),
-            spawn_request_count,
-            spawn_requests,
-            division_request_count,
-            division_requests,
-            division_requests_staging,
-            division_requests_readback: Mutex::new(None),
+            spawn_buffer,
             spawn_capacity: MAX_SPAWN_REQUESTS,
-            division_capacity: MAX_DIVISION_REQUESTS,
             link_buffer,
             link_free_list,
-            link_free_list_count,
             link_capacity: LINK_CAPACITY,
-            cell_event_count,
             cell_events,
             cell_event_staging,
             cell_event_readback,
-            link_event_count,
             link_events,
             link_event_staging,
             link_event_readback,
@@ -480,10 +476,20 @@ impl GpuBuffers {
             spatial_hash_next_indices,
             grn_descriptors,
             grn_units,
-            grn_state,
-            grn_descriptors_cpu: Mutex::new(vec![GrnDescriptor::zeroed(); LIFEFORM_CAPACITY]),
             lifeform_states,
-            lifeform_states_cpu: Mutex::new(lifeform_states_cpu),
+            lifeform_entries,
+            lifeform_free_list,
+            next_lifeform_id,
+            lifeform_events,
+            lifeform_event_staging,
+            lifeform_event_readback,
+            genome_buffer,
+            species_entries,
+            species_free_list,
+            next_species_id,
+            species_events,
+            species_event_staging,
+            species_event_readback,
         }
     }
     
@@ -653,20 +659,8 @@ impl GpuBuffers {
         }
     }
 
-    pub fn spawn_request_count_buffer(&self) -> &wgpu::Buffer {
-        &self.spawn_request_count
-    }
-
-    pub fn spawn_requests_buffer(&self) -> &wgpu::Buffer {
-        &self.spawn_requests
-    }
-
-    pub fn division_request_count_buffer(&self) -> &wgpu::Buffer {
-        &self.division_request_count
-    }
-
-    pub fn division_requests_buffer(&self) -> &wgpu::Buffer {
-        &self.division_requests
+    pub fn spawn_buffer(&self) -> &wgpu::Buffer {
+        &self.spawn_buffer
     }
 
     pub fn spawn_capacity(&self) -> usize {
@@ -685,24 +679,12 @@ impl GpuBuffers {
         &self.link_free_list
     }
 
-    pub fn link_free_count_buffer(&self) -> &wgpu::Buffer {
-        &self.link_free_list_count
-    }
-
     pub fn link_capacity(&self) -> usize {
         self.link_capacity
     }
 
-    pub fn link_event_count_buffer(&self) -> &wgpu::Buffer {
-        &self.link_event_count
-    }
-
     pub fn link_events_buffer(&self) -> &wgpu::Buffer {
         &self.link_events
-    }
-
-    pub fn cell_event_count_buffer(&self) -> &wgpu::Buffer {
-        &self.cell_event_count
     }
 
     pub fn cell_events_buffer(&self) -> &wgpu::Buffer {
@@ -728,115 +710,23 @@ impl GpuBuffers {
 
     pub fn enqueue_spawn_requests(&self, queue: &wgpu::Queue, cells: &[Cell]) -> usize {
         let count = cells.len().min(self.spawn_capacity);
+        let header_offset = 0u64;
+        let data_offset = (std::mem::size_of::<u32>() * 2) as u64;
         if count == 0 {
-            queue.write_buffer(&self.spawn_request_count, 0, bytemuck::cast_slice(&[0u32]));
+            let zero_header = [0u32, 0u32];
+            queue.write_buffer(&self.spawn_buffer, header_offset, bytemuck::cast_slice(&zero_header));
             return 0;
         }
 
         let cells_to_write = &cells[..count];
+        let header = [count as u32, 0u32];
+        queue.write_buffer(&self.spawn_buffer, header_offset, bytemuck::cast_slice(&header));
         queue.write_buffer(
-            &self.spawn_requests,
-            0,
+            &self.spawn_buffer,
+            data_offset,
             bytemuck::cast_slice(cells_to_write),
         );
-        queue.write_buffer(
-            &self.spawn_request_count,
-            0,
-            bytemuck::cast_slice(&[count as u32]),
-        );
         count
-    }
-
-    pub fn schedule_division_requests_copy(&self, encoder: &mut wgpu::CommandEncoder) {
-        {
-            let mut guard = self.division_requests_readback.lock();
-            if guard.take().is_some() {
-                self.division_requests_staging.unmap();
-            }
-        }
-
-        let count_size = std::mem::size_of::<u32>() as u64;
-        let requests_size =
-            (self.division_capacity * std::mem::size_of::<DivisionRequest>()) as u64;
-
-        encoder.copy_buffer_to_buffer(
-            &self.division_request_count,
-            0,
-            &self.division_requests_staging,
-            0,
-            count_size,
-        );
-        encoder.copy_buffer_to_buffer(
-            &self.division_requests,
-            0,
-            &self.division_requests_staging,
-            count_size,
-            requests_size,
-        );
-        encoder.clear_buffer(&self.division_request_count, 0, None);
-    }
-
-    pub fn begin_division_requests_map(&self) {
-        let mut guard = self.division_requests_readback.lock();
-        if guard.is_some() {
-            return;
-        }
-        let slice = self.division_requests_staging.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
-        });
-        *guard = Some(receiver);
-    }
-
-    pub fn try_consume_division_requests(&self) -> Option<Vec<DivisionRequest>> {
-        let mut guard = self.division_requests_readback.lock();
-        let receiver = match guard.as_ref() {
-            Some(r) => r,
-            None => return None,
-        };
-
-        match receiver.try_recv() {
-            Ok(Ok(_)) => {
-                let mapped = self.division_requests_staging.slice(..).get_mapped_range();
-                let count_size = std::mem::size_of::<u32>();
-                if mapped.len() < count_size {
-                    self.division_requests_staging.unmap();
-                    *guard = None;
-                    return Some(Vec::new());
-                }
-                let mut count_bytes = [0u8; 4];
-                count_bytes.copy_from_slice(&mapped[..count_size]);
-                let count = u32::from_le_bytes(count_bytes);
-                let capped_count = count.min(self.division_capacity as u32);
-                let total_bytes =
-                    capped_count as usize * std::mem::size_of::<DivisionRequest>();
-                let mut result = Vec::with_capacity(capped_count as usize);
-                if capped_count > 0 {
-                    let requests_bytes =
-                        &mapped[count_size..count_size + total_bytes];
-                    let typed =
-                        bytemuck::cast_slice::<u8, DivisionRequest>(requests_bytes);
-                    result.extend_from_slice(typed);
-                }
-                drop(mapped);
-                self.division_requests_staging.unmap();
-                *guard = None;
-                Some(result)
-            }
-            Ok(Err(e)) => {
-                eprintln!("Division requests read failed: {:?}", e);
-                self.division_requests_staging.unmap();
-                *guard = None;
-                None
-            }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                eprintln!("Division requests readback channel disconnected");
-                *guard = None;
-                None
-            }
-        }
     }
 
     pub fn schedule_cell_events_copy(
@@ -854,25 +744,20 @@ impl GpuBuffers {
                 self.cell_event_staging[staging_index].unmap();
             }
         }
-        let count_size = std::mem::size_of::<u32>() as u64;
-        let events_size =
-            (MAX_CELL_EVENTS * std::mem::size_of::<CellEvent>()) as u64;
+        let header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let events_size = (MAX_CELL_EVENTS * std::mem::size_of::<CellEvent>()) as u64;
+        let total_size = header_size + events_size;
 
-        encoder.copy_buffer_to_buffer(
-            &self.cell_event_count,
-            0,
-            &self.cell_event_staging[staging_index],
-            0,
-            count_size,
-        );
         encoder.copy_buffer_to_buffer(
             &self.cell_events,
             0,
             &self.cell_event_staging[staging_index],
-            count_size,
-            events_size,
+            0,
+            total_size,
         );
-        encoder.clear_buffer(&self.cell_event_count, 0, None);
+        if let Some(len) = NonZeroU64::new(header_size) {
+            encoder.clear_buffer(&self.cell_events, 0, Some(len.get()));
+        }
     }
 
     pub fn begin_cell_events_map(&self, staging_index: usize) {
@@ -911,20 +796,20 @@ impl GpuBuffers {
                 let mapping = self.cell_event_staging[staging_index]
                     .slice(..)
                     .get_mapped_range();
-                let count_size = std::mem::size_of::<u32>();
-                if mapping.len() < count_size {
+                let header_size = std::mem::size_of::<u32>() * 2;
+                if mapping.len() < header_size {
                     drop(mapping);
                     self.cell_event_staging[staging_index].unmap();
                     *guard = None;
                     return Some(Vec::new());
                 }
                 let mut count_bytes = [0u8; 4];
-                count_bytes.copy_from_slice(&mapping[..count_size]);
+                count_bytes.copy_from_slice(&mapping[..4]);
                 let count = u32::from_le_bytes(count_bytes);
                 let capped_count = count.min(MAX_CELL_EVENTS as u32);
                 let events_bytes_len =
                     capped_count as usize * std::mem::size_of::<CellEvent>();
-                if mapping.len() < count_size + events_bytes_len {
+                if mapping.len() < header_size + events_bytes_len {
                     eprintln!("Cell events buffer smaller than expected");
                     self.cell_event_staging[staging_index].unmap();
                     *guard = None;
@@ -933,7 +818,7 @@ impl GpuBuffers {
                 let mut result = Vec::with_capacity(capped_count as usize);
                 let stride = std::mem::size_of::<CellEvent>();
                 for idx in 0..capped_count as usize {
-                    let start = count_size + idx * stride;
+                    let start = header_size + idx * stride;
                     let end = start + stride;
                     let bytes = &mapping[start..end];
                     let event = pod_read_unaligned::<CellEvent>(bytes);
@@ -974,25 +859,20 @@ impl GpuBuffers {
                 self.link_event_staging[staging_index].unmap();
             }
         }
-        let count_size = std::mem::size_of::<u32>() as u64;
-        let events_size =
-            (MAX_LINK_EVENTS * std::mem::size_of::<LinkEvent>()) as u64;
+        let header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let events_size = (MAX_LINK_EVENTS * std::mem::size_of::<LinkEvent>()) as u64;
+        let total_size = header_size + events_size;
 
-        encoder.copy_buffer_to_buffer(
-            &self.link_event_count,
-            0,
-            &self.link_event_staging[staging_index],
-            0,
-            count_size,
-        );
         encoder.copy_buffer_to_buffer(
             &self.link_events,
             0,
             &self.link_event_staging[staging_index],
-            count_size,
-            events_size,
+            0,
+            total_size,
         );
-        encoder.clear_buffer(&self.link_event_count, 0, None);
+        if let Some(len) = NonZeroU64::new(header_size) {
+            encoder.clear_buffer(&self.link_events, 0, Some(len.get()));
+        }
     }
 
     pub fn begin_link_events_map(&self, staging_index: usize) {
@@ -1031,20 +911,20 @@ impl GpuBuffers {
                 let mapping = self.link_event_staging[staging_index]
                     .slice(..)
                     .get_mapped_range();
-                let count_size = std::mem::size_of::<u32>();
-                if mapping.len() < count_size {
+                let header_size = std::mem::size_of::<u32>() * 2;
+                if mapping.len() < header_size {
                     drop(mapping);
                     self.link_event_staging[staging_index].unmap();
                     *guard = None;
                     return Some(Vec::new());
                 }
                 let mut count_bytes = [0u8; 4];
-                count_bytes.copy_from_slice(&mapping[..count_size]);
+                count_bytes.copy_from_slice(&mapping[..4]);
                 let count = u32::from_le_bytes(count_bytes);
                 let capped_count = count.min(MAX_LINK_EVENTS as u32);
                 let events_bytes_len =
                     capped_count as usize * std::mem::size_of::<LinkEvent>();
-                if mapping.len() < count_size + events_bytes_len {
+                if mapping.len() < header_size + events_bytes_len {
                     eprintln!("Link events buffer smaller than expected");
                     self.link_event_staging[staging_index].unmap();
                     *guard = None;
@@ -1053,7 +933,7 @@ impl GpuBuffers {
                 let mut result = Vec::with_capacity(capped_count as usize);
                 let stride = std::mem::size_of::<LinkEvent>();
                 for idx in 0..capped_count as usize {
-                    let start = count_size + idx * stride;
+                    let start = header_size + idx * stride;
                     let end = start + stride;
                     let bytes = &mapping[start..end];
                     let event = pod_read_unaligned::<LinkEvent>(bytes);
@@ -1164,141 +1044,270 @@ impl GpuBuffers {
         &self.lifeform_states
     }
 
-    pub fn grn_descriptor_cpu(&self, slot: u32) -> GrnDescriptor {
-        let descriptors = self.grn_descriptors_cpu.lock();
-        descriptors
-            .get(slot as usize)
-            .copied()
-            .unwrap_or_else(GrnDescriptor::zeroed)
+    pub fn lifeform_entries_buffer(&self) -> &wgpu::Buffer {
+        &self.lifeform_entries
     }
 
-    pub fn write_lifeform_state(&self, queue: &wgpu::Queue, slot: u32, state: LifeformState) {
-        let slot_idx = slot as usize;
-        if slot_idx >= LIFEFORM_CAPACITY {
-            return;
-        }
+    pub fn lifeform_free_buffer(&self) -> &wgpu::Buffer {
+        &self.lifeform_free_list
+    }
 
+    pub fn next_lifeform_id_buffer(&self) -> &wgpu::Buffer {
+        &self.next_lifeform_id
+    }
+
+    pub fn genome_buffer(&self) -> &wgpu::Buffer {
+        &self.genome_buffer
+    }
+
+    pub fn species_entries_buffer(&self) -> &wgpu::Buffer {
+        &self.species_entries
+    }
+
+    pub fn species_free_buffer(&self) -> &wgpu::Buffer {
+        &self.species_free_list
+    }
+
+    pub fn next_species_id_buffer(&self) -> &wgpu::Buffer {
+        &self.next_species_id
+    }
+
+    pub fn lifeform_events_buffer(&self) -> &wgpu::Buffer {
+        &self.lifeform_events
+    }
+
+    pub fn species_events_buffer(&self) -> &wgpu::Buffer {
+        &self.species_events
+    }
+
+    pub fn schedule_lifeform_events_copy(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_index: usize,
+    ) {
+        assert!(
+            staging_index < self.lifeform_event_staging.len(),
+            "lifeform staging index out of range"
+        );
         {
-            let mut cpu = self.lifeform_states_cpu.lock();
-            if let Some(entry) = cpu.get_mut(slot_idx) {
-                *entry = state;
+            let mut guard = self.lifeform_event_readback[staging_index].lock();
+            if guard.take().is_some() {
+                self.lifeform_event_staging[staging_index].unmap();
             }
         }
+        let header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let events_size =
+            (MAX_LIFEFORM_EVENTS * std::mem::size_of::<LifeformEvent>()) as u64;
+        let total_size = header_size + events_size;
 
-        let offset = (slot_idx * std::mem::size_of::<LifeformState>()) as u64;
-        queue.write_buffer(
-            &self.lifeform_states,
-            offset,
-            bytemuck::cast_slice(std::slice::from_ref(&state)),
+        encoder.copy_buffer_to_buffer(
+            &self.lifeform_events,
+            0,
+            &self.lifeform_event_staging[staging_index],
+            0,
+            total_size,
         );
-    }
-
-    pub fn clear_lifeform_state(&self, queue: &wgpu::Queue, slot: u32) {
-        self.write_lifeform_state(queue, slot, LifeformState::inactive());
-    }
-
-    pub fn write_grn_slot(&self, queue: &wgpu::Queue, slot: u32, compiled: &CompiledGrn) -> GrnDescriptor {
-        profile_scope!("Write GRN Slot");
-        let slot_idx = slot as usize;
-        if slot_idx >= LIFEFORM_CAPACITY {
-            return GrnDescriptor::zeroed();
+        if let Some(len) = NonZeroU64::new(header_size) {
+            encoder.clear_buffer(&self.lifeform_events, 0, Some(len.get()));
         }
+    }
 
-        let mut descriptor = compiled.descriptor;
-        let mut state = {
-            profile_scope!("Acquire GRN Allocator");
-            self.grn_state.lock()
+    pub fn begin_lifeform_events_map(&self, staging_index: usize) {
+        assert!(
+            staging_index < self.lifeform_event_staging.len(),
+            "lifeform staging index out of range"
+        );
+        let mut guard = self.lifeform_event_readback[staging_index].lock();
+        if guard.is_some() {
+            return;
+        }
+        let slice = self.lifeform_event_staging[staging_index].slice(..);
+        let (sender, receiver) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        *guard = Some(receiver);
+    }
+
+    pub fn try_consume_lifeform_events(
+        &self,
+        staging_index: usize,
+    ) -> Option<Vec<LifeformEvent>> {
+        assert!(
+            staging_index < self.lifeform_event_staging.len(),
+            "lifeform staging index out of range"
+        );
+        let mut guard = self.lifeform_event_readback[staging_index].lock();
+        let receiver = match guard.as_ref() {
+            Some(r) => r,
+            None => return None,
         };
-        descriptor.unit_count = compiled.units.len() as u32;
-        if descriptor.unit_count == 0 {
-            descriptor.unit_offset = 0;
-            {
-                profile_scope!("Release Empty Slot");
-                state.release_slot(slot_idx);
-            }
-            drop(state);
-            self.write_grn_descriptor(queue, slot_idx, &descriptor);
-            return descriptor;
-        }
 
-        if descriptor.unit_count as usize > MAX_TOTAL_GRN_UNITS {
-            drop(state);
-            eprintln!(
-                "GRN allocation exceeds global capacity (slot {}, units {}).",
-                slot_idx, descriptor.unit_count
-            );
-            self.write_grn_descriptor(queue, slot_idx, &GrnDescriptor::zeroed());
-            return GrnDescriptor::zeroed();
-        }
-
-        match {
-            profile_scope!("Allocate GRN Range");
-            state.allocate_slot(slot_idx, descriptor.unit_count)
-        } {
-            Some(offset) => {
-                let start = offset as usize;
-                let end = start + descriptor.unit_count as usize;
-                if end > state.units.len() {
-                    drop(state);
-                    eprintln!(
-                        "GRN allocation out of bounds for slot {} (offset {}, count {}).",
-                        slot_idx, offset, descriptor.unit_count
-                    );
-                    self.write_grn_descriptor(queue, slot_idx, &GrnDescriptor::zeroed());
-                    return GrnDescriptor::zeroed();
+        match receiver.try_recv() {
+            Ok(Ok(_)) => {
+                let mapping = self.lifeform_event_staging[staging_index]
+                    .slice(..)
+                    .get_mapped_range();
+                let header_size = std::mem::size_of::<u32>() * 2;
+                if mapping.len() < header_size {
+                    drop(mapping);
+                    self.lifeform_event_staging[staging_index].unmap();
+                    *guard = None;
+                    return Some(Vec::new());
                 }
-                state.units[start..end].copy_from_slice(&compiled.units);
-                descriptor.unit_offset = offset;
-
-                let unit_byte_offset =
-                    (start * std::mem::size_of::<CompiledRegulatoryUnit>()) as u64;
-                let bytes = bytemuck::cast_slice(&compiled.units);
-                drop(state);
-
-                self.write_grn_descriptor(queue, slot_idx, &descriptor);
-                {
-                    profile_scope!("Upload GRN Units");
-                    queue.write_buffer(&self.grn_units, unit_byte_offset, bytes);
+                let mut count_bytes = [0u8; 4];
+                count_bytes.copy_from_slice(&mapping[..4]);
+                let count = u32::from_le_bytes(count_bytes);
+                let capped_count = count.min(MAX_LIFEFORM_EVENTS as u32);
+                let events_bytes_len =
+                    capped_count as usize * std::mem::size_of::<LifeformEvent>();
+                if mapping.len() < header_size + events_bytes_len {
+                    eprintln!("Lifeform events buffer smaller than expected");
+                    self.lifeform_event_staging[staging_index].unmap();
+                    *guard = None;
+                    return None;
                 }
-                descriptor
+                let mut result = Vec::with_capacity(capped_count as usize);
+                let stride = std::mem::size_of::<LifeformEvent>();
+                for idx in 0..capped_count as usize {
+                    let start = header_size + idx * stride;
+                    let end = start + stride;
+                    let bytes = &mapping[start..end];
+                    let event = pod_read_unaligned::<LifeformEvent>(bytes);
+                    result.push(event);
+                }
+                drop(mapping);
+                self.lifeform_event_staging[staging_index].unmap();
+                *guard = None;
+                Some(result)
             }
-            None => {
-                drop(state);
-                eprintln!(
-                    "Unable to allocate GRN storage for slot {} (requested {}).",
-                    slot_idx, descriptor.unit_count
-                );
-                self.write_grn_descriptor(queue, slot_idx, &GrnDescriptor::zeroed());
-                GrnDescriptor::zeroed()
+            Ok(Err(e)) => {
+                eprintln!("Lifeform events read failed: {:?}", e);
+                self.lifeform_event_staging[staging_index].unmap();
+                *guard = None;
+                None
+            }
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                eprintln!("Lifeform events readback channel disconnected");
+                *guard = None;
+                None
             }
         }
     }
 
-    pub fn clear_grn_slot(&self, queue: &wgpu::Queue, slot: u32) {
-        profile_scope!("Clear GRN Slot");
-        let slot_idx = slot as usize;
-        if slot_idx >= LIFEFORM_CAPACITY {
-            return;
-        }
-        {
-            let mut state = self.grn_state.lock();
-            state.release_slot(slot_idx);
-        }
-        self.write_grn_descriptor(queue, slot_idx, &GrnDescriptor::zeroed());
-    }
-
-    fn write_grn_descriptor(&self, queue: &wgpu::Queue, slot_idx: usize, descriptor: &GrnDescriptor) {
-        profile_scope!("Upload GRN Descriptor");
-        let descriptor_offset = (slot_idx * std::mem::size_of::<GrnDescriptor>()) as u64;
-        queue.write_buffer(
-            &self.grn_descriptors,
-            descriptor_offset,
-            bytemuck::cast_slice(std::slice::from_ref(descriptor)),
+    pub fn schedule_species_events_copy(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_index: usize,
+    ) {
+        assert!(
+            staging_index < self.species_event_staging.len(),
+            "species staging index out of range"
         );
         {
-            let mut cpu = self.grn_descriptors_cpu.lock();
-            if let Some(entry) = cpu.get_mut(slot_idx) {
-                *entry = *descriptor;
+            let mut guard = self.species_event_readback[staging_index].lock();
+            if guard.take().is_some() {
+                self.species_event_staging[staging_index].unmap();
+            }
+        }
+        let header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let events_size =
+            (MAX_SPECIES_EVENTS * std::mem::size_of::<SpeciesEvent>()) as u64;
+        let total_size = header_size + events_size;
+
+        encoder.copy_buffer_to_buffer(
+            &self.species_events,
+            0,
+            &self.species_event_staging[staging_index],
+            0,
+            total_size,
+        );
+        if let Some(len) = NonZeroU64::new(header_size) {
+            encoder.clear_buffer(&self.species_events, 0, Some(len.get()));
+        }
+    }
+
+    pub fn begin_species_events_map(&self, staging_index: usize) {
+        assert!(
+            staging_index < self.species_event_staging.len(),
+            "species staging index out of range"
+        );
+        let mut guard = self.species_event_readback[staging_index].lock();
+        if guard.is_some() {
+            return;
+        }
+        let slice = self.species_event_staging[staging_index].slice(..);
+        let (sender, receiver) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        *guard = Some(receiver);
+    }
+
+    pub fn try_consume_species_events(
+        &self,
+        staging_index: usize,
+    ) -> Option<Vec<SpeciesEvent>> {
+        assert!(
+            staging_index < self.species_event_staging.len(),
+            "species staging index out of range"
+        );
+        let mut guard = self.species_event_readback[staging_index].lock();
+        let receiver = match guard.as_ref() {
+            Some(r) => r,
+            None => return None,
+        };
+
+        match receiver.try_recv() {
+            Ok(Ok(_)) => {
+                let mapping = self.species_event_staging[staging_index]
+                    .slice(..)
+                    .get_mapped_range();
+                let header_size = std::mem::size_of::<u32>() * 2;
+                if mapping.len() < header_size {
+                    drop(mapping);
+                    self.species_event_staging[staging_index].unmap();
+                    *guard = None;
+                    return Some(Vec::new());
+                }
+                let mut count_bytes = [0u8; 4];
+                count_bytes.copy_from_slice(&mapping[..4]);
+                let count = u32::from_le_bytes(count_bytes);
+                let capped_count = count.min(MAX_SPECIES_EVENTS as u32);
+                let events_bytes_len =
+                    capped_count as usize * std::mem::size_of::<SpeciesEvent>();
+                if mapping.len() < header_size + events_bytes_len {
+                    eprintln!("Species events buffer smaller than expected");
+                    self.species_event_staging[staging_index].unmap();
+                    *guard = None;
+                    return None;
+                }
+                let mut result = Vec::with_capacity(capped_count as usize);
+                let stride = std::mem::size_of::<SpeciesEvent>();
+                for idx in 0..capped_count as usize {
+                    let start = header_size + idx * stride;
+                    let end = start + stride;
+                    let bytes = &mapping[start..end];
+                    let event = pod_read_unaligned::<SpeciesEvent>(bytes);
+                    result.push(event);
+                }
+                drop(mapping);
+                self.species_event_staging[staging_index].unmap();
+                *guard = None;
+                Some(result)
+            }
+            Ok(Err(e)) => {
+                eprintln!("Species events read failed: {:?}", e);
+                self.species_event_staging[staging_index].unmap();
+                *guard = None;
+                None
+            }
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                eprintln!("Species events readback channel disconnected");
+                *guard = None;
+                None
             }
         }
     }

@@ -1,7 +1,14 @@
 // Compute shader for link constraints and lifecycle (placeholder implementation)
 const MAX_GRN_RECEPTOR_INPUTS: u32 = 16u;
 const MAX_GRN_REGULATORY_UNITS: u32 = 16u;
+const MAX_GRN_INPUTS_PER_UNIT: u32 = 8u;
 const MAX_GRN_STATE_SIZE: u32 = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
+const MAX_GENES_PER_GENOME: u32 = 200u;
+const BASE_PAIRS_PER_GENE: u32 = 20u;
+const GENOME_WORD_COUNT: u32 = ((MAX_GENES_PER_GENOME * BASE_PAIRS_PER_GENE) + 15u) / 16u;
+const MAX_SPECIES_CAPACITY: u32 = 1024u;
+const MAX_LIFEFORM_EVENTS: u32 = 1024u;
+const MAX_SPECIES_EVENTS: u32 = 256u;
 
 struct Cell {
     pos: vec2<f32>,
@@ -14,11 +21,6 @@ struct Cell {
     lifeform_slot: u32,
     metadata: u32,
     color: vec4<f32>,
-    grn_receptor_count: u32,
-    grn_unit_count: u32,
-    grn_timer: u32,
-    _grn_padding: u32,
-    grn_state: array<f32, MAX_GRN_STATE_SIZE>,
 }
 
 struct Link {
@@ -30,6 +32,10 @@ struct Link {
     stiffness: f32,
     energy_transfer_rate: f32,
     generation_b: u32,
+}
+
+struct Counter {
+    value: atomic<u32>,
 }
 
 struct Uniforms {
@@ -45,20 +51,8 @@ struct CellFreeList {
     indices: array<u32>,
 }
 
-struct Counter {
-    value: atomic<u32>,
-}
-
 struct LifeformFlagArray {
     values: array<atomic<u32>>,
-}
-
-struct DivisionRequest {
-    parent_lifeform_slot: u32,
-    cell_index: u32,
-    pos: vec2<f32>,
-    radius: f32,
-    energy: f32,
 }
 
 struct NutrientGrid {
@@ -86,6 +80,121 @@ struct LinkEvent {
     _padding: f32,
 }
 
+struct GrnInput {
+    weight: f32,
+    index: u32,
+    promoter_type: u32,
+    _pad: u32,
+}
+
+struct CompiledRegulatoryUnit {
+    input_count: u32,
+    output_index: u32,
+    flags: u32,
+    _padding: u32,
+    inputs: array<GrnInput, MAX_GRN_INPUTS_PER_UNIT>,
+}
+
+struct GrnDescriptor {
+    receptor_count: u32,
+    unit_count: u32,
+    state_stride: u32,
+    unit_offset: u32,
+    evaluation_interval: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+}
+
+struct LifeformState {
+    lifeform_id: u32,
+    first_cell_slot: u32,
+    cell_count: u32,
+    grn_descriptor_slot: u32,
+    grn_unit_offset: u32,
+    grn_unit_count: u32,
+    flags: u32,
+    grn_receptor_count: u32,
+    grn_timer: u32,
+    _pad: u32,
+    _pad2: vec2<u32>,
+    grn_state: array<f32, MAX_GRN_STATE_SIZE>,
+}
+
+struct LifeformEntry {
+    lifeform_id: u32,
+    species_slot: u32,
+    species_id: u32,
+    gene_count: u32,
+    rng_state: u32,
+    cell_count: u32,
+    flags: u32,
+    _pad: u32,
+}
+
+struct GenomeEntry {
+    gene_count: u32,
+    _pad: vec3<u32>,
+    base_pairs: array<u32, GENOME_WORD_COUNT>,
+}
+
+struct SpeciesEntry {
+    species_id: u32,
+    mascot_lifeform_slot: u32,
+    member_count: atomic<u32>,
+    flags: u32,
+}
+
+struct LifeformEvent {
+    kind: u32,
+    lifeform_id: u32,
+    species_id: u32,
+    lifeform_slot: u32,
+}
+
+struct SpeciesEvent {
+    kind: u32,
+    species_id: u32,
+    species_slot: u32,
+    member_count: u32,
+}
+
+struct FreeList {
+    count: atomic<u32>,
+    _pad: u32,
+    indices: array<u32>,
+}
+
+struct SpawnBuffer {
+    counter: Counter,
+    _pad: u32,
+    requests: array<Cell>,
+}
+
+struct LinkEventBuffer {
+    counter: Counter,
+    _pad: u32,
+    events: array<LinkEvent>,
+}
+
+struct CellEventBuffer {
+    counter: Counter,
+    _pad: u32,
+    events: array<CellEvent>,
+}
+
+struct LifeformEventBuffer {
+    counter: Counter,
+    _pad: u32,
+    events: array<LifeformEvent>,
+}
+
+struct SpeciesEventBuffer {
+    counter: Counter,
+    _pad: u32,
+    events: array<SpeciesEvent>,
+}
+
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
 
@@ -99,49 +208,67 @@ var<storage, read_write> cell_free_list: CellFreeList;
 var<storage, read_write> alive_counter: Counter;
 
 @group(0) @binding(4)
-var<storage, read_write> spawn_count: Counter;
+var<storage, read_write> spawn_buffer: SpawnBuffer;
 
 @group(0) @binding(5)
-var<storage, read> spawn_requests: array<Cell>;
-
-@group(0) @binding(6)
 var<storage, read_write> lifeform_active: LifeformFlagArray;
 
-@group(0) @binding(7)
-var<storage, read_write> division_request_count: Counter;
-
-@group(0) @binding(8)
-var<storage, read_write> division_requests: array<DivisionRequest>;
-
-@group(0) @binding(9)
+@group(0) @binding(6)
 var<storage, read_write> nutrient_grid: NutrientGrid;
 
-@group(0) @binding(10)
+@group(0) @binding(7)
 var<storage, read_write> links: array<Link>;
 
+@group(0) @binding(8)
+var<storage, read_write> link_free_list: FreeList;
+
+@group(0) @binding(9)
+var<storage, read_write> link_events: LinkEventBuffer;
+
+@group(0) @binding(10)
+var<storage, read_write> cell_events: CellEventBuffer;
+
 @group(0) @binding(11)
-var<storage, read_write> link_free_count: Counter;
-
-@group(0) @binding(12)
-var<storage, read_write> link_free_list: array<u32>;
-
-@group(0) @binding(13)
-var<storage, read_write> link_event_count: Counter;
-
-@group(0) @binding(14)
-var<storage, read_write> link_events: array<LinkEvent>;
-
-@group(0) @binding(15)
-var<storage, read_write> cell_event_count: Counter;
-
-@group(0) @binding(16)
-var<storage, read_write> cell_events: array<CellEvent>;
-
-@group(0) @binding(17)
 var<storage, read_write> cell_bucket_heads: array<atomic<i32>>;
 
-@group(0) @binding(18)
+@group(0) @binding(12)
 var<storage, read_write> cell_hash_next: array<i32>;
+
+@group(0) @binding(13)
+var<storage, read_write> grn_descriptors: array<GrnDescriptor>;
+
+@group(0) @binding(14)
+var<storage, read> grn_units: array<CompiledRegulatoryUnit>;
+
+@group(0) @binding(15)
+var<storage, read_write> lifeform_states: array<LifeformState>;
+
+@group(0) @binding(16)
+var<storage, read_write> lifeform_entries: array<LifeformEntry>;
+
+@group(0) @binding(17)
+var<storage, read_write> lifeform_free: FreeList;
+
+@group(0) @binding(18)
+var<storage, read_write> next_lifeform_id: Counter;
+
+@group(0) @binding(19)
+var<storage, read_write> genomes: array<GenomeEntry>;
+
+@group(0) @binding(20)
+var<storage, read_write> species_entries: array<SpeciesEntry>;
+
+@group(0) @binding(21)
+var<storage, read_write> species_free: FreeList;
+
+@group(0) @binding(22)
+var<storage, read_write> next_species_id: Counter;
+
+@group(0) @binding(23)
+var<storage, read_write> lifeform_events: LifeformEventBuffer;
+
+@group(0) @binding(24)
+var<storage, read_write> species_events: SpeciesEventBuffer;
 
 const LINK_FLAG_ALIVE: u32 = 1u;
 const LINK_FLAG_ADHESIVE: u32 = 1u << 1u;
@@ -167,9 +294,9 @@ fn push_link_event(
     stiffness: f32,
     energy_transfer_rate: f32,
 ) {
-    let event_index = atomicAdd(&link_event_count.value, 1u);
-    if event_index < arrayLength(&link_events) {
-        link_events[event_index] = LinkEvent(
+    let event_index = atomicAdd(&link_events.counter.value, 1u);
+    if event_index < arrayLength(&link_events.events) {
+        link_events.events[event_index] = LinkEvent(
             kind,
             link_index,
             cell_a,
@@ -180,7 +307,7 @@ fn push_link_event(
             0.0,
         );
     } else {
-        atomicSub(&link_event_count.value, 1u);
+        atomicSub(&link_events.counter.value, 1u);
     }
 }
 
@@ -205,11 +332,11 @@ fn release_link(index: u32) {
     cleared.generation_b = 0u;
     links[index] = cleared;
 
-    let free_index = atomicAdd(&link_free_count.value, 1u);
-    if free_index < arrayLength(&link_free_list) {
-        link_free_list[free_index] = index;
+    let free_index = atomicAdd(&link_free_list.count, 1u);
+    if free_index < arrayLength(&link_free_list.indices) {
+        link_free_list.indices[free_index] = index;
     } else {
-        atomicSub(&link_free_count.value, 1u);
+        atomicSub(&link_free_list.count, 1u);
     }
 
     push_link_event(

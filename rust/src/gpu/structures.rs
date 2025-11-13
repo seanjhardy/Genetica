@@ -2,14 +2,20 @@
 
 use bytemuck::{self, Zeroable};
 
-use crate::genetic_algorithm::systems::GeneRegulatoryNetwork;
-use crate::genetic_algorithm::genome::Genome;
-
-pub const MAX_GRN_RECEPTOR_INPUTS: usize = 16;
-pub const MAX_GRN_REGULATORY_UNITS: usize = 16;
+pub const MAX_GRN_RECEPTOR_INPUTS: usize = 2;
+pub const MAX_GRN_REGULATORY_UNITS: usize = 2;
 pub const MAX_GRN_INPUTS_PER_UNIT: usize = 8;
 pub const MAX_GRN_STATE_SIZE: usize = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
 pub const GRN_EVALUATION_INTERVAL: u32 = 8;
+
+pub const MAX_GENES_PER_GENOME: usize = 20;
+pub const BASE_PAIRS_PER_GENE: usize = 20;
+pub const BASE_PAIRS_PER_GENOME: usize = MAX_GENES_PER_GENOME * BASE_PAIRS_PER_GENE;
+pub const GENOME_WORD_COUNT: usize = (BASE_PAIRS_PER_GENOME + 3) / 4;
+
+pub const MAX_SPECIES_CAPACITY: usize = 1024;
+pub const MAX_LIFEFORM_EVENTS: usize = 1024;
+pub const MAX_SPECIES_EVENTS: usize = 256;
 
 /// Cell structure for GPU processing
 #[repr(C, align(16))]
@@ -25,11 +31,6 @@ pub struct Cell {
     pub lifeform_slot: u32,
     pub metadata: u32,
     pub color: [f32; 4],
-    pub grn_receptor_count: u32,
-    pub grn_unit_count: u32,
-    pub grn_timer: u32,
-    pub _grn_padding: u32,
-    pub grn_state: [f32; MAX_GRN_STATE_SIZE],
 }
 
 impl Cell {
@@ -45,11 +46,6 @@ impl Cell {
             lifeform_slot,
             metadata: 0,
             color: [0.0; 4],
-            grn_receptor_count: 0,
-            grn_unit_count: 0,
-            grn_timer: 0,
-            _grn_padding: 0,
-            grn_state: [0.0; MAX_GRN_STATE_SIZE],
         };
         cell.update_color_from_energy();
         cell
@@ -69,16 +65,28 @@ impl Cell {
         self.color = Self::energy_to_color(self.energy);
     }
 
-    pub fn reset_grn_state(&mut self) {
-        self.grn_receptor_count = 0;
-        self.grn_unit_count = 0;
-        self.grn_timer = 0;
-        self.grn_state.fill(0.0);
-    }
 }
 
-const _: [(); 208] = [(); std::mem::size_of::<Cell>()];
+const _: [(); 64] = [(); std::mem::size_of::<Cell>()];
 const _: [(); 16] = [(); std::mem::align_of::<Cell>()];
+
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GenomeEntry {
+    pub gene_count: u32,
+    pub _pad: [u32; 3],
+    pub base_pairs: [u32; GENOME_WORD_COUNT],
+}
+
+impl GenomeEntry {
+    pub fn inactive() -> Self {
+        Self {
+            gene_count: 0,
+            _pad: [0; 3],
+            base_pairs: [0; GENOME_WORD_COUNT],
+        }
+    }
+}
 
 #[repr(C, align(16))]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -146,7 +154,11 @@ pub struct LifeformState {
     pub grn_unit_offset: u32,
     pub grn_unit_count: u32,
     pub flags: u32,
+    pub grn_receptor_count: u32,
+    pub grn_timer: u32,
     pub _pad: u32,
+    pub _pad2: [u32; 2],
+    pub grn_state: [f32; MAX_GRN_STATE_SIZE],
 }
 
 impl LifeformState {
@@ -161,16 +173,23 @@ impl LifeformState {
         grn_descriptor_slot: u32,
         descriptor: &GrnDescriptor,
     ) -> Self {
-        Self {
-            lifeform_id,
-            first_cell_slot: 0,
-            cell_count: 0,
-            grn_descriptor_slot,
-            grn_unit_offset: descriptor.unit_offset,
-            grn_unit_count: descriptor.unit_count,
-            flags: Self::FLAG_ACTIVE,
-            _pad: 0,
-        }
+        let mut state = Self::zeroed();
+        state.lifeform_id = lifeform_id;
+        state.first_cell_slot = 0;
+        state.cell_count = 0;
+        state.grn_descriptor_slot = grn_descriptor_slot;
+        state.grn_unit_offset = descriptor.unit_offset;
+        state.grn_unit_count = descriptor
+            .unit_count
+            .min(MAX_GRN_REGULATORY_UNITS as u32);
+        state.flags = Self::FLAG_ACTIVE;
+        state.grn_receptor_count = descriptor
+            .receptor_count
+            .min(MAX_GRN_RECEPTOR_INPUTS as u32);
+        state.grn_timer = 0;
+        state._pad = 0;
+        state._pad2 = [0; 2];
+        state
     }
 }
 
@@ -258,53 +277,82 @@ impl LinkEvent {
 const _: [(); 32] = [(); std::mem::size_of::<LinkEvent>()];
 const _: [(); 16] = [(); std::mem::align_of::<LinkEvent>()];
 
-
-/// Lifeform structure for GPU processing
-/// Stores metadata about lifeforms for efficient parallel access
-#[repr(C)]
-pub struct Lifeform {
-    pub lifeform_id: usize,
-    pub species_id: usize,
-    pub is_alive: bool,
-    pub genome: Genome,
-    pub grn: GeneRegulatoryNetwork,
-    pub compiled_grn: CompiledGrn,
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LifeformEntry {
+    pub lifeform_id: u32,
+    pub species_slot: u32,
+    pub species_id: u32,
+    pub gene_count: u32,
+    pub rng_state: u32,
+    pub cell_count: u32,
+    pub flags: u32,
+    pub _pad: u32,
 }
 
-impl Lifeform {
-    pub fn new(
-        lifeform_id: usize,
-        species_id: usize,
-        genome: Genome,
-        grn: GeneRegulatoryNetwork,
-        compiled_grn: CompiledGrn,
-    ) -> Self {
+impl LifeformEntry {
+    pub const FLAG_ACTIVE: u32 = 1 << 0;
+
+    pub fn inactive() -> Self {
         Self {
-            lifeform_id,
-            species_id,
-            is_alive: true,
-            genome,
-            grn,
-            compiled_grn,
+            lifeform_id: 0,
+            species_slot: 0,
+            species_id: 0,
+            gene_count: 0,
+            rng_state: 0,
+            cell_count: 0,
+            flags: 0,
+            _pad: 0,
         }
     }
+}
 
-    pub fn compiled_grn(&self) -> &CompiledGrn {
-        &self.compiled_grn
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SpeciesEntry {
+    pub species_id: u32,
+    pub mascot_lifeform_slot: u32,
+    pub member_count: u32,
+    pub flags: u32,
+}
+
+impl SpeciesEntry {
+    pub const FLAG_ACTIVE: u32 = 1 << 0;
+
+    pub fn inactive() -> Self {
+        Self {
+            species_id: 0,
+            mascot_lifeform_slot: 0,
+            member_count: 0,
+            flags: 0,
+        }
     }
 }
 
-
-/// Division request emitted by GPU compute when a cell divides
-#[repr(C)]
+#[repr(C, align(16))]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct DivisionRequest {
-    pub parent_lifeform_slot: u32,
-    pub cell_index: u32,
-    pub pos: [f32; 2],
-    pub radius: f32,
-    pub energy: f32,
+pub struct LifeformEvent {
+    pub kind: u32,
+    pub lifeform_id: u32,
+    pub species_id: u32,
+    pub lifeform_slot: u32,
 }
 
+impl LifeformEvent {
+    pub const KIND_CREATE: u32 = 1;
+    pub const KIND_DESTROY: u32 = 2;
+}
 
+#[repr(C, align(16))]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SpeciesEvent {
+    pub kind: u32,
+    pub species_id: u32,
+    pub species_slot: u32,
+    pub member_count: u32,
+}
 
+impl SpeciesEvent {
+    pub const KIND_CREATE: u32 = 1;
+    pub const KIND_EXTINCT: u32 = 2;
+}

@@ -20,24 +20,27 @@ impl ComputePipelines {
         uniform_buffer: &wgpu::Buffer,
         cell_free_list_buffer: &wgpu::Buffer,
         alive_counter_buffer: &wgpu::Buffer,
-        spawn_count_buffer: &wgpu::Buffer,
-        spawn_requests_buffer: &wgpu::Buffer,
+        spawn_buffer: &wgpu::Buffer,
         lifeform_active_flags_buffer: &wgpu::Buffer,
-        division_request_count_buffer: &wgpu::Buffer,
-        division_requests_buffer: &wgpu::Buffer,
+        nutrient_grid_buffer: &wgpu::Buffer,
+        link_buffer: &wgpu::Buffer,
+        link_free_list_buffer: &wgpu::Buffer,
+        link_events_buffer: &wgpu::Buffer,
+        cell_events_buffer: &wgpu::Buffer,
         spatial_hash_bucket_heads_buffer: &wgpu::Buffer,
         spatial_hash_next_indices_buffer: &wgpu::Buffer,
-        link_buffer: &wgpu::Buffer,
-        link_free_count_buffer: &wgpu::Buffer,
-        link_free_list_buffer: &wgpu::Buffer,
-        link_event_count_buffer: &wgpu::Buffer,
-        link_events_buffer: &wgpu::Buffer,
-        cell_event_count_buffer: &wgpu::Buffer,
-        cell_events_buffer: &wgpu::Buffer,
-        nutrient_grid_buffer: &wgpu::Buffer,
         grn_descriptor_buffer: &wgpu::Buffer,
         grn_units_buffer: &wgpu::Buffer,
         lifeform_states_buffer: &wgpu::Buffer,
+        lifeform_entries_buffer: &wgpu::Buffer,
+        lifeform_free_buffer: &wgpu::Buffer,
+        next_lifeform_id_buffer: &wgpu::Buffer,
+        genome_buffer: &wgpu::Buffer,
+        species_entries_buffer: &wgpu::Buffer,
+        species_free_buffer: &wgpu::Buffer,
+        next_species_id_buffer: &wgpu::Buffer,
+        lifeform_events_buffer: &wgpu::Buffer,
+        species_events_buffer: &wgpu::Buffer,
     ) -> Self {
         // Create shader module
         let cells_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -103,7 +106,7 @@ impl ComputePipelines {
                     binding: 5,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -193,7 +196,7 @@ impl ComputePipelines {
                     binding: 14,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -243,7 +246,7 @@ impl ComputePipelines {
                     binding: 19,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -253,7 +256,7 @@ impl ComputePipelines {
                     binding: 20,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -263,7 +266,37 @@ impl ComputePipelines {
                     binding: 21,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 22,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 23,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 24,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -341,75 +374,87 @@ impl ComputePipelines {
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
-                    resource: spawn_count_buffer.as_entire_binding(),
+                    resource: spawn_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
-                    resource: spawn_requests_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
                     resource: lifeform_active_flags_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 7,
-                    resource: division_request_count_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 8,
-                    resource: division_requests_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 9,
+                    binding: 6,
                     resource: nutrient_grid_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 10,
+                    binding: 7,
                     resource: link_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 11,
-                    resource: link_free_count_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 12,
+                    binding: 8,
                     resource: link_free_list_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 13,
-                    resource: link_event_count_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 14,
+                    binding: 9,
                     resource: link_events_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 15,
-                    resource: cell_event_count_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 16,
+                    binding: 10,
                     resource: cell_events_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 17,
+                    binding: 11,
                     resource: spatial_hash_bucket_heads_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 18,
+                    binding: 12,
                     resource: spatial_hash_next_indices_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 19,
+                    binding: 13,
                     resource: grn_descriptor_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 20,
+                    binding: 14,
                     resource: grn_units_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 21,
+                    binding: 15,
                     resource: lifeform_states_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 16,
+                    resource: lifeform_entries_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 17,
+                    resource: lifeform_free_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 18,
+                    resource: next_lifeform_id_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 19,
+                    resource: genome_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 20,
+                    resource: species_entries_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 21,
+                    resource: species_free_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 22,
+                    resource: next_species_id_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 23,
+                    resource: lifeform_events_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 24,
+                    resource: species_events_buffer.as_entire_binding(),
                 },
             ],
         });

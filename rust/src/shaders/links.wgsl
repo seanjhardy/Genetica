@@ -14,11 +14,6 @@ struct Cell {
     lifeform_slot: u32,
     metadata: u32,
     color: vec4<f32>,
-    grn_receptor_count: u32,
-    grn_unit_count: u32,
-    grn_timer: u32,
-    _grn_padding: u32,
-    grn_state: array<f32, MAX_GRN_STATE_SIZE>,
 }
 
 struct Link {
