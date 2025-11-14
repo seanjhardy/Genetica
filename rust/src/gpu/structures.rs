@@ -8,10 +8,11 @@ pub const MAX_GRN_INPUTS_PER_UNIT: usize = 8;
 pub const MAX_GRN_STATE_SIZE: usize = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
 pub const GRN_EVALUATION_INTERVAL: u32 = 8;
 
-pub const MAX_GENES_PER_GENOME: usize = 20;
-pub const BASE_PAIRS_PER_GENE: usize = 20;
+pub const MAX_GENES_PER_GENOME: usize = 200;
+pub const BASE_PAIRS_PER_GENE: usize = 55;
 pub const BASE_PAIRS_PER_GENOME: usize = MAX_GENES_PER_GENOME * BASE_PAIRS_PER_GENE;
-pub const GENOME_WORD_COUNT: usize = (BASE_PAIRS_PER_GENOME + 3) / 4;
+pub const WORDS_PER_GENE: usize = 4; // 55 base pairs = 110 bits, need 4 u32 words (128 bits)
+pub const GENOME_WORD_COUNT: usize = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
 
 pub const MAX_SPECIES_CAPACITY: usize = 1024;
 pub const MAX_LIFEFORM_EVENTS: usize = 1024;
@@ -73,15 +74,15 @@ const _: [(); 16] = [(); std::mem::align_of::<Cell>()];
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GenomeEntry {
-    pub gene_count: u32,
-    pub base_pairs: [u32; GENOME_WORD_COUNT],
+    pub gene_ids: [u32; MAX_GENES_PER_GENOME],
+    pub gene_sequences: [u32; GENOME_WORD_COUNT],
 }
 
 impl GenomeEntry {
     pub fn inactive() -> Self {
         Self {
-            gene_count: 0,
-            base_pairs: [0; GENOME_WORD_COUNT],
+            gene_ids: [0; MAX_GENES_PER_GENOME],
+            gene_sequences: [0; GENOME_WORD_COUNT],
         }
     }
 }
@@ -284,8 +285,9 @@ const _: [(); 16] = [(); std::mem::align_of::<LinkEvent>()];
 pub struct SpeciesEntry {
     pub species_id: u32,
     pub mascot_lifeform_slot: u32,
-    pub member_count: u32,
+    pub member_count: u32, // Note: atomic on GPU side, but regular u32 in Rust
     pub flags: u32,
+    pub mascot_genome: GenomeEntry,
 }
 
 impl SpeciesEntry {
@@ -297,6 +299,7 @@ impl SpeciesEntry {
             mascot_lifeform_slot: 0,
             member_count: 0,
             flags: 0,
+            mascot_genome: GenomeEntry::inactive(),
         }
     }
 }

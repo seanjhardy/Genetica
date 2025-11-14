@@ -89,12 +89,15 @@ struct LinkEvent {
     _padding: f32,
 }
 
+// Genome structure: 200 genes, each with 55 base pairs (packed into 4 u32 words)
+// - gene_ids[0..199]: Array of gene IDs (which genes are present, 0 = empty slot)
+// - gene_sequences[0..799]: Packed base pair data
+//   Each gene uses 4 consecutive u32 words (16 base pairs per word, 55 bases = 4 words)
+//   Gene at index i uses words: gene_sequences[i*4 .. i*4+3]
+//   Each base pair is 2 bits (0-3), packed into u32 words
 struct GenomeEntry {
-    gene_count: u32,
-    _pad0: u32,
-    _pad1: u32,
-    _pad2: u32,
-    base_pairs: array<u32, GENOME_WORD_COUNT>,
+    gene_ids: array<u32, MAX_GENES_PER_GENOME>,
+    gene_sequences: array<u32, GENOME_WORD_COUNT>,
 }
 
 struct SpeciesEntry {
@@ -102,6 +105,7 @@ struct SpeciesEntry {
     mascot_lifeform_slot: u32,
     member_count: atomic<u32>,
     flags: u32,
+    mascot_genome: GenomeEntry,
 }
 
 struct LifeformEvent {

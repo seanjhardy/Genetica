@@ -74,6 +74,7 @@ impl ComputePipelines {
         // 20: storage, read_write - next_species_id (Counter)
         // 21: storage, read_write - lifeform_events (LifeformEventBuffer)
         // 22: storage, read_write - species_events (SpeciesEventBuffer)
+        // 23: storage, read_write - next_gene_id (Counter)
         let cells_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Cells Bind Group Layout"),
             entries: &[

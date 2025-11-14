@@ -76,6 +76,9 @@ var<storage, read_write> lifeform_events: LifeformEventBuffer;
 @group(0) @binding(22)
 var<storage, read_write> species_events: SpeciesEventBuffer;
 
+@group(0) @binding(23)
+var<storage, read_write> next_gene_id: Counter;
+
 fn compute_cell_color(energy: f32) -> vec4<f32> {
     let energy_normalized = clamp(energy / 100.0, 0.0, 1.0);
     let brightness = 0.1 + energy_normalized * 0.9;
@@ -518,4 +521,5 @@ fn build_spatial_hash(@builtin(global_invocation_id) global_id: vec3<u32>) {
         cell_hash_next[index] = previous;
     }
 }
+
 

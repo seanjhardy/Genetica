@@ -1,6 +1,10 @@
 @include src/gpu/wgsl/types.wgsl;
 @include src/gpu/wgsl/constants.wgsl;
 
+// ============================================
+// Event Management
+// ============================================
+
 fn push_lifeform_event(kind: u32, lifeform_id: u32, species_id: u32, lifeform_slot: u32) {
     let event_index = atomicAdd(&lifeform_events.counter.value, 1u);
     if event_index < arrayLength(&lifeform_events.events) {
@@ -28,6 +32,10 @@ fn push_species_event(kind: u32, species_id: u32, species_slot: u32, member_coun
         atomicSub(&species_events.counter.value, 1u);
     }
 }
+
+// ============================================
+// Free List Management
+// ============================================
 
 fn allocate_lifeform_slot() -> u32 {
     loop {
@@ -89,75 +97,370 @@ fn queue_spawn_cell(new_cell: Cell) -> bool {
     return false;
 }
 
-fn read_genome_base(slot: u32, base_index: u32) -> u32 {
-    if slot >= arrayLength(&genomes) {
+// ============================================
+// Genome Access Functions
+// ============================================
+// GenomeEntry structure:
+// - gene_ids[0..199]: Array of gene IDs (which genes are present, 0 = empty slot)
+// - gene_sequences[0..799]: Packed base pair data
+//   Each gene uses 4 consecutive u32 words (16 base pairs per word, 55 bases = 4 words)
+//   Gene at index i uses words: gene_sequences[i*4 .. i*4+3]
+
+// Read a base pair from a specific gene in a genome
+// genome_slot: index in genomes array
+// gene_index: which gene slot (0-199)
+// base_index: which base within the gene (0-54)
+fn read_gene_base(genome_slot: u32, gene_index: u32, base_index: u32) -> u32 {
+    if genome_slot >= arrayLength(&genomes) || gene_index >= MAX_GENES_PER_GENOME || base_index >= BASE_PAIRS_PER_GENE {
         return 0u;
     }
-    let word_index = base_index / 16u;
-    let offset = (base_index & 15u) * 2u;
+    // Calculate word index: each gene uses 4 words, base pairs are packed 16 per word
+    let word_within_gene = base_index / 16u; // Which of the 4 words (0-3)
+    let word_index = gene_index * WORDS_PER_GENE + word_within_gene;
+    let bit_offset = (base_index & 15u) * 2u; // Position within word (0-30, step 2)
     if word_index >= GENOME_WORD_COUNT {
         return 0u;
     }
-    let word = genomes[slot].base_pairs[word_index];
-    return (word >> offset) & 0x3u;
+    let word = genomes[genome_slot].gene_sequences[word_index];
+    return (word >> bit_offset) & 0x3u; // Extract 2-bit base pair
 }
 
-fn write_genome_base(slot: u32, base_index: u32, value: u32) {
-    if slot >= arrayLength(&genomes) {
+// Write a base pair to a specific gene in a genome
+fn write_gene_base(genome_slot: u32, gene_index: u32, base_index: u32, value: u32) {
+    if genome_slot >= arrayLength(&genomes) || gene_index >= MAX_GENES_PER_GENOME || base_index >= BASE_PAIRS_PER_GENE {
         return;
     }
-    let word_index = base_index / 16u;
-    let offset = (base_index & 15u) * 2u;
+    let word_within_gene = base_index / 16u;
+    let word_index = gene_index * WORDS_PER_GENE + word_within_gene;
+    let bit_offset = (base_index & 15u) * 2u;
     if word_index >= GENOME_WORD_COUNT {
         return;
     }
-    let mask = ~(0x3u << offset);
-    let word = genomes[slot].base_pairs[word_index];
-    genomes[slot].base_pairs[word_index] = (word & mask) | ((value & 0x3u) << offset);
+    let mask = ~(0x3u << bit_offset); // Clear the 2 bits
+    let word = genomes[genome_slot].gene_sequences[word_index];
+    genomes[genome_slot].gene_sequences[word_index] = (word & mask) | ((value & 0x3u) << bit_offset);
 }
+
+// Get the gene ID at a specific index
+fn get_gene_id(genome_slot: u32, gene_index: u32) -> u32 {
+    if genome_slot >= arrayLength(&genomes) || gene_index >= MAX_GENES_PER_GENOME {
+        return 0u;
+    }
+    return genomes[genome_slot].gene_ids[gene_index];
+}
+
+// Set the gene ID at a specific index
+fn set_gene_id(genome_slot: u32, gene_index: u32, gene_id: u32) {
+    if genome_slot >= arrayLength(&genomes) || gene_index >= MAX_GENES_PER_GENOME {
+        return;
+    }
+    genomes[genome_slot].gene_ids[gene_index] = gene_id;
+}
+
+// Find the index of a gene with a specific ID, returns MAX_GENES_PER_GENOME if not found
+fn find_gene_index(genome_slot: u32, gene_id: u32) -> u32 {
+    if genome_slot >= arrayLength(&genomes) {
+        return MAX_GENES_PER_GENOME;
+    }
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        if genomes[genome_slot].gene_ids[i] == gene_id {
+            return i;
+        }
+    }
+    return MAX_GENES_PER_GENOME;
+}
+
+// Count the number of active genes (non-zero gene IDs)
+fn count_active_genes(genome_slot: u32) -> u32 {
+    if genome_slot >= arrayLength(&genomes) {
+        return 0u;
+    }
+    var count: u32 = 0u;
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        if genomes[genome_slot].gene_ids[i] != 0u {
+            count = count + 1u;
+        }
+    }
+    return count;
+}
+
+// ============================================
+// Genome Operations
+// ============================================
 
 fn copy_genome(dest_slot: u32, src_slot: u32) {
     if dest_slot >= arrayLength(&genomes) || src_slot >= arrayLength(&genomes) {
         return;
     }
-    genomes[dest_slot].gene_count = genomes[src_slot].gene_count;
+    // Copy gene IDs
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        genomes[dest_slot].gene_ids[i] = genomes[src_slot].gene_ids[i];
+    }
+    // Copy gene sequences (all base pair data)
     for (var i: u32 = 0u; i < GENOME_WORD_COUNT; i = i + 1u) {
-        genomes[dest_slot].base_pairs[i] = genomes[src_slot].base_pairs[i];
+        genomes[dest_slot].gene_sequences[i] = genomes[src_slot].gene_sequences[i];
     }
 }
 
-fn random_genome(slot: u32, seed: u32) {
-    if slot >= arrayLength(&genomes) {
-        return;
-    }
-    genomes[slot].gene_count = MAX_GENES_PER_GENOME;
-    for (var base_index: u32 = 0u; base_index < BASE_PAIRS_PER_GENOME; base_index = base_index + 1u) {
-        let random_value = rand(vec2<u32>(seed + base_index * 17u, slot * 97u + base_index * 13u));
-        let base = u32(random_value * 4.0);
-        write_genome_base(slot, base_index, base);
-    }
-}
-
-fn mutate_genome(child_slot: u32, parent_slot: u32, seed: u32) -> u32 {
-    var differences: u32 = 0u;
-    for (var base_index: u32 = 0u; base_index < BASE_PAIRS_PER_GENOME; base_index = base_index + 1u) {
-        let random_value = rand(vec2<u32>(seed + base_index * 31u, child_slot * 131u + base_index));
-        if random_value < MUTATE_BASE_CHANCE {
-            let new_base = u32(rand(vec2<u32>(seed * 3u + base_index * 7u, child_slot * 211u)) * 4.0);
-            var parent_base: u32;
-            if parent_slot < LIFEFORM_CAPACITY {
-                parent_base = read_genome_base(parent_slot, base_index);
-            } else {
-                parent_base = read_genome_base(child_slot, base_index);
-            }
-            if new_base != parent_base {
-                differences = differences + 1u;
-            }
-            write_genome_base(child_slot, base_index, new_base);
+// Compare two genes by their base pairs
+fn compare_genes(genome_slot_a: u32, gene_index_a: u32, genome_slot_b: u32, gene_index_b: u32) -> f32 {
+    var diff: u32 = 0u;
+    for (var i: u32 = 0u; i < BASE_PAIRS_PER_GENE; i = i + 1u) {
+        let base_a = read_gene_base(genome_slot_a, gene_index_a, i);
+        let base_b = read_gene_base(genome_slot_b, gene_index_b, i);
+        if base_a != base_b {
+            diff = diff + 1u;
         }
     }
-    return differences;
+    return f32(diff);
 }
+
+// Compare two genomes - matches CPU logic exactly
+// Returns compatibility distance (lower = more similar)
+fn compare_genomes(genome_slot_a: u32, genome_slot_b: u32) -> f32 {
+    if genome_slot_a >= arrayLength(&genomes) || genome_slot_b >= arrayLength(&genomes) {
+        return 10000.0; // Very different if invalid
+    }
+
+    var gene_difference: u32 = 0u;
+    var base_difference: f32 = 0.0;
+    
+    // Check genes in genome A
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        let gene_id_a = get_gene_id(genome_slot_a, i);
+        if gene_id_a == 0u {
+            continue; // Skip empty slots
+        }
+        let gene_index_b = find_gene_index(genome_slot_b, gene_id_a);
+        if gene_index_b >= MAX_GENES_PER_GENOME {
+            // Gene exists in A but not in B
+            gene_difference = gene_difference + 1u;
+        } else {
+            // Both have the gene, compare base pairs
+            base_difference = base_difference + compare_genes(genome_slot_a, i, genome_slot_b, gene_index_b);
+        }
+    }
+    
+    // Check genes in genome B that don't exist in A
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        let gene_id_b = get_gene_id(genome_slot_b, i);
+        if gene_id_b == 0u {
+            continue; // Skip empty slots
+        }
+        let gene_index_a = find_gene_index(genome_slot_a, gene_id_b);
+        if gene_index_a >= MAX_GENES_PER_GENOME {
+            // Gene exists in B but not in A
+            gene_difference = gene_difference + 1u;
+        }
+    }
+
+    return f32(gene_difference) * GENE_DIFFERENCE_SCALAR + base_difference * BASE_DIFFERENCE_SCALAR;
+}
+
+// Generate a random genome
+fn random_genome(genome_slot: u32, seed: u32, num_genes: u32) {
+    if genome_slot >= arrayLength(&genomes) {
+        return;
+    }
+    
+    // Clear genome
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        genomes[genome_slot].gene_ids[i] = 0u;
+    }
+    for (var i: u32 = 0u; i < GENOME_WORD_COUNT; i = i + 1u) {
+        genomes[genome_slot].gene_sequences[i] = 0u;
+    }
+    
+    // Generate random genes
+    let actual_num_genes = min(num_genes, MAX_GENES_PER_GENOME);
+    let next_gene_id_start = atomicAdd(&next_gene_id.value, actual_num_genes);
+
+    for (var gene_idx: u32 = 0u; gene_idx < actual_num_genes; gene_idx = gene_idx + 1u) {
+        let gene_id = next_gene_id_start + gene_idx + 1u;
+        set_gene_id(genome_slot, gene_idx, gene_id);
+        
+        // Generate random base pairs for this gene
+        for (var base_idx: u32 = 0u; base_idx < BASE_PAIRS_PER_GENE; base_idx = base_idx + 1u) {
+            let random_value = rand(vec2<u32>(seed + gene_idx * 17u + base_idx * 31u, genome_slot * 97u + base_idx * 13u));
+            let base = u32(random_value * 4.0);
+            write_gene_base(genome_slot, gene_idx, base_idx, base);
+        }
+    }
+}
+
+// Convert probability to threshold (0.0-1.0 -> 0 to u32::MAX)
+fn probability_to_threshold(probability: f32) -> u32 {
+    let clamped = clamp(probability, 0.0, 1.0);
+    return u32(clamped * 4294967295.0); // u32::MAX as f32
+}
+
+// Mutate a genome - matches CPU logic
+fn mutate_genome(genome_slot: u32, seed: u32) {
+    if genome_slot >= arrayLength(&genomes) {
+        return;
+    }
+
+    let clone_gene_threshold = probability_to_threshold(CLONE_GENE_CHANCE);
+    let insert_gene_threshold = probability_to_threshold(INSERT_GENE_CHANCE);
+    let delete_gene_threshold = probability_to_threshold(DELETE_GENE_CHANCE);
+    
+    // Track genes to clone/insert (we'll process these after)
+    var genes_to_clone: array<u32, MAX_GENES_PER_GENOME>;
+    var clone_count: u32 = 0u;
+    var genes_to_insert: array<u32, MAX_GENES_PER_GENOME>;
+    var insert_count: u32 = 0u;
+    
+    // First pass: process existing genes
+    var gene_idx: u32 = 0u;
+    while gene_idx < MAX_GENES_PER_GENOME {
+        let gene_id = get_gene_id(genome_slot, gene_idx);
+        if gene_id == 0u {
+            gene_idx = gene_idx + 1u;
+            continue;
+        }
+        
+        // Check for gene cloning
+        let clone_rand = u32(rand(vec2<u32>(seed + gene_idx * 17u, genome_slot * 97u + gene_idx * 13u)) * 4294967295.0);
+        var should_clone = false;
+        if clone_rand < clone_gene_threshold {
+            should_clone = true;
+        }
+        
+        // Check for random gene insertion
+        let insert_rand = u32(rand(vec2<u32>(seed + gene_idx * 19u, genome_slot * 101u + gene_idx * 17u)) * 4294967295.0);
+        var should_insert_random = false;
+        if insert_rand < insert_gene_threshold {
+            should_insert_random = true;
+        }
+        
+        // Mutate base pairs in this gene
+        // Use simplified Poisson approximation: average mutations per gene
+        let mutate_avg = MUTATE_BASE_CHANCE * f32(BASE_PAIRS_PER_GENE);
+        let delete_avg = DELETE_BASE_CHANCE * f32(BASE_PAIRS_PER_GENE);
+        let insert_avg = INSERT_BASE_CHANCE * f32(BASE_PAIRS_PER_GENE + 1u);
+        
+        // Approximate Poisson with binomial for small probabilities
+        // For each base, check if it should mutate
+        for (var base_idx: u32 = 0u; base_idx < BASE_PAIRS_PER_GENE; base_idx = base_idx + 1u) {
+            let base_seed = vec2<u32>(seed + gene_idx * 31u + base_idx * 17u, genome_slot * 131u + base_idx);
+            
+            // Mutate base
+            let mutate_rand = rand(base_seed);
+            if mutate_rand < MUTATE_BASE_CHANCE {
+                let new_base = u32(rand(vec2<u32>(seed * 3u + base_idx * 7u, genome_slot * 211u + gene_idx)) * 4.0);
+                write_gene_base(genome_slot, gene_idx, base_idx, new_base);
+            }
+            
+            // Delete base (swap with random base to simulate deletion)
+            let delete_rand = rand(vec2<u32>(base_seed.x + 1u, base_seed.y + 1u));
+            if delete_rand < DELETE_BASE_CHANCE && base_idx < BASE_PAIRS_PER_GENE - 1u {
+                // Swap with next base to simulate deletion effect
+                let next_base = read_gene_base(genome_slot, gene_idx, base_idx + 1u);
+                write_gene_base(genome_slot, gene_idx, base_idx, next_base);
+            }
+            
+            // Insert base (shift and insert)
+            let insert_rand = rand(vec2<u32>(base_seed.x + 2u, base_seed.y + 2u));
+            if insert_rand < INSERT_BASE_CHANCE && base_idx < BASE_PAIRS_PER_GENE - 1u {
+                // Shift bases right and insert random base
+                let new_base = u32(rand(vec2<u32>(seed * 5u + base_idx * 11u, genome_slot * 311u + gene_idx)) * 4.0);
+                // Shift remaining bases (simplified - just overwrite next position)
+                write_gene_base(genome_slot, gene_idx, base_idx + 1u, new_base);
+            }
+        }
+        
+        // Check if gene should be deleted
+        let delete_rand = u32(rand(vec2<u32>(seed + gene_idx * 23u, genome_slot * 137u + gene_idx * 19u)) * 4294967295.0);
+        var should_delete = false;
+        if delete_rand < delete_gene_threshold {
+            should_delete = true;
+        }
+
+        if should_delete {
+            // Delete gene by clearing its ID
+            set_gene_id(genome_slot, gene_idx, 0u);
+            // Clear gene sequence
+            for (var base_idx: u32 = 0u; base_idx < BASE_PAIRS_PER_GENE; base_idx = base_idx + 1u) {
+                write_gene_base(genome_slot, gene_idx, base_idx, 0u);
+            }
+            gene_idx = gene_idx + 1u;
+            continue;
+        }
+        
+        // Store gene for cloning if needed
+        if should_clone && clone_count < MAX_GENES_PER_GENOME {
+            genes_to_clone[clone_count] = gene_idx;
+            clone_count = clone_count + 1u;
+        }
+        
+        // Store for random insertion if needed
+        if should_insert_random && insert_count < MAX_GENES_PER_GENOME {
+            genes_to_insert[insert_count] = gene_idx; // Store position hint
+            insert_count = insert_count + 1u;
+        }
+
+        gene_idx = gene_idx + 1u;
+    }
+    
+    // Second pass: insert cloned genes
+    for (var i: u32 = 0u; i < clone_count; i = i + 1u) {
+        let src_gene_idx = genes_to_clone[i];
+        let src_gene_id = get_gene_id(genome_slot, src_gene_idx);
+        if src_gene_id == 0u {
+            continue;
+        }
+        
+        // Find empty slot
+        var empty_slot = MAX_GENES_PER_GENOME;
+        for (var j: u32 = 0u; j < MAX_GENES_PER_GENOME; j = j + 1u) {
+            if get_gene_id(genome_slot, j) == 0u {
+                empty_slot = j;
+                break;
+            }
+        }
+
+        if empty_slot < MAX_GENES_PER_GENOME {
+            // Generate new gene ID
+            let new_gene_id = atomicAdd(&next_gene_id.value, 1u) + 1u;
+            set_gene_id(genome_slot, empty_slot, new_gene_id);
+            
+            // Copy gene sequence
+            for (var base_idx: u32 = 0u; base_idx < BASE_PAIRS_PER_GENE; base_idx = base_idx + 1u) {
+                let base = read_gene_base(genome_slot, src_gene_idx, base_idx);
+                write_gene_base(genome_slot, empty_slot, base_idx, base);
+            }
+        }
+    }
+    
+    // Third pass: insert random new genes
+    for (var i: u32 = 0u; i < insert_count; i = i + 1u) {
+        // Find empty slot
+        var empty_slot = MAX_GENES_PER_GENOME;
+        for (var j: u32 = 0u; j < MAX_GENES_PER_GENOME; j = j + 1u) {
+            if get_gene_id(genome_slot, j) == 0u {
+                empty_slot = j;
+                break;
+            }
+        }
+
+        if empty_slot < MAX_GENES_PER_GENOME {
+            // Generate new gene ID
+            let new_gene_id = atomicAdd(&next_gene_id.value, 1u) + 1u;
+            set_gene_id(genome_slot, empty_slot, new_gene_id);
+            
+            // Generate random gene (55 bases, matching INITIAL_HOX_SIZE from CPU)
+            for (var base_idx: u32 = 0u; base_idx < BASE_PAIRS_PER_GENE; base_idx = base_idx + 1u) {
+                let random_value = rand(vec2<u32>(seed + empty_slot * 29u + base_idx * 37u, genome_slot * 149u + base_idx * 23u));
+                let base = u32(random_value * 4.0);
+                write_gene_base(genome_slot, empty_slot, base_idx, base);
+            }
+        }
+    }
+}
+
+// ============================================
+// Species Management
+// ============================================
 
 fn create_species(child_slot: u32) -> vec2<u32> {
     let slot = allocate_species_slot();
@@ -170,9 +473,31 @@ fn create_species(child_slot: u32) -> vec2<u32> {
         species_entries[slot].mascot_lifeform_slot = child_slot;
         atomicStore(&species_entries[slot].member_count, 1u);
         species_entries[slot].flags = SPECIES_FLAG_ACTIVE;
+        
+        // Copy mascot genome
+        if child_slot < LIFEFORM_CAPACITY && child_slot < arrayLength(&lifeforms) {
+            let lifeform_genome_slot = lifeforms[child_slot].grn_descriptor_slot; // Reusing this field for genome slot
+            if lifeform_genome_slot < arrayLength(&genomes) {
+                copy_genome_to_species(slot, lifeform_genome_slot);
+            }
+        }
     }
     push_species_event(SPECIES_EVENT_KIND_CREATE, species_id, slot, 1u);
     return vec2<u32>(slot, species_id);
+}
+
+fn copy_genome_to_species(species_slot: u32, genome_slot: u32) {
+    if species_slot >= arrayLength(&species_entries) || genome_slot >= arrayLength(&genomes) {
+        return;
+    }
+    // Copy gene IDs
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        species_entries[species_slot].mascot_genome.gene_ids[i] = genomes[genome_slot].gene_ids[i];
+    }
+    // Copy gene sequences
+    for (var i: u32 = 0u; i < GENOME_WORD_COUNT; i = i + 1u) {
+        species_entries[species_slot].mascot_genome.gene_sequences[i] = genomes[genome_slot].gene_sequences[i];
+    }
 }
 
 fn release_species(slot: u32, species_id: u32) {
@@ -187,15 +512,26 @@ fn release_species(slot: u32, species_id: u32) {
     push_species_event(SPECIES_EVENT_KIND_EXTINCT, species_id, slot, 0u);
 }
 
-fn assign_species(child_slot: u32, parent_slot: u32, differences: u32) -> vec2<u32> {
-    if parent_slot < LIFEFORM_CAPACITY {
+fn assign_species(child_slot: u32, parent_slot: u32) -> vec2<u32> {
+    if parent_slot < LIFEFORM_CAPACITY && parent_slot < arrayLength(&lifeforms) {
         let parent_entry = lifeforms[parent_slot];
         if (parent_entry.flags & LIFEFORM_FLAG_ACTIVE) != 0u {
-            if differences >= SPECIES_DIFF_THRESHOLD {
-                return create_species(child_slot);
-            } else {
-                let species_slot = parent_entry.species_slot;
-                if species_slot < arrayLength(&species_entries) {
+            let child_genome_slot = lifeforms[child_slot].grn_descriptor_slot;
+            
+            // Compare with parent's species mascot genome
+            let species_slot = parent_entry.species_slot;
+            if species_slot < arrayLength(&species_entries) {
+                // Compare child genome with species mascot genome
+                var compatibility_distance: f32 = 0.0;
+
+                if child_genome_slot < arrayLength(&genomes) {
+                    // Compare with mascot genome stored in species entry
+                    compatibility_distance = compare_genomes_with_species_mascot(child_genome_slot, species_slot);
+                }
+
+                if compatibility_distance >= COMPATABILITY_DISTANCE_THRESHOLD {
+                    return create_species(child_slot);
+                } else {
                     atomicAdd(&species_entries[species_slot].member_count, 1u);
                     species_entries[species_slot].flags = SPECIES_FLAG_ACTIVE;
                     return vec2<u32>(species_slot, parent_entry.species_id);
@@ -204,6 +540,85 @@ fn assign_species(child_slot: u32, parent_slot: u32, differences: u32) -> vec2<u
         }
     }
     return create_species(child_slot);
+}
+
+// Compare a genome with a species mascot genome
+fn compare_genomes_with_species_mascot(genome_slot: u32, species_slot: u32) -> f32 {
+    if genome_slot >= arrayLength(&genomes) || species_slot >= arrayLength(&species_entries) {
+        return 10000.0;
+    }
+
+    var gene_difference: u32 = 0u;
+    var base_difference: f32 = 0.0;
+    
+    // Check genes in genome
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        let gene_id = get_gene_id(genome_slot, i);
+        if gene_id == 0u {
+            continue;
+        }
+        let mascot_gene_idx = find_gene_index_in_species(species_slot, gene_id);
+        if mascot_gene_idx >= MAX_GENES_PER_GENOME {
+            // Gene exists in child but not in mascot
+            gene_difference = gene_difference + 1u;
+        } else {
+            // Both have the gene, compare base pairs
+            base_difference = base_difference + compare_gene_with_species_mascot(genome_slot, i, species_slot, mascot_gene_idx);
+        }
+    }
+    
+    // Check genes in mascot genome that don't exist in child
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        let mascot_gene_id = species_entries[species_slot].mascot_genome.gene_ids[i];
+        if mascot_gene_id == 0u {
+            continue;
+        }
+        let child_gene_idx = find_gene_index(genome_slot, mascot_gene_id);
+        if child_gene_idx >= MAX_GENES_PER_GENOME {
+            // Gene exists in mascot but not in child
+            gene_difference = gene_difference + 1u;
+        }
+    }
+
+    return f32(gene_difference) * GENE_DIFFERENCE_SCALAR + base_difference * BASE_DIFFERENCE_SCALAR;
+}
+
+fn compare_gene_with_species_mascot(genome_slot: u32, gene_idx: u32, species_slot: u32, mascot_gene_idx: u32) -> f32 {
+    var diff: u32 = 0u;
+    for (var i: u32 = 0u; i < BASE_PAIRS_PER_GENE; i = i + 1u) {
+        let base_a = read_gene_base(genome_slot, gene_idx, i);
+        let base_b = read_gene_base_from_species(species_slot, mascot_gene_idx, i);
+        if base_a != base_b {
+            diff = diff + 1u;
+        }
+    }
+    return f32(diff);
+}
+
+fn read_gene_base_from_species(species_slot: u32, gene_index: u32, base_index: u32) -> u32 {
+    if species_slot >= arrayLength(&species_entries) || gene_index >= MAX_GENES_PER_GENOME || base_index >= BASE_PAIRS_PER_GENE {
+        return 0u;
+    }
+    let gene_base_word = base_index / 16u;
+    let word_index = gene_index * WORDS_PER_GENE + gene_base_word;
+    let offset = (base_index & 15u) * 2u;
+    if word_index >= GENOME_WORD_COUNT {
+        return 0u;
+    }
+    let word = species_entries[species_slot].mascot_genome.gene_sequences[word_index];
+    return (word >> offset) & 0x3u;
+}
+
+fn find_gene_index_in_species(species_slot: u32, gene_id: u32) -> u32 {
+    if species_slot >= arrayLength(&species_entries) {
+        return MAX_GENES_PER_GENOME;
+    }
+    for (var i: u32 = 0u; i < MAX_GENES_PER_GENOME; i = i + 1u) {
+        if species_entries[species_slot].mascot_genome.gene_ids[i] == gene_id {
+            return i;
+        }
+    }
+    return MAX_GENES_PER_GENOME;
 }
 
 fn release_lifeform(lifeform_slot: u32) {
@@ -246,6 +661,10 @@ fn release_lifeform(lifeform_slot: u32) {
     push_lifeform_event(LIFEFORM_EVENT_KIND_DESTROY, entry.lifeform_id, entry.species_id, lifeform_slot);
 }
 
+// ============================================
+// Lifeform Creation
+// ============================================
+
 fn random_position(seed: vec2<u32>) -> vec2<f32> {
     let width = uniforms.bounds.z - uniforms.bounds.x;
     let height = uniforms.bounds.w - uniforms.bounds.y;
@@ -264,7 +683,7 @@ fn initialise_lifeform_state(slot: u32, lifeform_id: u32) {
     lifeforms[slot].lifeform_id = lifeform_id;
     lifeforms[slot].first_cell_slot = 0u;
     lifeforms[slot].cell_count = 0u;
-    lifeforms[slot].grn_descriptor_slot = slot;
+    lifeforms[slot].grn_descriptor_slot = slot; // Store genome slot here temporarily
     lifeforms[slot].grn_unit_offset = slot * MAX_GRN_REGULATORY_UNITS;
     lifeforms[slot].flags = LIFEFORM_FLAG_ACTIVE;
     lifeforms[slot].grn_timer = 0u;
@@ -299,17 +718,19 @@ fn create_lifeform_cell(
     }
 
     let lifeform_id = atomicAdd(&next_lifeform_id.value, 1u);
+    let genome_slot = lifeform_slot; // Use lifeform slot as genome slot for now
 
     if parent_slot < LIFEFORM_CAPACITY && (lifeforms[parent_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
-        lifeforms[lifeform_slot].gene_count = lifeforms[parent_slot].gene_count;
-        copy_genome(lifeform_slot, parent_slot);
+        let parent_genome_slot = lifeforms[parent_slot].grn_descriptor_slot;
+        copy_genome(genome_slot, parent_genome_slot);
+        mutate_genome(genome_slot, lifeform_id + 11u);
     } else {
-        lifeforms[lifeform_slot].gene_count = MAX_GENES_PER_GENOME;
-        random_genome(lifeform_slot, lifeform_id + 1u);
+        // Generate random genome
+        let num_genes = u32(rand(seed) * 18.0) + 2u; // 2-20 genes
+        random_genome(genome_slot, lifeform_id + 1u, num_genes);
     }
 
-    let differences = mutate_genome(lifeform_slot, parent_slot, lifeform_id + 11u);
-    let species_info = assign_species(lifeform_slot, parent_slot, differences);
+    let species_info = assign_species(lifeform_slot, parent_slot);
     let species_slot = species_info.x;
     let species_id = species_info.y;
 
@@ -326,6 +747,7 @@ fn create_lifeform_cell(
     lifeforms[lifeform_slot].cell_count = 0u;
     lifeforms[lifeform_slot].flags = LIFEFORM_FLAG_ACTIVE;
     lifeforms[lifeform_slot]._pad = 0u;
+    lifeforms[lifeform_slot].grn_descriptor_slot = genome_slot; // Store genome slot here
 
     initialise_lifeform_state(lifeform_slot, lifeform_id);
     initialise_grn(lifeform_slot);
