@@ -1,18 +1,8 @@
-// Render shader for nutrient overlay grid
-struct Uniforms {
-    sim_params: vec4<f32>, // x: dt, y: zoom, z: view_w, w: view_h
-    cell_count: vec4<f32>,
-    camera: vec4<f32>,
-    bounds: vec4<f32>,
-    nutrient: vec4<u32>,// (Cell size, scale, reserved, reserved)
-}
+@include src/gpu/wgsl/types.wgsl;
+@include src/gpu/wgsl/constants.wgsl;
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
-
-struct NutrientGrid {
-    values: array<u32>,
-}
 
 @group(0) @binding(1)
 var<storage, read> nutrient_grid: NutrientGrid;
@@ -22,14 +12,12 @@ struct VertexOutput {
     @location(0) nutrient_value: f32,
 }
 
-
-const NUTRIENT_CELL_SIZE: f32 = 20.0;
-
-
 @vertex
 fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
     let total_cells = arrayLength(&nutrient_grid.values);
+    let NUTRIENT_CELL_SIZE = f32(uniforms.nutrient.x);
+
     if instance_index >= total_cells {
         out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 0.0);
         out.nutrient_value = 0.0;

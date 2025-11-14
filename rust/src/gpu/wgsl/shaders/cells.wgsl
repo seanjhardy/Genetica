@@ -1,41 +1,11 @@
-// Render shader for drawing cells as quads
-const MAX_GRN_RECEPTOR_INPUTS: u32 = 16u;
-const MAX_GRN_REGULATORY_UNITS: u32 = 16u;
-const MAX_GRN_STATE_SIZE: u32 = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
-
-struct Cell {
-    pos: vec2<f32>,
-    prev_pos: vec2<f32>,
-    random_force: vec2<f32>,
-    radius: f32,
-    energy: f32,
-    cell_wall_thickness: f32,
-    is_alive: u32,
-    lifeform_slot: u32,
-    metadata: u32,
-    color: vec4<f32>,
-}
-
-// Uniforms struct must match Rust struct layout exactly (including padding)
-struct Uniforms {
-    sim_params: vec4<f32>, // x: dt, y: zoom, z: view_w, w: view_h
-    cell_count: vec4<f32>, // x: cell_count, y: reserved0, z: reserved1, w: reserved2
-    camera: vec4<f32>,     // x: cam_x, y: cam_y
-    bounds: vec4<f32>,     // (left, top, right, bottom)
-    nutrient: vec4<u32>,// (Cell size, scale, reserved, reserved)
-};
-
+@include src/gpu/wgsl/types.wgsl;
+@include src/gpu/wgsl/constants.wgsl;
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
 
 @group(0) @binding(1)
 var<storage, read> cells: array<Cell>;
-
-struct CellFreeList {
-    count: u32,
-    indices: array<u32>,
-}
 
 @group(0) @binding(2)
 var<storage, read> cell_free_list: CellFreeList;
@@ -58,7 +28,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     // Get the cell data for this instance
     let cell_idx = instance_index;
     let quad_vertex = vertex_index;
-    
+
     let cell = cells[cell_idx];
     if cell.is_alive == 0u {
         out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 0.0);
@@ -100,7 +70,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     // Generate quad vertices for TriangleStrip
     var offset: vec2<f32>;
     var uv_offset: vec2<f32>;
-    
+
     switch quad_vertex {
         case 0u {  // Bottom-left
             offset = vec2<f32>(-1.0, -1.0) * vec2<f32>(cell_size_clip_x, cell_size_clip_y);
@@ -119,7 +89,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
             uv_offset = vec2<f32>(1.0, 0.0);
         }
     }
-    
+
     out.clip_position = vec4<f32>(clip_x + offset.x, clip_y + offset.y, 0.0, 1.0);
     out.cell_index = f32(cell_idx);
     out.uv = uv_offset;
@@ -140,7 +110,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if dist > radius_for_wall {
         discard;
     }
-    
+
     var final_color = in.color;
 
     // Darken the border of the cell

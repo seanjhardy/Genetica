@@ -2,6 +2,8 @@
 
 use wgpu;
 
+use crate::gpu::wgsl::{CELLS_KERNEL, LINKS_KERNEL, NUTRIENTS_KERNEL, CELLS_SHADER, LINKS_SHADER, NUTRIENTS_SHADER};
+
 /// Compute pipelines for physics simulation
 pub struct ComputePipelines {
     pub reset_cell_hash: wgpu::ComputePipeline,
@@ -21,7 +23,6 @@ impl ComputePipelines {
         cell_free_list_buffer: &wgpu::Buffer,
         alive_counter_buffer: &wgpu::Buffer,
         spawn_buffer: &wgpu::Buffer,
-        lifeform_active_flags_buffer: &wgpu::Buffer,
         nutrient_grid_buffer: &wgpu::Buffer,
         link_buffer: &wgpu::Buffer,
         link_free_list_buffer: &wgpu::Buffer,
@@ -31,24 +32,48 @@ impl ComputePipelines {
         spatial_hash_next_indices_buffer: &wgpu::Buffer,
         grn_descriptor_buffer: &wgpu::Buffer,
         grn_units_buffer: &wgpu::Buffer,
-        lifeform_states_buffer: &wgpu::Buffer,
-        lifeform_entries_buffer: &wgpu::Buffer,
+        lifeforms_buffer: &wgpu::Buffer,
         lifeform_free_buffer: &wgpu::Buffer,
         next_lifeform_id_buffer: &wgpu::Buffer,
         genome_buffer: &wgpu::Buffer,
         species_entries_buffer: &wgpu::Buffer,
         species_free_buffer: &wgpu::Buffer,
         next_species_id_buffer: &wgpu::Buffer,
+        next_gene_id_buffer: &wgpu::Buffer,
         lifeform_events_buffer: &wgpu::Buffer,
         species_events_buffer: &wgpu::Buffer,
     ) -> Self {
         // Create shader module
         let cells_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Cells Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("kernels/cells.wgsl").into()),
+            source: CELLS_KERNEL.clone(),
         });
 
         // Create bind group layout
+        // Bindings must match cells.wgsl and links.wgsl shaders exactly:
+        // 0: uniform - uniforms (Uniforms)
+        // 1: storage, read_write - cells (array<Cell>)
+        // 2: storage, read_write - cell_free_list (CellFreeList)
+        // 3: storage, read_write - alive_counter (Counter)
+        // 4: storage, read_write - spawn_buffer (SpawnBuffer)
+        // 5: storage, read_write - nutrient_grid (NutrientGrid)
+        // 6: storage, read_write - links (array<Link>)
+        // 7: storage, read_write - link_free_list (FreeList)
+        // 8: storage, read_write - link_events (LinkEventBuffer)
+        // 9: storage, read_write - cell_events (CellEventBuffer)
+        // 10: storage, read_write - cell_bucket_heads (array<atomic<i32>>)
+        // 11: storage, read_write - cell_hash_next (array<i32>)
+        // 12: storage, read_write - grn_descriptors (array<GrnDescriptor>)
+        // 13: storage, read_only - grn_units (array<CompiledRegulatoryUnit>) [READ-ONLY]
+        // 14: storage, read_write - lifeforms (array<Lifeform>)
+        // 15: storage, read_write - lifeform_free (FreeList)
+        // 16: storage, read_write - next_lifeform_id (Counter)
+        // 17: storage, read_write - genomes (array<GenomeEntry>)
+        // 18: storage, read_write - species_entries (array<SpeciesEntry>)
+        // 19: storage, read_write - species_free (FreeList)
+        // 20: storage, read_write - next_species_id (Counter)
+        // 21: storage, read_write - lifeform_events (LifeformEventBuffer)
+        // 22: storage, read_write - species_events (SpeciesEventBuffer)
         let cells_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Cells Bind Group Layout"),
             entries: &[
@@ -186,7 +211,7 @@ impl ComputePipelines {
                     binding: 13,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -196,7 +221,7 @@ impl ComputePipelines {
                     binding: 14,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -284,16 +309,6 @@ impl ComputePipelines {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 23,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 24,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -340,7 +355,7 @@ impl ComputePipelines {
 
         let links_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Links Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("kernels/links.wgsl").into()),
+            source: LINKS_KERNEL.clone(),
         });
 
         let update_links = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -378,90 +393,86 @@ impl ComputePipelines {
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
-                    resource: lifeform_active_flags_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
                     resource: nutrient_grid_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 7,
+                    binding: 6,
                     resource: link_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 8,
+                    binding: 7,
                     resource: link_free_list_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 9,
+                    binding: 8,
                     resource: link_events_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 10,
+                    binding: 9,
                     resource: cell_events_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 11,
+                    binding: 10,
                     resource: spatial_hash_bucket_heads_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 12,
+                    binding: 11,
                     resource: spatial_hash_next_indices_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 13,
+                    binding: 12,
                     resource: grn_descriptor_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 14,
+                    binding: 13,
                     resource: grn_units_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
+                    binding: 14,
+                    resource: lifeforms_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
                     binding: 15,
-                    resource: lifeform_states_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 16,
-                    resource: lifeform_entries_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 17,
                     resource: lifeform_free_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 18,
+                    binding: 16,
                     resource: next_lifeform_id_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 19,
+                    binding: 17,
                     resource: genome_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 20,
+                    binding: 18,
                     resource: species_entries_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 21,
+                    binding: 19,
                     resource: species_free_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 22,
+                    binding: 20,
                     resource: next_species_id_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 23,
+                    binding: 21,
                     resource: lifeform_events_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 24,
+                    binding: 22,
                     resource: species_events_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 23,
+                    resource: next_gene_id_buffer.as_entire_binding(),
                 },
             ],
         });
 
         let nutrient_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Nutrient Regeneration Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("kernels/nutrients.wgsl").into()),
+            source: NUTRIENTS_KERNEL.clone(),
         });
 
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -554,17 +565,17 @@ impl RenderPipelines {
     ) -> Self {
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Cells Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/cells.wgsl").into()),
+            source: CELLS_SHADER.clone(),
         });
 
         let link_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Link Render Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/links.wgsl").into()),
+            source: LINKS_SHADER.clone(),
         });
 
         let nutrient_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Nutrient Overlay Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/nutrients.wgsl").into()),
+            source: NUTRIENTS_SHADER.clone(),
         });
 
         let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

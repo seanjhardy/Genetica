@@ -2,6 +2,7 @@ use puffin::profile_scope;
 use wgpu;
 
 use crate::utils::math::{Rect, Vec2};
+use crate::gpu::wgsl::PLANET_TEXTURE_SHADER;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -46,7 +47,7 @@ impl BoundsRenderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, surface_config: &wgpu::SurfaceConfiguration) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Bounds Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/planet_texture.wgsl").into()),
+            source: PLANET_TEXTURE_SHADER.clone(),
         });
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {

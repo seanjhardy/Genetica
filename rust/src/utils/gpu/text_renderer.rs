@@ -5,6 +5,8 @@ use glyph_brush::{GlyphBrush, GlyphBrushBuilder, Section, Text, OwnedSection, Ow
 use ab_glyph::FontArc;
 use wgpu::util::DeviceExt;
 
+use crate::gpu::wgsl::TEXT_SHADER;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
@@ -150,7 +152,7 @@ impl TextRenderer {
         // Create shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Text Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/text.wgsl").into()),
+            source: TEXT_SHADER.clone(),
         });
         
         // Create render pipeline

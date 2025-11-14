@@ -1,25 +1,15 @@
-// Compute shader for regenerating nutrient grid values
-struct Uniforms {
-    sim_params: vec4<f32>, // x: dt, y: zoom, z: view_w, w: view_h
-    cell_count: vec4<f32>,
-    camera: vec4<f32>,
-    bounds: vec4<f32>,
-    nutrient: vec4<u32>,// (Cell size, scale, grid_width, grid_height)
-}
+@include src/gpu/wgsl/types.wgsl;
+@include src/gpu/wgsl/constants.wgsl;
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
-
-struct NutrientGrid {
-    values: array<atomic<u32>>,
-}
 
 @group(0) @binding(1)
 var<storage, read_write> nutrient_grid: NutrientGrid;
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let index = global_id.x;
+    /*let index = global_id.x;
     let dt = uniforms.sim_params.x;
     let nutrient_scale = uniforms.nutrient.y;
     let grid_width = uniforms.nutrient.z;
@@ -59,8 +49,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             }
             let neighbour_index = u32(ny) * grid_width + u32(nx);
             if neighbour_index < total_cells {
-                let neighbour_nutrient =
-                    f32(atomicLoad(&nutrient_grid.values[neighbour_index])) / f32(nutrient_scale);
+                let neighbour_nutrient = f32(atomicLoad(&nutrient_grid.values[neighbour_index])) / f32(nutrient_scale);
                 neighbour_nutrient_sum += neighbour_nutrient;
                 neighbour_count += 1.0;
             }
@@ -76,7 +65,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let nutrient_growth = (0.0001 + 0.00005 * current + 0.001 * neighbour_bonus) * dt;
     let new_nutrient_level = min(current + nutrient_growth, 1.0);
 
-    atomicStore(&nutrient_grid.values[index], u32(new_nutrient_level * f32(nutrient_scale)));
+    atomicStore(&nutrient_grid.values[index], u32(new_nutrient_level * f32(nutrient_scale)));*/
 }
 
 

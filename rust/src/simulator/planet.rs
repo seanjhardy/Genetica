@@ -1,7 +1,7 @@
 // Planet module - manages planet background rendering with Perlin noise
 
 use wgpu;
-use crate::utils::math::Rect;
+use crate::{gpu::wgsl::PERLIN_SHADER, utils::math::Rect};
 
 /// Planet background configuration and rendering
 pub struct Planet {
@@ -96,7 +96,7 @@ impl Planet {
         // Create shader module
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Planet Perlin Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/perlin.wgsl").into()),
+            source: PERLIN_SHADER.clone(),
         });
         
         // Create uniform buffer (will be updated per frame)

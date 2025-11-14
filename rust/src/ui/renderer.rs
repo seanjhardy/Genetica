@@ -2,6 +2,7 @@
 
 use super::components::{Component, ComponentType, ImageResizeMode};
 use super::styles::{Color, Shadow};
+use crate::gpu::wgsl::{IMAGE_TEXTURE_SHADER, POST_PROCESSING_SHADER, UI_RECT_SHADER};
 use crate::utils::gpu::text_renderer::TextRenderer;
 use wgpu;
 use wgpu::util::DeviceExt;
@@ -114,10 +115,9 @@ impl UiRenderer {
         let text_renderer = TextRenderer::new(device, queue, surface_config);
 
         // Load UI rectangle shader
-        let shader_source = include_str!("../shaders/ui_rect.wgsl");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("UI Rectangle Shader"),
-            source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+            source: UI_RECT_SHADER.clone(),
         });
 
         // Create uniform buffer
@@ -214,7 +214,7 @@ impl UiRenderer {
         // Create texture sprite rendering pipeline
         let post_processing_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Post Processing Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/post_processing.wgsl").into()),
+            source: POST_PROCESSING_SHADER.clone(),
         });
 
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -322,7 +322,7 @@ impl UiRenderer {
         // Create image rendering pipeline with tint support
         let image_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Image Texture Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/image_texture.wgsl").into()),
+            source: IMAGE_TEXTURE_SHADER.clone(),
         });
 
         let image_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

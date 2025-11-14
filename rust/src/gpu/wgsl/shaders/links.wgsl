@@ -1,39 +1,5 @@
-// Render shader for drawing links between cells as trapezoids
-const MAX_GRN_RECEPTOR_INPUTS: u32 = 16u;
-const MAX_GRN_REGULATORY_UNITS: u32 = 16u;
-const MAX_GRN_STATE_SIZE: u32 = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
-
-struct Cell {
-    pos: vec2<f32>,
-    prev_pos: vec2<f32>,
-    random_force: vec2<f32>,
-    radius: f32,
-    energy: f32,
-    cell_wall_thickness: f32,
-    is_alive: u32,
-    lifeform_slot: u32,
-    metadata: u32,
-    color: vec4<f32>,
-}
-
-struct Link {
-    a: u32,
-    b: u32,
-    flags: u32,
-    generation_a: u32,
-    rest_length: f32,
-    stiffness: f32,
-    energy_transfer_rate: f32,
-    generation_b: u32,
-}
-
-struct Uniforms {
-    sim_params: vec4<f32>,
-    cell_count: vec4<f32>,
-    camera: vec4<f32>,
-    bounds: vec4<f32>,
-    nutrient: vec4<u32>,
-}
+@include src/gpu/wgsl/types.wgsl;
+@include src/gpu/wgsl/constants.wgsl;
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
@@ -43,8 +9,6 @@ var<storage, read> cells: array<Cell>;
 
 @group(0) @binding(2)
 var<storage, read> links: array<Link>;
-
-const LINK_FLAG_ALIVE: u32 = 1u;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,

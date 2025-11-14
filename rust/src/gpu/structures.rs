@@ -70,11 +70,10 @@ impl Cell {
 const _: [(); 64] = [(); std::mem::size_of::<Cell>()];
 const _: [(); 16] = [(); std::mem::align_of::<Cell>()];
 
-#[repr(C, align(16))]
+#[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GenomeEntry {
     pub gene_count: u32,
-    pub _pad: [u32; 3],
     pub base_pairs: [u32; GENOME_WORD_COUNT],
 }
 
@@ -82,7 +81,6 @@ impl GenomeEntry {
     pub fn inactive() -> Self {
         Self {
             gene_count: 0,
-            _pad: [0; 3],
             base_pairs: [0; GENOME_WORD_COUNT],
         }
     }
@@ -114,10 +112,10 @@ pub struct GrnDescriptor {
     pub unit_count: u32,
     pub state_stride: u32,
     pub unit_offset: u32,
-    pub evaluation_interval: u32,
     pub _pad0: u32,
     pub _pad1: u32,
     pub _pad2: u32,
+    pub _pad3: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -134,10 +132,10 @@ impl CompiledGrn {
                 unit_count: 0,
                 state_stride: 0,
                 unit_offset: 0,
-                evaluation_interval: GRN_EVALUATION_INTERVAL,
                 _pad0: 0,
                 _pad1: 0,
                 _pad2: 0,
+                _pad3: 0,
             },
             units: Vec::new(),
         }
@@ -145,24 +143,29 @@ impl CompiledGrn {
 }
 
 #[repr(C, align(16))]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LifeformState {
+#[derive(Copy, Clone, Debug, bytemuck::Zeroable)]
+pub struct Lifeform {
     pub lifeform_id: u32,
+    pub species_slot: u32,
+    pub species_id: u32,
+    pub gene_count: u32,
+    pub rng_state: u32,
     pub first_cell_slot: u32,
     pub cell_count: u32,
     pub grn_descriptor_slot: u32,
     pub grn_unit_offset: u32,
-    pub grn_unit_count: u32,
-    pub flags: u32,
-    pub grn_receptor_count: u32,
     pub grn_timer: u32,
+    pub flags: u32,
     pub _pad: u32,
     pub _pad2: [u32; 2],
     pub grn_state: [f32; MAX_GRN_STATE_SIZE],
 }
 
-impl LifeformState {
-    pub const FLAG_ACTIVE: u32 = 1;
+unsafe impl bytemuck::Pod for Lifeform {}
+
+impl Lifeform {
+    pub const FLAG_ACTIVE: u32 = 1 << 0;
+    pub const FLAG_PRESERVED: u32 = 1 << 1;
 
     pub fn inactive() -> Self {
         Self::zeroed()
@@ -173,23 +176,21 @@ impl LifeformState {
         grn_descriptor_slot: u32,
         descriptor: &GrnDescriptor,
     ) -> Self {
-        let mut state = Self::zeroed();
-        state.lifeform_id = lifeform_id;
-        state.first_cell_slot = 0;
-        state.cell_count = 0;
-        state.grn_descriptor_slot = grn_descriptor_slot;
-        state.grn_unit_offset = descriptor.unit_offset;
-        state.grn_unit_count = descriptor
-            .unit_count
-            .min(MAX_GRN_REGULATORY_UNITS as u32);
-        state.flags = Self::FLAG_ACTIVE;
-        state.grn_receptor_count = descriptor
-            .receptor_count
-            .min(MAX_GRN_RECEPTOR_INPUTS as u32);
-        state.grn_timer = 0;
-        state._pad = 0;
-        state._pad2 = [0; 2];
-        state
+        let mut lifeform = Self::zeroed();
+        lifeform.lifeform_id = lifeform_id;
+        lifeform.species_slot = 0;
+        lifeform.species_id = 0;
+        lifeform.gene_count = 0;
+        lifeform.rng_state = 0;
+        lifeform.first_cell_slot = 0;
+        lifeform.cell_count = 0;
+        lifeform.grn_descriptor_slot = grn_descriptor_slot;
+        lifeform.grn_unit_offset = descriptor.unit_offset;
+        lifeform.grn_timer = 0;
+        lifeform.flags = Self::FLAG_ACTIVE;
+        lifeform._pad = 0;
+        lifeform._pad2 = [0; 2];
+        lifeform
     }
 }
 
@@ -277,35 +278,6 @@ impl LinkEvent {
 const _: [(); 32] = [(); std::mem::size_of::<LinkEvent>()];
 const _: [(); 16] = [(); std::mem::align_of::<LinkEvent>()];
 
-#[repr(C, align(16))]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LifeformEntry {
-    pub lifeform_id: u32,
-    pub species_slot: u32,
-    pub species_id: u32,
-    pub gene_count: u32,
-    pub rng_state: u32,
-    pub cell_count: u32,
-    pub flags: u32,
-    pub _pad: u32,
-}
-
-impl LifeformEntry {
-    pub const FLAG_ACTIVE: u32 = 1 << 0;
-
-    pub fn inactive() -> Self {
-        Self {
-            lifeform_id: 0,
-            species_slot: 0,
-            species_id: 0,
-            gene_count: 0,
-            rng_state: 0,
-            cell_count: 0,
-            flags: 0,
-            _pad: 0,
-        }
-    }
-}
 
 #[repr(C, align(16))]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]

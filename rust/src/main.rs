@@ -13,7 +13,7 @@ fn main() {
     
     // Initialize puffin profiler
     puffin::set_scopes_on(true);
-    let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
+    let server_addr = "127.0.0.1:8587";
     let _puffin_server = puffin_http::Server::new(&server_addr).unwrap();
     println!("Puffin profiler available at http://{} - view in puffin-viewer", server_addr);
     

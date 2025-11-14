@@ -49,5 +49,10 @@
     "streambuf": "cpp",
     "typeinfo": "cpp",
     "variant": "cpp"
+  },
+  "wgsl-analyzer.customImports": {
+    "types": "file:///Users/seanjhardy/Documents/Projects/Simulations/Genetica/rust/src/gpu/wgsl/types.wgsl",
+    "processing": "file:///Users/seanjhardy/Documents/Projects/Simulations/Genetica/rust/src/gpu/wgsl/processing.wgsl",
+    "constants": "file:///Users/seanjhardy/Documents/Projects/Simulations/Genetica/rust/src/gpu/wgsl/constants.wgsl"
   }
 }

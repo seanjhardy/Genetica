@@ -7,39 +7,18 @@ use crate::gpu::buffers::EVENT_STAGING_RING_SIZE;
 /// Tracks the current population counters for cells and lifeforms.
 #[derive(Debug)]
 pub struct PopulationState {
-    pub last_alive: u32,
-    pub predicted_alive: u32,
-    pub last_lifeform: u32,
-    pub predicted_lifeform: u32,
-    pub last_species: u32,
-    pub predicted_species: u32,
+    pub lifeforms: u32,
+    pub species: u32,
+    pub cells: u32,
 }
 
 impl PopulationState {
-    pub fn new(initial_alive: u32, initial_lifeforms: u32, initial_species: u32) -> Self {
+    pub fn new() -> Self {
         Self {
-            last_alive: initial_alive,
-            predicted_alive: initial_alive,
-            last_lifeform: initial_lifeforms,
-            predicted_lifeform: initial_lifeforms,
-            last_species: initial_species,
-            predicted_species: initial_species,
+            lifeforms: 0,
+            species: 0,
+            cells: 0,
         }
-    }
-
-    pub fn sync_alive(&mut self, value: u32) {
-        self.last_alive = value;
-        self.predicted_alive = value;
-    }
-
-    pub fn sync_lifeforms(&mut self, value: u32) {
-        self.last_lifeform = value;
-        self.predicted_lifeform = value;
-    }
-
-    pub fn sync_species(&mut self, value: u32) {
-        self.last_species = value;
-        self.predicted_species = value;
     }
 }
 
@@ -47,13 +26,12 @@ impl PopulationState {
 #[derive(Debug)]
 pub struct GpuTransferState {
     pub alive_counter_pending: bool,
-    pub lifeform_flags_pending: bool,
     pub cell_events_pending: [bool; EVENT_STAGING_RING_SIZE],
     pub link_events_pending: [bool; EVENT_STAGING_RING_SIZE],
-    pub next_cell_event_staging: usize,
-    pub next_link_event_staging: usize,
     pub lifeform_events_pending: [bool; EVENT_STAGING_RING_SIZE],
     pub species_events_pending: [bool; EVENT_STAGING_RING_SIZE],
+    pub next_cell_event_staging: usize,
+    pub next_link_event_staging: usize,
     pub next_lifeform_event_staging: usize,
     pub next_species_event_staging: usize,
 }
@@ -62,13 +40,12 @@ impl Default for GpuTransferState {
     fn default() -> Self {
         Self {
             alive_counter_pending: false,
-            lifeform_flags_pending: false,
             cell_events_pending: [false; EVENT_STAGING_RING_SIZE],
             link_events_pending: [false; EVENT_STAGING_RING_SIZE],
-            next_cell_event_staging: 0,
-            next_link_event_staging: 0,
             lifeform_events_pending: [false; EVENT_STAGING_RING_SIZE],
             species_events_pending: [false; EVENT_STAGING_RING_SIZE],
+            next_cell_event_staging: 0,
+            next_link_event_staging: 0,
             next_lifeform_event_staging: 0,
             next_species_event_staging: 0,
         }

@@ -62,10 +62,8 @@ impl Simulation {
         environment: Arc<parking_lot::Mutex<Environment>>,
         speed: Arc<parking_lot::Mutex<f32>>,
     ) -> Self {
-        let initial_alive = buffers.initial_alive_count();
         let initial_bounds = environment.lock().get_bounds();
-        let initial_lifeforms = 0;
-        let mut simulation = Self {
+        let simulation = Self {
             device,
             queue,
             compute_pipelines,
@@ -73,7 +71,7 @@ impl Simulation {
             environment,
             pause: PauseState::new(false),
             speed,
-            population: PopulationState::new(initial_alive, initial_lifeforms, 0),
+            population: PopulationState::new(),
             transfers: GpuTransferState::default(),
             cell_division_events: Vec::new(),
             cell_death_events: Vec::new(),
@@ -81,7 +79,7 @@ impl Simulation {
             current_bounds: initial_bounds,
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
-            submission: SubmissionState::new(4, Duration::from_micros(500)),
+            submission: SubmissionState::new(32, Duration::from_millis(10)),
         };
 
         simulation
@@ -97,7 +95,6 @@ impl Simulation {
         
         // Skip simulation if paused
         if self.pause.is_paused() {
-            self.flush_pending_submissions();
             thread::sleep(Duration::from_millis(10));
             return;
         }
@@ -114,11 +111,9 @@ impl Simulation {
                 let base_sleep_micros = 100.0;
                 let adjusted_sleep = (base_sleep_micros / speed.max(0.01)) as u64;
                 if adjusted_sleep > 0 {
-                    self.flush_pending_submissions();
                     thread::sleep(Duration::from_micros(adjusted_sleep));
                 }
             } else if speed == 0.0 {
-                self.flush_pending_submissions();
                 thread::sleep(Duration::from_millis(5));
             }
             speed
@@ -126,7 +121,10 @@ impl Simulation {
 
         let iterations = (10.0 * speed).max(1.0).floor() as u32;
         self.run_compute_batch(iterations);
-        self.maintain_minimum_cell_population();
+        // Poll GPU readbacks less frequently - only every 10 steps to reduce overhead
+        if self.step_count.load(Ordering::Relaxed) % 10 == 0 {
+            //self.poll_gpu_readbacks();
+        }
     }
     
     pub fn get_step_count(&self) -> u64 {
@@ -144,23 +142,6 @@ impl Simulation {
     pub fn is_paused(&self) -> bool {
         self.pause.is_paused()
     }
-
-    pub fn last_alive_count(&self) -> u32 {
-        self.population.last_alive
-    }
-
-    pub fn last_lifeform_count(&self) -> u32 {
-        self.population.last_lifeform
-    }
-
-    pub fn last_species_count(&self) -> u32 {
-        self.population.last_species
-    }
-
-    pub fn enqueue_spawn_requests(&self, cells: &[Cell]) -> usize {
-        self.buffers.enqueue_spawn_requests(&self.queue, cells)
-    }
-
 
     fn flush_pending_submissions(&mut self) {
         profile_scope!("Flush Pending Submissions");
@@ -204,9 +185,9 @@ impl Simulation {
                     let workgroups = (total_cells + workgroup_size - 1) / workgroup_size;
                     nutrient_pass.set_pipeline(&self.compute_pipelines.update_nutrients);
                     nutrient_pass.set_bind_group(0, &self.compute_pipelines.update_nutrients_bind_group, &[]);
-                    for _ in 0..iterations {
-                        nutrient_pass.dispatch_workgroups(workgroups, 1, 1);
-                    }
+                    //for _ in 0..iterations {
+                        //nutrient_pass.dispatch_workgroups(workgroups, 1, 1);
+                    //}
                 }
             }
 
@@ -265,16 +246,11 @@ impl Simulation {
                 }
             }
 
+            /*
             if !self.transfers.alive_counter_pending {
                 self.buffers
                     .schedule_alive_counter_copy(&mut encoder);
                 self.transfers.alive_counter_pending = true;
-            }
-
-            if !self.transfers.lifeform_flags_pending {
-                self.buffers
-                    .schedule_lifeform_flags_copy(&mut encoder);
-                self.transfers.lifeform_flags_pending = true;
             }
 
             let ring_size = self.buffers.event_staging_ring_size();
@@ -316,7 +292,7 @@ impl Simulation {
                     self.transfers.next_species_event_staging =
                         (species_slot + 1) % ring_size;
                 }
-            }
+            }*/
 
             profile_scope!("Finish Command Encoder");
             encoder.finish()
@@ -341,10 +317,26 @@ impl Simulation {
 
     }
 
-    fn maintain_minimum_cell_population(&mut self) {
-        if !self.submission.pending_command_buffers.is_empty() {
-            profile_scope!("Flush Pending Command Buffers");
+    /// Poll GPU for readbacks (counters and events) - renamed from maintain_minimum_cell_population
+    /// Only flushes submissions when we actually need to read back data
+    fn poll_gpu_readbacks(&mut self) {
+        // Only flush if we have pending readbacks that need GPU completion
+        let needs_flush = self.transfers.alive_counter_pending
+            || self.transfers.cell_events_pending.iter().any(|&x| x)
+            || self.transfers.link_events_pending.iter().any(|&x| x)
+            || self.transfers.lifeform_events_pending.iter().any(|&x| x)
+            || self.transfers.species_events_pending.iter().any(|&x| x);
+        
+        if needs_flush && !self.submission.pending_command_buffers.is_empty() {
+            profile_scope!("Flush Before Readback");
+            let flush_start = std::time::Instant::now();
             self.flush_pending_submissions();
+            let flush_duration = flush_start.elapsed();
+            
+            // Log if flush takes significant time (indicates GPU is busy)
+            if flush_duration.as_millis() > 1 {
+                eprintln!("[GPU Profiling] Flush took {}ms (GPU may be busy)", flush_duration.as_millis());
+            }
         }
 
         let mut counters_need_poll = false;
@@ -354,14 +346,6 @@ impl Simulation {
             {
                 profile_scope!("Begin Alive Counter Map");
                 self.buffers.begin_alive_counter_map();
-            }
-            counters_need_poll = true;
-        }
-
-        if self.transfers.lifeform_flags_pending {
-            {
-                profile_scope!("Begin Lifeform Flags Map");
-                self.buffers.begin_lifeform_flags_map();
             }
             counters_need_poll = true;
         }
@@ -392,23 +376,26 @@ impl Simulation {
 
         if counters_need_poll || events_need_poll {
             profile_scope!("Poll GPU Counters");
+            let poll_start = std::time::Instant::now();
             let _ = self.device.poll(wgpu::MaintainBase::Poll);
+            let poll_duration = poll_start.elapsed();
+            
+            // Log if polling takes significant time
+            if poll_duration.as_millis() > 1 {
+                eprintln!("[GPU Profiling] Poll took {}ms", poll_duration.as_millis());
+            }
         }
 
         if self.transfers.alive_counter_pending {
             profile_scope!("Consume Alive Counter");
+            let readback_start = std::time::Instant::now();
             if let Some(value) = self.buffers.try_consume_alive_counter() {
-                self.population.sync_alive(value);
+                let readback_duration = readback_start.elapsed();
+                if readback_duration.as_millis() > 1 {
+                    eprintln!("[GPU Profiling] Alive counter readback took {}ms", readback_duration.as_millis());
+                }
+                self.population.cells = value;
                 self.transfers.alive_counter_pending = false;
-            }
-        }
-
-        if self.transfers.lifeform_flags_pending {
-            profile_scope!("Consume Lifeform Flags");
-            if let Some(flags) = self.buffers.try_consume_lifeform_flags() {
-                let active_lifeforms = flags.iter().filter(|value| **value != 0).count() as u32;
-                self.population.sync_lifeforms(active_lifeforms);
-                self.transfers.lifeform_flags_pending = false;
             }
         }
 
@@ -499,12 +486,12 @@ impl Simulation {
         for event in events {
             match event.kind {
                 LifeformEvent::KIND_CREATE => {
-                    self.population.predicted_lifeform =
-                        self.population.predicted_lifeform.saturating_add(1);
+                    self.population.lifeforms =
+                        self.population.lifeforms.saturating_add(1);
                 }
                 LifeformEvent::KIND_DESTROY => {
-                    self.population.predicted_lifeform =
-                        self.population.predicted_lifeform.saturating_sub(1);
+                    self.population.lifeforms =
+                        self.population.lifeforms.saturating_sub(1);
                 }
                 _ => {}
             }
@@ -519,14 +506,10 @@ impl Simulation {
         for event in events {
             match event.kind {
                 SpeciesEvent::KIND_CREATE => {
-                    let updated = self.population.predicted_species.saturating_add(1);
-                    self.population.predicted_species = updated;
-                    self.population.last_species = updated;
+                    self.population.species = self.population.species.saturating_add(1);
                 }
                 SpeciesEvent::KIND_EXTINCT => {
-                    let updated = self.population.predicted_species.saturating_sub(1);
-                    self.population.predicted_species = updated;
-                    self.population.last_species = updated;
+                    self.population.species = self.population.species.saturating_sub(1);
                 }
                 _ => {}
             }
@@ -544,18 +527,18 @@ impl Simulation {
 
         if !self.cell_death_events.is_empty() {
             let deaths = self.cell_death_events.len() as u32;
-            self.population.predicted_alive = self
+            self.population.cells = self
                 .population
-                .predicted_alive
+                .cells
                 .saturating_sub(deaths);
             self.cell_death_events.clear();
         }
 
         if !self.cell_division_events.is_empty() {
             let divisions = self.cell_division_events.len() as u32;
-            self.population.predicted_alive = self
+            self.population.cells = self
                 .population
-                .predicted_alive
+                .cells
                 .saturating_add(divisions);
             self.cell_division_events.clear();
         }
@@ -582,7 +565,6 @@ impl Simulation {
             self.buffers.cell_free_list_buffer_write(),
             self.buffers.alive_counter_buffer(),
             self.buffers.spawn_buffer(),
-            self.buffers.lifeform_active_flags_buffer(),
             new_nutrient_buffer.as_ref(),
             self.buffers.link_buffer(),
             self.buffers.link_free_list_buffer(),
@@ -592,14 +574,14 @@ impl Simulation {
             self.buffers.cell_hash_next_indices_buffer(),
             self.buffers.grn_descriptor_buffer(),
             self.buffers.grn_units_buffer(),
-            self.buffers.lifeform_states_buffer(),
-            self.buffers.lifeform_entries_buffer(),
+            self.buffers.lifeforms_buffer(),
             self.buffers.lifeform_free_buffer(),
             self.buffers.next_lifeform_id_buffer(),
             self.buffers.genome_buffer(),
             self.buffers.species_entries_buffer(),
             self.buffers.species_free_buffer(),
             self.buffers.next_species_id_buffer(),
+            self.buffers.next_gene_id_buffer(),
             self.buffers.lifeform_events_buffer(),
             self.buffers.species_events_buffer(),
         );
@@ -686,7 +668,6 @@ impl Application {
             buffers.cell_free_list_buffer_write(), // Compute uses write buffer's free list
             buffers.alive_counter_buffer(),
             buffers.spawn_buffer(),
-            buffers.lifeform_active_flags_buffer(),
             nutrient_buffer.as_ref(),
             buffers.link_buffer(),
             buffers.link_free_list_buffer(),
@@ -696,14 +677,14 @@ impl Application {
             buffers.cell_hash_next_indices_buffer(),
             buffers.grn_descriptor_buffer(),
             buffers.grn_units_buffer(),
-            buffers.lifeform_states_buffer(),
-            buffers.lifeform_entries_buffer(),
+            buffers.lifeforms_buffer(),
             buffers.lifeform_free_buffer(),
             buffers.next_lifeform_id_buffer(),
             buffers.genome_buffer(),
             buffers.species_entries_buffer(),
             buffers.species_free_buffer(),
             buffers.next_species_id_buffer(),
+            buffers.next_gene_id_buffer(),
             buffers.lifeform_events_buffer(),
             buffers.species_events_buffer(),
         );
@@ -809,21 +790,15 @@ impl Application {
         // Get current simulation state and clone buffers
         let (current_step, buffers, bounds, alive_count, lifeform_count, species_count) = {
             profile_scope!("Sync Simulation State");
-            let mut simulation = self.simulation.lock();
-            {
-                profile_scope!("Flush Pending");
-                simulation.flush_pending_submissions();
-            }
-            {
-                profile_scope!("Get Simulation State");
-            }
+            let simulation = self.simulation.lock();
+            // No need to flush - GPU works asynchronously and render doesn't need immediate completion
             {
                 profile_scope!("Get Simulation State");
                 let current_step = simulation.get_step_count();
                 let buffers = simulation.get_buffers();
-                let alive_count = simulation.last_alive_count();
-                let lifeform_count = simulation.last_lifeform_count();
-                let species_count = simulation.last_species_count();
+                let alive_count = simulation.population.cells;
+                let lifeform_count = simulation.population.lifeforms;
+                let species_count = simulation.population.species;
                 drop(simulation);
                 let environment = self.environment.lock();
                 let bounds = environment.get_bounds();
