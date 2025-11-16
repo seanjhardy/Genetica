@@ -127,9 +127,7 @@ fn calculate_affinity(emb1: vec3<f32>, sign1: bool, mod1: f32, emb2: vec3<f32>, 
         return 0.0;
     }
     let affinity_sign = select(-1.0, 1.0, sign1 == sign2);
-    let affinity = affinity_sign * 
-        (2.0 * abs(mod1 * mod2) * (0.2 - distance)) /
-        (10.0 * distance + abs(mod1 * mod2));
+    let affinity = affinity_sign * (2.0 * abs(mod1 * mod2) * (0.2 - distance)) / (10.0 * distance + abs(mod1 * mod2));
     return affinity;
 }
 
@@ -140,13 +138,13 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if lifeform_slot >= LIFEFORM_CAPACITY || lifeform_slot >= arrayLength(&lifeforms) {
         return;
     }
-    
-    let lifeform = lifeforms[lifeform_slot];
-    if (lifeform.flags & LIFEFORM_FLAG_ACTIVE) == 0u {
+
+    // Don't copy the struct - access fields directly (cell_count is atomic and can't be copied)
+    if (lifeforms[lifeform_slot].flags & LIFEFORM_FLAG_ACTIVE) == 0u {
         return;
     }
-    
-    let genome_slot = lifeform.grn_descriptor_slot; // Reusing this field for genome slot
+
+    let genome_slot = lifeforms[lifeform_slot].grn_descriptor_slot; // Reusing this field for genome slot
     if genome_slot >= arrayLength(&genomes) {
         return;
     }
@@ -163,7 +161,7 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var current_factors: array<FactorData, 8u>;
     var factor_count: u32 = 0u;
     var reading_promoters: bool = true;
-    
+
     var regulatory_units: array<array<PromoterData, 8u>, MAX_GRN_REGULATORY_UNITS>;
     var unit_promoter_counts: array<u32, MAX_GRN_REGULATORY_UNITS>;
     var unit_factor_counts: array<u32, MAX_GRN_REGULATORY_UNITS>;
@@ -175,9 +173,9 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
         if gene_id == 0u {
             continue;
         }
-        
+
         var reader = reader_new(genome_slot, gene_idx);
-        
+
         while reader_remaining(reader) >= MIN_GENE_BASES {
             // Read gene type (2 bases -> 0-16, mod 5 -> 0-4)
             let type_val_raw = read_base_range(&reader, 2u);
@@ -185,20 +183,20 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 break;
             }
             let type_val = u32(type_val_raw * 16.0) % 5u;
-            
+
             let sign_base = reader_read_base(&reader);
             if sign_base >= 4u {
                 break;
             }
             let sign = sign_base >= 2u;
-            
+
             let active_base = reader_read_base(&reader);
             if active_base >= 4u {
                 break;
             }
-            let active = active_base >= 1u;
-            
-            if !active {
+            let is_active = active_base >= 1u;
+
+            if !is_active {
                 continue;
             }
             
@@ -236,13 +234,13 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 }
                 let sub_type = u32(sub_type_raw * 64.0) % 6u;
                 let receptor_type = receptor_types[sub_type];
-                
+
                 let extra_x = read_unique_base_range(&reader, 8u);
                 let extra_y = read_unique_base_range(&reader, 8u);
                 if extra_x == 0.0 || extra_y == 0.0 {
                     break;
                 }
-                
+
                 receptors[receptor_count] = ReceptorData(
                     receptor_type,
                     sign,
@@ -263,7 +261,7 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 }
                 let sub_type = u32(sub_type_raw * 256.0) % 9u;
                 let effector_type = effector_types[sub_type];
-                
+
                 effectors[effector_count] = EffectorData(
                     effector_type,
                     sign,
@@ -279,7 +277,7 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 }
                 let additive = additive_base >= 1u;
                 let promoter_type = select(1u, 0u, additive); // 0 = Additive, 1 = Multiplicative
-                
+
                 if !reading_promoters {
                     // Finish current regulatory unit
                     if promoter_count > 0u && factor_count > 0u && unit_count < MAX_GRN_REGULATORY_UNITS {
@@ -294,7 +292,7 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     }
                     reading_promoters = true;
                 }
-                
+
                 if promoter_count < 8u {
                     current_promoters[promoter_count] = PromoterData(
                         promoter_type,
@@ -311,7 +309,7 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 }
                 let factor_types = array<u32, 3u>(1u, 0u, 2u); // ExternalMorphogen, InternalMorphogen, Orientant
                 let factor_type = factor_types[type_val - 3u];
-                
+
                 if factor_count < 8u {
                     current_factors[factor_count] = FactorData(
                         factor_type,
@@ -337,8 +335,8 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     
     // Now compile the GRN into CompiledRegulatoryUnit structures
-    let unit_offset = lifeform.grn_unit_offset;
-    let descriptor_slot = lifeform.grn_descriptor_slot;
+    let unit_offset = lifeforms[lifeform_slot].grn_unit_offset;
+    let descriptor_slot = lifeforms[lifeform_slot].grn_descriptor_slot;
     
     // Update descriptor
     if descriptor_slot < arrayLength(&grn_descriptors) {
@@ -377,7 +375,7 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     best_promoter_type = promoter.promoter_type;
                 }
             }
-            
+
             if abs(max_affinity) > 0.0 && candidate_count < 32u {
                 input_candidates[candidate_count] = vec3<f32>(f32(rec_idx), max_affinity, f32(best_promoter_type));
                 candidate_count = candidate_count + 1u;
@@ -391,12 +389,12 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 factor_offset = factor_offset + unit_factor_counts[other_unit_idx];
                 continue;
             }
-            
+
             for (var fact_idx: u32 = 0u; fact_idx < unit_factor_counts[other_unit_idx]; fact_idx = fact_idx + 1u) {
                 let factor = current_factors[fact_idx]; // Simplified - should get from other unit
                 var max_affinity: f32 = 0.0;
                 var best_promoter_type: u32 = 0u;
-                
+
                 for (var prom_idx: u32 = 0u; prom_idx < unit_promoter_counts[unit_idx]; prom_idx = prom_idx + 1u) {
                     let promoter = regulatory_units[unit_idx][prom_idx];
                     let affinity = calculate_affinity(
@@ -408,7 +406,7 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                         best_promoter_type = promoter.promoter_type;
                     }
                 }
-                
+
                 if abs(max_affinity) > 0.0 && candidate_count < 32u {
                     input_candidates[candidate_count] = vec3<f32>(f32(factor_offset + fact_idx), max_affinity, f32(best_promoter_type));
                     candidate_count = candidate_count + 1u;
@@ -431,7 +429,7 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
         // Take top MAX_GRN_INPUTS_PER_UNIT inputs
         let num_inputs = min(candidate_count, MAX_GRN_INPUTS_PER_UNIT);
         grn_units[compiled_unit_idx].input_count = num_inputs;
-        
+
         for (var i: u32 = 0u; i < num_inputs; i = i + 1u) {
             grn_units[compiled_unit_idx].inputs[i].index = u32(input_candidates[i].x);
             grn_units[compiled_unit_idx].inputs[i].weight = input_candidates[i].y;
@@ -441,11 +439,11 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
         // Find top effectors for this unit
         var effector_candidates: array<vec2<f32>, 16u>; // index, affinity
         var effector_candidate_count: u32 = 0u;
-        
+
         for (var eff_idx: u32 = 0u; eff_idx < effector_count; eff_idx = eff_idx + 1u) {
             let effector = effectors[eff_idx];
             var total_affinity: f32 = 0.0;
-            
+
             for (var fact_idx: u32 = 0u; fact_idx < unit_factor_counts[unit_idx]; fact_idx = fact_idx + 1u) {
                 let factor = current_factors[fact_idx];
                 let affinity = calculate_affinity(
@@ -454,7 +452,7 @@ fn sequence_and_compile(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 );
                 total_affinity = total_affinity + affinity;
             }
-            
+
             if abs(total_affinity) > 0.0 && effector_candidate_count < 16u {
                 effector_candidates[effector_candidate_count] = vec2<f32>(f32(eff_idx), total_affinity);
                 effector_candidate_count = effector_candidate_count + 1u;

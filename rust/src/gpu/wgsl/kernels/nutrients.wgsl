@@ -9,7 +9,7 @@ var<storage, read_write> nutrient_grid: NutrientGrid;
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    /*let index = global_id.x;
+    let index = global_id.x;
     let dt = uniforms.sim_params.x;
     let nutrient_scale = uniforms.nutrient.y;
     let grid_width = uniforms.nutrient.z;
@@ -62,10 +62,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     let neighbour_bonus = max(neighbour_average - current, 0.0);
 
-    let nutrient_growth = (0.0001 + 0.00005 * current + 0.001 * neighbour_bonus) * dt;
+    let nutrient_growth = (0.001 + 0.00005 * current + 0.001 * neighbour_bonus) * dt;
     let new_nutrient_level = min(current + nutrient_growth, 1.0);
 
-    atomicStore(&nutrient_grid.values[index], u32(new_nutrient_level * f32(nutrient_scale)));*/
+    atomicStore(&nutrient_grid.values[index], u32(new_nutrient_level * f32(nutrient_scale)));
 }
 
 

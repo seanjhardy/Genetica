@@ -12,7 +12,7 @@ var<storage, read_write> cells: array<Cell>;
 var<storage, read_write> cell_free_list: CellFreeList;
 
 @group(0) @binding(3)
-var<storage, read_write> alive_counter: Counter;
+var<storage, read_write> cell_counter: Counter;
 
 @group(0) @binding(4)
 var<storage, read_write> spawn_buffer: SpawnBuffer;
@@ -27,15 +27,9 @@ var<storage, read_write> links: array<Link>;
 var<storage, read_write> link_free_list: FreeList;
 
 @group(0) @binding(8)
-var<storage, read_write> link_events: LinkEventBuffer;
-
-@group(0) @binding(9)
-var<storage, read_write> cell_events: CellEventBuffer;
-
-@group(0) @binding(10)
 var<storage, read_write> cell_bucket_heads: array<atomic<i32>>;
 
-@group(0) @binding(11)
+@group(0) @binding(9)
 var<storage, read_write> cell_hash_next: array<i32>;
 
 @group(0) @binding(12)
@@ -66,10 +60,7 @@ var<storage, read_write> species_free: FreeList;
 var<storage, read_write> next_species_id: Counter;
 
 @group(0) @binding(21)
-var<storage, read_write> lifeform_events: LifeformEventBuffer;
-
-@group(0) @binding(22)
-var<storage, read_write> species_events: SpeciesEventBuffer;
+var<storage, read_write> position_changes: array<PositionChangeEntry>;
 
 fn compute_cell_color(energy: f32) -> vec4<f32> {
     let energy_normalized = clamp(energy / 100.0, 0.0, 1.0);
@@ -133,11 +124,23 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let correction = (diff / dist) * 0.5 * stiffness;
     let adjustment = delta * correction;
 
-    cell_a.prev_pos = cell_a.pos;
-    cell_b.prev_pos = cell_b.pos;
+    // Accumulate position changes in the buffer instead of modifying cells directly
+    // This allows averaging multiple link forces and prevents race conditions
+    if link.a < arrayLength(&position_changes) {
+        let adjustment_x_fixed = i32(adjustment.x * POSITION_CHANGE_SCALE);
+        let adjustment_y_fixed = i32(adjustment.y * POSITION_CHANGE_SCALE);
+        atomicAdd(&position_changes[link.a].delta_x, u32(adjustment_x_fixed));
+        atomicAdd(&position_changes[link.a].delta_y, u32(adjustment_y_fixed));
+        atomicAdd(&position_changes[link.a].num_changes, 1u);
+    }
 
-    cell_a.pos += adjustment;
-    cell_b.pos -= adjustment;
+    if link.b < arrayLength(&position_changes) {
+        let adjustment_x_fixed = i32(-adjustment.x * POSITION_CHANGE_SCALE);
+        let adjustment_y_fixed = i32(-adjustment.y * POSITION_CHANGE_SCALE);
+        atomicAdd(&position_changes[link.b].delta_x, u32(adjustment_x_fixed));
+        atomicAdd(&position_changes[link.b].delta_y, u32(adjustment_y_fixed));
+        atomicAdd(&position_changes[link.b].num_changes, 1u);
+    }
 
     let energy_transfer_rate = link.energy_transfer_rate;
     let energy_difference = cell_a.energy - cell_b.energy;

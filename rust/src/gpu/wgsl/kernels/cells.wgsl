@@ -2,7 +2,6 @@
 @include src/gpu/wgsl/constants.wgsl;
 @include src/gpu/wgsl/utils/genetic_algorithm.wgsl;
 @include src/gpu/wgsl/utils/compute_collisions.wgsl;
-@include src/gpu/wgsl/utils/events.wgsl;
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
@@ -17,7 +16,7 @@ var<storage, read_write> cell_free_list: CellFreeList;
 
 
 @group(0) @binding(3)
-var<storage, read_write> alive_counter: Counter;
+var<storage, read_write> cell_counter: Counter;
 
 @group(0) @binding(4)
 var<storage, read_write> spawn_buffer: SpawnBuffer;
@@ -32,12 +31,6 @@ var<storage, read_write> links: array<Link>;
 var<storage, read_write> link_free_list: FreeList;
 
 @group(0) @binding(8)
-var<storage, read_write> link_events: LinkEventBuffer;
-
-@group(0) @binding(9)
-var<storage, read_write> cell_events: CellEventBuffer;
-
-@group(0) @binding(10)
 var<storage, read_write> cell_bucket_heads: array<atomic<i32>>;
 
 @group(0) @binding(11)
@@ -47,7 +40,7 @@ var<storage, read_write> cell_hash_next: array<i32>;
 var<storage, read_write> grn_descriptors: array<GrnDescriptor>;
 
 @group(0) @binding(13)
-var<storage, read> grn_units: array<CompiledRegulatoryUnit>;
+var<storage, read_write> grn_units: array<CompiledRegulatoryUnit>;
 
 @group(0) @binding(14)
 var<storage, read_write> lifeforms: array<Lifeform>;
@@ -71,13 +64,16 @@ var<storage, read_write> species_free: FreeList;
 var<storage, read_write> next_species_id: Counter;
 
 @group(0) @binding(21)
-var<storage, read_write> lifeform_events: LifeformEventBuffer;
+var<storage, read_write> next_gene_id: Counter;
 
 @group(0) @binding(22)
-var<storage, read_write> species_events: SpeciesEventBuffer;
+var<storage, read_write> lifeform_counter: Counter;
 
 @group(0) @binding(23)
-var<storage, read_write> next_gene_id: Counter;
+var<storage, read_write> species_counter: Counter;
+
+@group(0) @binding(24)
+var<storage, read_write> position_changes: array<PositionChangeEntry>;
 
 fn compute_cell_color(energy: f32) -> vec4<f32> {
     let energy_normalized = clamp(energy / 100.0, 0.0, 1.0);
@@ -178,7 +174,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     // Decrease energy over time (metabolic rate)
     var energy_change_rate = 0.0;
-    energy_change_rate += 0.2 + 0.3 / cell.radius; // Metabolism proportional to size
+    energy_change_rate -= 0.002 + 0.003 / cell.radius; // Metabolism proportional to size
     energy_change_rate += 1000.0 * absorb_nutrients(index, 0.001 * cell.radius * cell.radius); // Eat nutrients from the environemnt
     cell.energy += energy_change_rate * dt;
     cell.energy = clamp(cell.energy, 0.0, cell.radius * 100.0);
@@ -195,12 +191,39 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Store random offset for potential future use (but not using it for accumulation anymore)
     cell.random_force = random_offset;
     
-    // Verlet integration with damping (no acceleration term)
+    // Verlet integration with stronger damping to prevent drift
     let velocity = cell.pos - cell.prev_pos;
+    
+    // Clamp velocity to prevent excessive movement from physics jankiness
+    let max_velocity = 10.0 * dt; // Max movement per timestep
+    let velocity_mag = length(velocity);
+    var clamped_velocity = velocity;
+    if velocity_mag > max_velocity {
+        clamped_velocity = velocity * (max_velocity / velocity_mag);
+    }
 
-    let damping = 0.98;
     // Add random offset directly to position instead of using acceleration
-    var new_pos = cell.pos + velocity * damping + random_offset;
+    var new_pos = cell.pos + clamped_velocity * 0.95;// + random_offset;
+
+    // Apply averaged position changes from links
+    if index < arrayLength(&position_changes) {
+        let num_changes = atomicLoad(&position_changes[index].num_changes);
+        if num_changes > 0u {
+            let delta_x_fixed = atomicLoad(&position_changes[index].delta_x);
+            let delta_y_fixed = atomicLoad(&position_changes[index].delta_y);
+
+            // Convert from fixed-point and calculate average
+            let avg_delta_x = f32(i32(delta_x_fixed)) / POSITION_CHANGE_SCALE / f32(num_changes);
+            let avg_delta_y = f32(i32(delta_y_fixed)) / POSITION_CHANGE_SCALE / f32(num_changes);
+
+            new_pos += vec2<f32>(avg_delta_x, avg_delta_y);
+
+            // Reset the change accumulator for next frame
+            atomicStore(&position_changes[index].delta_x, 0u);
+            atomicStore(&position_changes[index].delta_y, 0u);
+            atomicStore(&position_changes[index].num_changes, 0u);
+        }
+    }
 
     cell.prev_pos = cell.pos;
     cell.pos = new_pos;
@@ -208,6 +231,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
     if (collision_correction.x != 0.0) || (collision_correction.y != 0.0) {
         cell.pos += collision_correction;
+        // Update prev_pos to maintain velocity when applying collision correction
         cell.prev_pos += collision_correction;
     }
     
@@ -219,21 +243,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let min_y = uniforms.bounds.y + radius;
     let max_y = uniforms.bounds.w - radius; // bounds.w is bottom edge
 
-    if cell.pos.x < min_x {
-        cell.prev_pos.x = cell.pos.x;
-        cell.pos.x = min_x;
-    } else if cell.pos.x > max_x {
-        cell.prev_pos.x = cell.pos.x;
-        cell.pos.x = max_x;
-    }
-
-    if cell.pos.y < min_y {
-        cell.prev_pos.y = cell.pos.y;
-        cell.pos.y = min_y;
-    } else if cell.pos.y > max_y {
-        cell.prev_pos.y = cell.pos.y;
-        cell.pos.y = max_y;
-    }
+    cell.pos.x = clamp(cell.pos.x, min_x, max_x);
+    cell.pos.y = clamp(cell.pos.y, min_y, max_y);
 
     if cell.energy > MIN_DIVISION_ENERGY && random.w < DIVISION_PROBABILITY && cell.lifeform_slot < LIFEFORM_CAPACITY {
         let original_energy = cell.energy;
@@ -241,15 +252,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let success = create_division_offspring(index, cell, child_energy);
         if success {
             cell.energy = child_energy;
-            push_cell_event(
-                CELL_EVENT_KIND_DIVISION,
-                index,
-                cell.lifeform_slot,
-                0u,
-                cell.pos,
-                cell.radius,
-                child_energy,
-            );
         } else {
             cell.energy = original_energy;
         }
@@ -296,12 +298,12 @@ fn spawn_cells() {
                     new_cell.metadata = previous_generation;
                     new_cell.is_alive = 1u;
                     cells[slot_index] = new_cell;
-                    atomicAdd(&alive_counter.value, 1u);
+                    atomicAdd(&cell_counter.value, 1u);
                     let lf_idx = new_cell.lifeform_slot;
                     if lf_idx < LIFEFORM_CAPACITY {
                         if lf_idx < arrayLength(&lifeforms) {
-                            let previous = lifeforms[lf_idx].cell_count;
-                            lifeforms[lf_idx].cell_count = previous + 1u;
+                            // Atomically increment cell_count
+                            let previous = atomicAdd(&lifeforms[lf_idx].cell_count, 1u);
                             if previous == 0u {
                                 lifeforms[lf_idx].first_cell_slot = slot_index;
                             }
@@ -342,21 +344,7 @@ fn spawn_cells() {
                                 }
                             }
                             if !link_created {
-                                let event_index = atomicAdd(&link_events.counter.value, 1u);
-                                if event_index < arrayLength(&link_events.events) {
-                                    link_events.events[event_index] = LinkEvent(
-                                        LINK_EVENT_KIND_CREATE,
-                                        0u,
-                                        parent_index,
-                                        slot_index,
-                                        0.0,
-                                        0.0,
-                                        0.0,
-                                        0.0,
-                                    );
-                                } else {
-                                    atomicSub(&link_events.counter.value, 1u);
-                                }
+                                // Link creation attempted but failed - no event needed
                             }
                         }
                     }
@@ -373,15 +361,7 @@ fn spawn_cells() {
 
 fn kill_cell(index: u32) {
     var cell = cells[index];
-    push_cell_event(
-        CELL_EVENT_KIND_DEATH,
-        index,
-        cell.lifeform_slot,
-        0u,
-        cell.pos,
-        cell.radius,
-        cell.energy,
-    );
+    // Cell death - counter is already updated in the atomic decrement below
 
     cell.metadata = cell.metadata + 1u;
     cell.energy = 0.0;
@@ -393,29 +373,32 @@ fn kill_cell(index: u32) {
     cell_free_list.indices[next_free_index] = index;
 
     loop {
-        let current = atomicLoad(&alive_counter.value);
+        let current = atomicLoad(&cell_counter.value);
         if current == 0u {
             break;
         }
-        let exchange = atomicCompareExchangeWeak(&alive_counter.value, current, current - 1u);
+        let exchange = atomicCompareExchangeWeak(&cell_counter.value, current, current - 1u);
         if exchange.old_value == current && exchange.exchanged {
             break;
         }
     }
 
     let lf_idx = cell.lifeform_slot;
-    if lf_idx < LIFEFORM_CAPACITY {
-        if lf_idx < arrayLength(&lifeforms) {
-            let previous = lifeforms[lf_idx].cell_count;
-            if previous > 0u {
-                let updated = previous - 1u;
-                lifeforms[lf_idx].cell_count = updated;
-                // Release lifeform if no cells remain and not preserved
-                if updated == 0u && (lifeforms[lf_idx].flags & LIFEFORM_FLAG_PRESERVED) == 0u {
-                    release_lifeform(lf_idx);
-                }
-            }
+    // Atomically decrement cell_count and check if lifeform should be released
+    loop {
+        let current = atomicLoad(&lifeforms[lf_idx].cell_count);
+        if current == 0u {
+            break; // Already at 0, nothing to do
         }
+        let exchange = atomicCompareExchangeWeak(&lifeforms[lf_idx].cell_count, current, current - 1u);
+        if exchange.exchanged {
+            // Successfully decremented - check if we should release the lifeform
+            if (current - 1u) == 0u && (lifeforms[lf_idx].flags & LIFEFORM_FLAG_PRESERVED) == 0u {
+                release_lifeform(lf_idx);
+            }
+            break;
+        }
+        // Retry if compare-exchange failed (another thread modified it)
     }
 }
 

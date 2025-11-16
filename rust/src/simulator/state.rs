@@ -2,8 +2,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::gpu::buffers::EVENT_STAGING_RING_SIZE;
-
 /// Tracks the current population counters for cells and lifeforms.
 #[derive(Debug)]
 pub struct PopulationState {
@@ -25,29 +23,17 @@ impl PopulationState {
 /// Tracks which GPU readbacks and copies are still pending.
 #[derive(Debug)]
 pub struct GpuTransferState {
-    pub alive_counter_pending: bool,
-    pub cell_events_pending: [bool; EVENT_STAGING_RING_SIZE],
-    pub link_events_pending: [bool; EVENT_STAGING_RING_SIZE],
-    pub lifeform_events_pending: [bool; EVENT_STAGING_RING_SIZE],
-    pub species_events_pending: [bool; EVENT_STAGING_RING_SIZE],
-    pub next_cell_event_staging: usize,
-    pub next_link_event_staging: usize,
-    pub next_lifeform_event_staging: usize,
-    pub next_species_event_staging: usize,
+    pub cell_counter_pending: bool,
+    pub lifeform_counter_pending: bool,
+    pub species_counter_pending: bool,
 }
 
 impl Default for GpuTransferState {
     fn default() -> Self {
         Self {
-            alive_counter_pending: false,
-            cell_events_pending: [false; EVENT_STAGING_RING_SIZE],
-            link_events_pending: [false; EVENT_STAGING_RING_SIZE],
-            lifeform_events_pending: [false; EVENT_STAGING_RING_SIZE],
-            species_events_pending: [false; EVENT_STAGING_RING_SIZE],
-            next_cell_event_staging: 0,
-            next_link_event_staging: 0,
-            next_lifeform_event_staging: 0,
-            next_species_event_staging: 0,
+            cell_counter_pending: false,
+            lifeform_counter_pending: false,
+            species_counter_pending: false,
         }
     }
 }

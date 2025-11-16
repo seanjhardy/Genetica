@@ -47,7 +47,7 @@ struct Lifeform {
     gene_count: u32,
     rng_state: u32,
     first_cell_slot: u32,
-    cell_count: u32,
+    cell_count: atomic<u32>,
     grn_descriptor_slot: u32,
     grn_unit_offset: u32,
     grn_timer: u32,
@@ -66,27 +66,6 @@ struct Link {
     stiffness: f32,
     energy_transfer_rate: f32,
     generation_b: u32,
-}
-
-struct CellEvent {
-    kind: u32,
-    parent_cell_index: u32,
-    parent_lifeform_slot: u32,
-    flags: u32,
-    position: vec2<f32>,
-    radius: f32,
-    energy: f32,
-}
-
-struct LinkEvent {
-    kind: u32,
-    link_index: u32,
-    cell_a: u32,
-    cell_b: u32,
-    rest_length: f32,
-    stiffness: f32,
-    energy_transfer_rate: f32,
-    _padding: f32,
 }
 
 // Genome structure: 200 genes, each with 55 base pairs (packed into 4 u32 words)
@@ -108,20 +87,6 @@ struct SpeciesEntry {
     mascot_genome: GenomeEntry,
 }
 
-struct LifeformEvent {
-    kind: u32,
-    lifeform_id: u32,
-    species_id: u32,
-    lifeform_slot: u32,
-}
-
-struct SpeciesEvent {
-    kind: u32,
-    species_id: u32,
-    species_slot: u32,
-    member_count: u32,
-}
-
 struct FreeList {
     count: atomic<u32>,
     _pad: u32,
@@ -134,33 +99,16 @@ struct SpawnBuffer {
     requests: array<Cell>,
 }
 
-struct CellEventBuffer {
-    counter: Counter,
-    _pad: u32,
-    events: array<CellEvent>,
-}
-
-struct LinkEventBuffer {
-    counter: Counter,
-    _pad: u32,
-    events: array<LinkEvent>,
-}
-
-struct LifeformEventBuffer {
-    counter: Counter,
-    _pad: u32,
-    events: array<LifeformEvent>,
-}
-
-struct SpeciesEventBuffer {
-    counter: Counter,
-    _pad: u32,
-    events: array<SpeciesEvent>,
-}
-
-
 struct NutrientGrid {
     values: array<atomic<u32>>,
+}
+
+struct PositionChangeEntry {
+    // Fixed-point: multiply by POSITION_CHANGE_SCALE for actual values
+    delta_x: atomic<u32>,
+    delta_y: atomic<u32>,
+    num_changes: atomic<u32>,
+    _pad: u32,
 }
 
 

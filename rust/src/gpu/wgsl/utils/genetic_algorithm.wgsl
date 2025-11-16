@@ -2,38 +2,6 @@
 @include src/gpu/wgsl/constants.wgsl;
 
 // ============================================
-// Event Management
-// ============================================
-
-fn push_lifeform_event(kind: u32, lifeform_id: u32, species_id: u32, lifeform_slot: u32) {
-    let event_index = atomicAdd(&lifeform_events.counter.value, 1u);
-    if event_index < arrayLength(&lifeform_events.events) {
-        lifeform_events.events[event_index] = LifeformEvent(
-            kind,
-            lifeform_id,
-            species_id,
-            lifeform_slot,
-        );
-    } else {
-        atomicSub(&lifeform_events.counter.value, 1u);
-    }
-}
-
-fn push_species_event(kind: u32, species_id: u32, species_slot: u32, member_count: u32) {
-    let event_index = atomicAdd(&species_events.counter.value, 1u);
-    if event_index < arrayLength(&species_events.events) {
-        species_events.events[event_index] = SpeciesEvent(
-            kind,
-            species_id,
-            species_slot,
-            member_count,
-        );
-    } else {
-        atomicSub(&species_events.counter.value, 1u);
-    }
-}
-
-// ============================================
 // Free List Management
 // ============================================
 
@@ -188,6 +156,10 @@ fn count_active_genes(genome_slot: u32) -> u32 {
 // Genome Operations
 // ============================================
 
+// TODO: PERFORMANCE OPTIMIZATION - This function is slow when called many times
+// Consider creating a separate parallel compute shader (copy_genomes.wgsl) that processes
+// multiple genome copies in parallel using workgroup_size(64) or similar.
+// Each thread can copy a portion of the genome (e.g., thread 0 copies gene_ids[0-63], etc.)
 fn copy_genome(dest_slot: u32, src_slot: u32) {
     if dest_slot >= arrayLength(&genomes) || src_slot >= arrayLength(&genomes) {
         return;
@@ -295,6 +267,9 @@ fn probability_to_threshold(probability: f32) -> u32 {
 }
 
 // Mutate a genome - matches CPU logic
+// TODO: PERFORMANCE OPTIMIZATION - This function can be slow for many genomes
+// Consider creating a separate parallel compute shader (mutate_genomes.wgsl) that processes
+// multiple genomes in parallel. Each thread handles one genome's mutation.
 fn mutate_genome(genome_slot: u32, seed: u32) {
     if genome_slot >= arrayLength(&genomes) {
         return;
@@ -482,7 +457,7 @@ fn create_species(child_slot: u32) -> vec2<u32> {
             }
         }
     }
-    push_species_event(SPECIES_EVENT_KIND_CREATE, species_id, slot, 1u);
+    atomicAdd(&species_counter.value, 1u);
     return vec2<u32>(slot, species_id);
 }
 
@@ -509,17 +484,26 @@ fn release_species(slot: u32, species_id: u32) {
     atomicStore(&species_entries[slot].member_count, 0u);
     species_entries[slot].flags = 0u;
     recycle_species_slot(slot);
-    push_species_event(SPECIES_EVENT_KIND_EXTINCT, species_id, slot, 0u);
+    loop {
+        let current = atomicLoad(&species_counter.value);
+        if current == 0u {
+            break;
+        }
+        let exchange = atomicCompareExchangeWeak(&species_counter.value, current, current - 1u);
+        if exchange.exchanged {
+            break;
+        }
+    }
 }
 
 fn assign_species(child_slot: u32, parent_slot: u32) -> vec2<u32> {
     if parent_slot < LIFEFORM_CAPACITY && parent_slot < arrayLength(&lifeforms) {
-        let parent_entry = lifeforms[parent_slot];
-        if (parent_entry.flags & LIFEFORM_FLAG_ACTIVE) != 0u {
+        // Don't copy the struct - access fields directly (cell_count is atomic and can't be copied)
+        if (lifeforms[parent_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
             let child_genome_slot = lifeforms[child_slot].grn_descriptor_slot;
             
             // Compare with parent's species mascot genome
-            let species_slot = parent_entry.species_slot;
+            let species_slot = lifeforms[parent_slot].species_slot;
             if species_slot < arrayLength(&species_entries) {
                 // Compare child genome with species mascot genome
                 var compatibility_distance: f32 = 0.0;
@@ -534,7 +518,7 @@ fn assign_species(child_slot: u32, parent_slot: u32) -> vec2<u32> {
                 } else {
                     atomicAdd(&species_entries[species_slot].member_count, 1u);
                     species_entries[species_slot].flags = SPECIES_FLAG_ACTIVE;
-                    return vec2<u32>(species_slot, parent_entry.species_id);
+                    return vec2<u32>(species_slot, lifeforms[parent_slot].species_id);
                 }
             }
         }
@@ -625,16 +609,18 @@ fn release_lifeform(lifeform_slot: u32) {
     if lifeform_slot >= LIFEFORM_CAPACITY {
         return;
     }
-    let entry = lifeforms[lifeform_slot];
-    if (entry.flags & LIFEFORM_FLAG_ACTIVE) == 0u {
+    // Don't copy the struct - access fields directly (cell_count is atomic and can't be copied)
+    if (lifeforms[lifeform_slot].flags & LIFEFORM_FLAG_ACTIVE) == 0u {
         return;
     }
 
-    let species_slot = entry.species_slot;
+    let species_slot = lifeforms[lifeform_slot].species_slot;
+    let lifeform_id = lifeforms[lifeform_slot].lifeform_id;
+
     if species_slot < arrayLength(&species_entries) {
         let previous = atomicSub(&species_entries[species_slot].member_count, 1u);
         if previous <= 1u {
-            release_species(species_slot, entry.species_id);
+            release_species(species_slot, lifeforms[lifeform_slot].species_id);
         }
     }
 
@@ -652,13 +638,19 @@ fn release_lifeform(lifeform_slot: u32) {
         lifeforms[lifeform_slot].grn_timer = 0u;
         lifeforms[lifeform_slot]._pad = 0u;
         lifeforms[lifeform_slot]._pad2 = vec2<u32>(0u, 0u);
-        for (var i: u32 = 0u; i < MAX_GRN_STATE_SIZE; i = i + 1u) {
-            lifeforms[lifeform_slot].grn_state[i] = 0.0;
-        }
     }
 
     recycle_lifeform_slot(lifeform_slot);
-    push_lifeform_event(LIFEFORM_EVENT_KIND_DESTROY, entry.lifeform_id, entry.species_id, lifeform_slot);
+    loop {
+        let current = atomicLoad(&lifeform_counter.value);
+        if current == 0u {
+            break;
+        }
+        let exchange = atomicCompareExchangeWeak(&lifeform_counter.value, current, current - 1u);
+        if exchange.exchanged {
+            break;
+        }
+    }
 }
 
 // ============================================
@@ -682,7 +674,14 @@ fn initialise_lifeform_state(slot: u32, lifeform_id: u32) {
     }
     lifeforms[slot].lifeform_id = lifeform_id;
     lifeforms[slot].first_cell_slot = 0u;
-    lifeforms[slot].cell_count = 0u;
+    // Initialize cell_count to 0 atomically
+    loop {
+        let current = atomicLoad(&lifeforms[slot].cell_count);
+        let exchange = atomicCompareExchangeWeak(&lifeforms[slot].cell_count, current, 0u);
+        if exchange.exchanged {
+            break;
+        }
+    }
     lifeforms[slot].grn_descriptor_slot = slot; // Store genome slot here temporarily
     lifeforms[slot].grn_unit_offset = slot * MAX_GRN_REGULATORY_UNITS;
     lifeforms[slot].flags = LIFEFORM_FLAG_ACTIVE;
@@ -720,7 +719,7 @@ fn create_lifeform_cell(
     let lifeform_id = atomicAdd(&next_lifeform_id.value, 1u);
     let genome_slot = lifeform_slot; // Use lifeform slot as genome slot for now
 
-    if parent_slot < LIFEFORM_CAPACITY && (lifeforms[parent_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
+    /*if parent_slot < LIFEFORM_CAPACITY && (lifeforms[parent_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
         let parent_genome_slot = lifeforms[parent_slot].grn_descriptor_slot;
         copy_genome(genome_slot, parent_genome_slot);
         mutate_genome(genome_slot, lifeform_id + 11u);
@@ -728,9 +727,10 @@ fn create_lifeform_cell(
         // Generate random genome
         let num_genes = u32(rand(seed) * 18.0) + 2u; // 2-20 genes
         random_genome(genome_slot, lifeform_id + 1u, num_genes);
-    }
+    }*/
 
-    let species_info = assign_species(lifeform_slot, parent_slot);
+    //let species_info = assign_species(lifeform_slot, parent_slot);
+    let species_info = vec2<u32>(0u, 0u);
     let species_slot = species_info.x;
     let species_id = species_info.y;
 
@@ -744,15 +744,22 @@ fn create_lifeform_cell(
         lifeforms[lifeform_slot].species_id = 0u;
     }
     lifeforms[lifeform_slot].rng_state = lifeform_id * 1664525u + 1013904223u;
-    lifeforms[lifeform_slot].cell_count = 0u;
+    // Initialize cell_count to 0 atomically
+    loop {
+        let current = atomicLoad(&lifeforms[lifeform_slot].cell_count);
+        let exchange = atomicCompareExchangeWeak(&lifeforms[lifeform_slot].cell_count, current, 0u);
+        if exchange.exchanged {
+            break;
+        }
+    }
     lifeforms[lifeform_slot].flags = LIFEFORM_FLAG_ACTIVE;
     lifeforms[lifeform_slot]._pad = 0u;
     lifeforms[lifeform_slot].grn_descriptor_slot = genome_slot; // Store genome slot here
 
-    initialise_lifeform_state(lifeform_slot, lifeform_id);
-    initialise_grn(lifeform_slot);
+    //initialise_lifeform_state(lifeform_slot, lifeform_id);
+    //initialise_grn(lifeform_slot);
 
-    push_lifeform_event(LIFEFORM_EVENT_KIND_CREATE, lifeform_id, species_id, lifeform_slot);
+    atomicAdd(&lifeform_counter.value, 1u);
 
     var new_cell: Cell;
     new_cell.pos = position;
@@ -760,7 +767,7 @@ fn create_lifeform_cell(
     new_cell.random_force = vec2<f32>(0.0, 0.0);
     new_cell.radius = radius;
     new_cell.energy = energy;
-    new_cell.cell_wall_thickness = 0.1;
+    new_cell.cell_wall_thickness = 0.2;
     new_cell.is_alive = 1u;
     new_cell.lifeform_slot = lifeform_slot;
     new_cell.metadata = metadata;
@@ -791,7 +798,7 @@ fn create_random_lifeform(seed: u32) -> bool {
 // Optimized: distribute population maintenance across threads instead of running serially on thread 0
 // Each thread checks if it should create a lifeform based on its index
 fn ensure_minimum_population_parallel(thread_index: u32, total_threads: u32) {
-    let alive = atomicLoad(&alive_counter.value);
+    let alive = atomicLoad(&cell_counter.value);
     if alive >= MIN_ACTIVE_CELLS {
         return;
     }
@@ -804,7 +811,7 @@ fn ensure_minimum_population_parallel(thread_index: u32, total_threads: u32) {
 
     for (var i: u32 = start_index; i < end_index; i = i + 1u) {
         // Check again if we've reached minimum (another thread might have created lifeforms)
-        let current_alive = atomicLoad(&alive_counter.value);
+        let current_alive = atomicLoad(&cell_counter.value);
         if current_alive >= MIN_ACTIVE_CELLS {
             break;
         }
@@ -817,7 +824,7 @@ fn ensure_minimum_population_parallel(thread_index: u32, total_threads: u32) {
 fn create_division_offspring(parent_index: u32, parent_cell: Cell, child_energy: f32) -> bool {
     let offset_seed = vec2<u32>(parent_index * 97u + 13u, parent_cell.lifeform_slot * 211u + 17u);
     let angle = rand(offset_seed) * 6.2831853;
-    let distance = parent_cell.radius * 0.75 + 0.5;
+    let distance = parent_cell.radius * 2;
     let child_position = parent_cell.pos + vec2<f32>(cos(angle), sin(angle)) * distance;
     let child_radius = parent_cell.radius;
     return create_lifeform_cell(

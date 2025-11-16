@@ -55,6 +55,18 @@ impl Renderer {
                 0,
                 free_list_bytes,
             );
+
+            // Copy spatial hash bucket heads from writable to readonly buffer
+            // This is needed because fragment shaders can't use atomic buffers
+            let hash_table_size = buffers.cell_hash_table_size();
+            let hash_table_bytes = (hash_table_size * std::mem::size_of::<i32>()) as u64;
+            encoder.copy_buffer_to_buffer(
+                buffers.cell_hash_bucket_heads_buffer(),
+                0,
+                buffers.cell_hash_bucket_heads_readonly_buffer(),
+                0,
+                hash_table_bytes,
+            );
         }
 
         // Prepare viewport textures (compute layout and create textures)

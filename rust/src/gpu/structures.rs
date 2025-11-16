@@ -15,8 +15,6 @@ pub const WORDS_PER_GENE: usize = 4; // 55 base pairs = 110 bits, need 4 u32 wor
 pub const GENOME_WORD_COUNT: usize = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
 
 pub const MAX_SPECIES_CAPACITY: usize = 1024;
-pub const MAX_LIFEFORM_EVENTS: usize = 1024;
-pub const MAX_SPECIES_EVENTS: usize = 256;
 
 /// Cell structure for GPU processing
 #[repr(C, align(16))]
@@ -42,7 +40,7 @@ impl Cell {
             random_force: [0.0, 0.0],
             radius,
             energy: initial_energy,
-            cell_wall_thickness: 0.1,
+            cell_wall_thickness: 0.2,
             is_alive: 1,
             lifeform_slot,
             metadata: 0,
@@ -68,8 +66,6 @@ impl Cell {
 
 }
 
-const _: [(); 64] = [(); std::mem::size_of::<Cell>()];
-const _: [(); 16] = [(); std::mem::align_of::<Cell>()];
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -230,56 +226,6 @@ impl Link {
 const _: [(); 32] = [(); std::mem::size_of::<Link>()];
 const _: [(); 16] = [(); std::mem::align_of::<Link>()];
 
-/// Event emitted by GPU about cell lifecycle changes.
-#[repr(C, align(16))]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CellEvent {
-    /// Event kind (see constants below).
-    pub kind: u32,
-    /// Cell index that emitted the event (usually the parent).
-    pub parent_cell_index: u32,
-    /// Lifeform slot the parent belongs to.
-    pub parent_lifeform_slot: u32,
-    /// Misc flags (e.g. adhesion request).
-    pub flags: u32,
-    pub position: [f32; 2],
-    pub radius: f32,
-    pub energy: f32,
-}
-
-impl CellEvent {
-    pub const KIND_DIVISION: u32 = 1;
-    pub const KIND_DEATH: u32 = 2;
-
-    pub const FLAG_ADHESIVE: u32 = 1 << 0;
-}
-
-const _: [(); 32] = [(); std::mem::size_of::<CellEvent>()];
-const _: [(); 16] = [(); std::mem::align_of::<CellEvent>()];
-
-/// Event describing mutations to the link graph that require CPU involvement.
-#[repr(C, align(16))]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LinkEvent {
-    pub kind: u32,
-    pub link_index: u32,
-    pub cell_a: u32,
-    pub cell_b: u32,
-    pub rest_length: f32,
-    pub stiffness: f32,
-    pub energy_transfer_rate: f32,
-    pub _padding: f32,
-}
-
-impl LinkEvent {
-    pub const KIND_CREATE: u32 = 1;
-    pub const KIND_REMOVE: u32 = 2;
-}
-
-const _: [(); 32] = [(); std::mem::size_of::<LinkEvent>()];
-const _: [(); 16] = [(); std::mem::align_of::<LinkEvent>()];
-
-
 #[repr(C, align(16))]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SpeciesEntry {
@@ -304,30 +250,24 @@ impl SpeciesEntry {
     }
 }
 
+/// Buffer for accumulating position changes from links to cells
 #[repr(C, align(16))]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LifeformEvent {
-    pub kind: u32,
-    pub lifeform_id: u32,
-    pub species_id: u32,
-    pub lifeform_slot: u32,
+pub struct PositionChangeEntry {
+    pub delta_x: u32, // Fixed-point: divide by POSITION_CHANGE_SCALE for actual value
+    pub delta_y: u32, // Fixed-point: divide by POSITION_CHANGE_SCALE for actual value
+    pub num_changes: u32,
+    pub _pad: u32,
 }
 
-impl LifeformEvent {
-    pub const KIND_CREATE: u32 = 1;
-    pub const KIND_DESTROY: u32 = 2;
+impl PositionChangeEntry {
+    pub fn zero() -> Self {
+        Self {
+            delta_x: 0,
+            delta_y: 0,
+            num_changes: 0,
+            _pad: 0,
+        }
+    }
 }
 
-#[repr(C, align(16))]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct SpeciesEvent {
-    pub kind: u32,
-    pub species_id: u32,
-    pub species_slot: u32,
-    pub member_count: u32,
-}
-
-impl SpeciesEvent {
-    pub const KIND_CREATE: u32 = 1;
-    pub const KIND_EXTINCT: u32 = 2;
-}

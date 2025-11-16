@@ -23,7 +23,7 @@ use crate::gpu::buffers::GpuBuffers;
 use crate::gpu::pipelines::{ComputePipelines, RenderPipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
-use crate::gpu::structures::{Cell, CellEvent, LifeformEvent, LinkEvent, SpeciesEvent};
+use crate::gpu::structures::Cell;
 use crate::simulator::environment::Environment;
 use crate::simulator::state::{GpuTransferState, PauseState, PopulationState, SubmissionState};
 use crate::simulator::renderer::Renderer;
@@ -40,9 +40,6 @@ pub struct Simulation {
     speed: Arc<parking_lot::Mutex<f32>>, // Shared speed for thread-safe access
     population: PopulationState,
     transfers: GpuTransferState,
-    cell_division_events: Vec<CellEvent>,
-    cell_death_events: Vec<CellEvent>,
-    link_events: Vec<LinkEvent>,
     current_bounds: Rect,
     
     // Simulation parameters
@@ -73,9 +70,6 @@ impl Simulation {
             speed,
             population: PopulationState::new(),
             transfers: GpuTransferState::default(),
-            cell_division_events: Vec::new(),
-            cell_death_events: Vec::new(),
-            link_events: Vec::new(),
             current_bounds: initial_bounds,
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
@@ -123,7 +117,7 @@ impl Simulation {
         self.run_compute_batch(iterations);
         // Poll GPU readbacks less frequently - only every 10 steps to reduce overhead
         if self.step_count.load(Ordering::Relaxed) % 10 == 0 {
-            //self.poll_gpu_readbacks();
+            self.poll_gpu_readbacks();
         }
     }
     
@@ -185,9 +179,9 @@ impl Simulation {
                     let workgroups = (total_cells + workgroup_size - 1) / workgroup_size;
                     nutrient_pass.set_pipeline(&self.compute_pipelines.update_nutrients);
                     nutrient_pass.set_bind_group(0, &self.compute_pipelines.update_nutrients_bind_group, &[]);
-                    //for _ in 0..iterations {
-                        //nutrient_pass.dispatch_workgroups(workgroups, 1, 1);
-                    //}
+                    for _ in 0..iterations {
+                        nutrient_pass.dispatch_workgroups(workgroups, 1, 1);
+                    }
                 }
             }
 
@@ -207,92 +201,74 @@ impl Simulation {
                 let link_workgroups =
                     (link_capacity + self.workgroup_size - 1) / self.workgroup_size;
 
+                compute_pass.set_bind_group(
+                    0,
+                    &self.compute_pipelines.update_cells_bind_group,
+                    &[],
+                );
                 for _ in 0..iterations {
                     compute_pass.set_pipeline(&self.compute_pipelines.reset_cell_hash);
-                    compute_pass.set_bind_group(
-                        0,
-                        &self.compute_pipelines.update_cells_bind_group,
-                        &[],
-                    );
                     compute_pass.dispatch_workgroups(hash_workgroups, 1, 1);
 
                     if cell_workgroups > 0 {
                         compute_pass.set_pipeline(&self.compute_pipelines.build_cell_hash);
-                        compute_pass.set_bind_group(
-                            0,
-                            &self.compute_pipelines.update_cells_bind_group,
-                            &[],
-                        );
                         compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
 
                         compute_pass.set_pipeline(&self.compute_pipelines.update_cells);
-                        compute_pass.set_bind_group(
-                            0,
-                            &self.compute_pipelines.update_cells_bind_group,
-                            &[],
-                        );
                         compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
                     }
 
                     if link_capacity > 0 {
                         compute_pass.set_pipeline(&self.compute_pipelines.update_links);
-                        compute_pass.set_bind_group(
-                            0,
-                            &self.compute_pipelines.update_cells_bind_group,
-                            &[],
-                        );
                         compute_pass.dispatch_workgroups(link_workgroups, 1, 1);
                     }
                 }
             }
 
-            /*
-            if !self.transfers.alive_counter_pending {
-                self.buffers
-                    .schedule_alive_counter_copy(&mut encoder);
-                self.transfers.alive_counter_pending = true;
+            // Try to consume any ready readbacks before scheduling new copies
+            // This frees up staging buffer slots and prevents "buffer still mapped" errors
+            {
+                profile_scope!("Consume Ready Readbacks");
+                // Poll device to check for ready readbacks (non-blocking)
+                let _ = self.device.poll(wgpu::MaintainBase::Poll);
+                
+                // Try to consume counters if ready
+                if self.transfers.cell_counter_pending {
+                    if let Some(value) = self.buffers.try_consume_cell_counter() {
+                        self.population.cells = value;
+                        self.transfers.cell_counter_pending = false;
+                    }
+                }
+                if self.transfers.lifeform_counter_pending {
+                    if let Some(value) = self.buffers.try_consume_lifeform_counter() {
+                        self.population.lifeforms = value;
+                        self.transfers.lifeform_counter_pending = false;
+                    }
+                }
+                if self.transfers.species_counter_pending {
+                    if let Some(value) = self.buffers.try_consume_species_counter() {
+                        self.population.species = value;
+                        self.transfers.species_counter_pending = false;
+                    }
+                }
             }
 
-            let ring_size = self.buffers.event_staging_ring_size();
-            if ring_size > 0 {
-                let cell_slot = self.transfers.next_cell_event_staging % ring_size;
-                if !self.transfers.cell_events_pending[cell_slot] {
-                    self.buffers
-                        .schedule_cell_events_copy(&mut encoder, cell_slot);
-                    self.transfers.cell_events_pending[cell_slot] = true;
-                    self.transfers.next_cell_event_staging =
-                        (cell_slot + 1) % ring_size;
-                }
-
-                let link_slot = self.transfers.next_link_event_staging % ring_size;
-                if !self.transfers.link_events_pending[link_slot] {
-                    self.buffers
-                        .schedule_link_events_copy(&mut encoder, link_slot);
-                    self.transfers.link_events_pending[link_slot] = true;
-                    self.transfers.next_link_event_staging =
-                        (link_slot + 1) % ring_size;
-                }
-
-                let lifeform_slot =
-                    self.transfers.next_lifeform_event_staging % ring_size;
-                if !self.transfers.lifeform_events_pending[lifeform_slot] {
-                    self.buffers
-                        .schedule_lifeform_events_copy(&mut encoder, lifeform_slot);
-                    self.transfers.lifeform_events_pending[lifeform_slot] = true;
-                    self.transfers.next_lifeform_event_staging =
-                        (lifeform_slot + 1) % ring_size;
-                }
-
-                let species_slot =
-                    self.transfers.next_species_event_staging % ring_size;
-                if !self.transfers.species_events_pending[species_slot] {
-                    self.buffers
-                        .schedule_species_events_copy(&mut encoder, species_slot);
-                    self.transfers.species_events_pending[species_slot] = true;
-                    self.transfers.next_species_event_staging =
-                        (species_slot + 1) % ring_size;
-                }
-            }*/
+            // Schedule counter copies
+            if !self.transfers.cell_counter_pending {
+                self.buffers
+                    .schedule_cell_counter_copy(&mut encoder);
+                self.transfers.cell_counter_pending = true;
+            }
+            if !self.transfers.lifeform_counter_pending {
+                self.buffers
+                    .schedule_lifeform_counter_copy(&mut encoder);
+                self.transfers.lifeform_counter_pending = true;
+            }
+            if !self.transfers.species_counter_pending {
+                self.buffers
+                    .schedule_species_counter_copy(&mut encoder);
+                self.transfers.species_counter_pending = true;
+            }
 
             profile_scope!("Finish Command Encoder");
             encoder.finish()
@@ -317,15 +293,13 @@ impl Simulation {
 
     }
 
-    /// Poll GPU for readbacks (counters and events) - renamed from maintain_minimum_cell_population
+    /// Poll GPU for readbacks (counters) - renamed from maintain_minimum_cell_population
     /// Only flushes submissions when we actually need to read back data
     fn poll_gpu_readbacks(&mut self) {
         // Only flush if we have pending readbacks that need GPU completion
-        let needs_flush = self.transfers.alive_counter_pending
-            || self.transfers.cell_events_pending.iter().any(|&x| x)
-            || self.transfers.link_events_pending.iter().any(|&x| x)
-            || self.transfers.lifeform_events_pending.iter().any(|&x| x)
-            || self.transfers.species_events_pending.iter().any(|&x| x);
+        let needs_flush = self.transfers.cell_counter_pending
+            || self.transfers.lifeform_counter_pending
+            || self.transfers.species_counter_pending;
         
         if needs_flush && !self.submission.pending_command_buffers.is_empty() {
             profile_scope!("Flush Before Readback");
@@ -340,41 +314,30 @@ impl Simulation {
         }
 
         let mut counters_need_poll = false;
-        let mut events_need_poll = false;
 
-        if self.transfers.alive_counter_pending {
+        if self.transfers.cell_counter_pending {
             {
                 profile_scope!("Begin Alive Counter Map");
-                self.buffers.begin_alive_counter_map();
+                self.buffers.begin_cell_counter_map();
+            }
+            counters_need_poll = true;
+        }
+        if self.transfers.lifeform_counter_pending {
+            {
+                profile_scope!("Begin Lifeform Counter Map");
+                self.buffers.begin_lifeform_counter_map();
+            }
+            counters_need_poll = true;
+        }
+        if self.transfers.species_counter_pending {
+            {
+                profile_scope!("Begin Species Counter Map");
+                self.buffers.begin_species_counter_map();
             }
             counters_need_poll = true;
         }
 
-        let ring_size = self.buffers.event_staging_ring_size();
-        for slot in 0..ring_size {
-            if self.transfers.cell_events_pending[slot] {
-                profile_scope!("Begin Cell Events Map");
-                self.buffers.begin_cell_events_map(slot);
-                events_need_poll = true;
-            }
-            if self.transfers.link_events_pending[slot] {
-                profile_scope!("Begin Link Events Map");
-                self.buffers.begin_link_events_map(slot);
-                events_need_poll = true;
-            }
-            if self.transfers.lifeform_events_pending[slot] {
-                profile_scope!("Begin Lifeform Events Map");
-                self.buffers.begin_lifeform_events_map(slot);
-                events_need_poll = true;
-            }
-            if self.transfers.species_events_pending[slot] {
-                profile_scope!("Begin Species Events Map");
-                self.buffers.begin_species_events_map(slot);
-                events_need_poll = true;
-            }
-        }
-
-        if counters_need_poll || events_need_poll {
+        if counters_need_poll {
             profile_scope!("Poll GPU Counters");
             let poll_start = std::time::Instant::now();
             let _ = self.device.poll(wgpu::MaintainBase::Poll);
@@ -386,47 +349,32 @@ impl Simulation {
             }
         }
 
-        if self.transfers.alive_counter_pending {
+        if self.transfers.cell_counter_pending {
             profile_scope!("Consume Alive Counter");
             let readback_start = std::time::Instant::now();
-            if let Some(value) = self.buffers.try_consume_alive_counter() {
+            if let Some(value) = self.buffers.try_consume_cell_counter() {
                 let readback_duration = readback_start.elapsed();
                 if readback_duration.as_millis() > 1 {
                     eprintln!("[GPU Profiling] Alive counter readback took {}ms", readback_duration.as_millis());
                 }
                 self.population.cells = value;
-                self.transfers.alive_counter_pending = false;
+                self.transfers.cell_counter_pending = false;
             }
         }
 
-        for slot in 0..ring_size {
-            if self.transfers.cell_events_pending[slot] {
-                profile_scope!("Consume Cell Events");
-                if let Some(events) = self.buffers.try_consume_cell_events(slot) {
-                    self.handle_cell_events(events);
-                    self.transfers.cell_events_pending[slot] = false;
-                }
+        if self.transfers.lifeform_counter_pending {
+            profile_scope!("Consume Lifeform Counter");
+            if let Some(value) = self.buffers.try_consume_lifeform_counter() {
+                self.population.lifeforms = value;
+                self.transfers.lifeform_counter_pending = false;
             }
-            if self.transfers.link_events_pending[slot] {
-                profile_scope!("Consume Link Events");
-                if let Some(events) = self.buffers.try_consume_link_events(slot) {
-                    self.handle_link_events(events);
-                    self.transfers.link_events_pending[slot] = false;
-                }
-            }
-            if self.transfers.lifeform_events_pending[slot] {
-                profile_scope!("Consume Lifeform Events");
-                if let Some(events) = self.buffers.try_consume_lifeform_events(slot) {
-                    self.handle_lifeform_events(events);
-                    self.transfers.lifeform_events_pending[slot] = false;
-                }
-            }
-            if self.transfers.species_events_pending[slot] {
-                profile_scope!("Consume Species Events");
-                if let Some(events) = self.buffers.try_consume_species_events(slot) {
-                    self.handle_species_events(events);
-                    self.transfers.species_events_pending[slot] = false;
-                }
+        }
+
+        if self.transfers.species_counter_pending {
+            profile_scope!("Consume Species Counter");
+            if let Some(value) = self.buffers.try_consume_species_counter() {
+                self.population.species = value;
+                self.transfers.species_counter_pending = false;
             }
         }
 
@@ -439,115 +387,8 @@ impl Simulation {
         if bounds != self.current_bounds {
             self.handle_bounds_resize(bounds);
         }
-        self.process_event_bookkeeping();
     }
 
-    fn handle_cell_events(&mut self, events: Vec<CellEvent>) {
-        if events.is_empty() {
-            return;
-        }
-        profile_scope!("Handle Cell Events");
-        for event in events {
-            if event.kind == 0 {
-                continue;
-            }
-            match event.kind {
-                kind if kind == CellEvent::KIND_DIVISION => {
-                    self.cell_division_events.push(event);
-                }
-                kind if kind == CellEvent::KIND_DEATH => {
-                    self.cell_death_events.push(event);
-                }
-                _ => {
-                    // Unknown event type - ignore for now
-                }
-            }
-        }
-    }
-
-    fn handle_link_events(&mut self, events: Vec<LinkEvent>) {
-        if events.is_empty() {
-            return;
-        }
-        profile_scope!("Handle Link Events");
-        for event in events {
-            if event.kind == 0 {
-                continue;
-            }
-            self.link_events.push(event);
-        }
-    }
-
-    fn handle_lifeform_events(&mut self, events: Vec<LifeformEvent>) {
-        if events.is_empty() {
-            return;
-        }
-        profile_scope!("Handle Lifeform Events");
-        for event in events {
-            match event.kind {
-                LifeformEvent::KIND_CREATE => {
-                    self.population.lifeforms =
-                        self.population.lifeforms.saturating_add(1);
-                }
-                LifeformEvent::KIND_DESTROY => {
-                    self.population.lifeforms =
-                        self.population.lifeforms.saturating_sub(1);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    fn handle_species_events(&mut self, events: Vec<SpeciesEvent>) {
-        if events.is_empty() {
-            return;
-        }
-        profile_scope!("Handle Species Events");
-        for event in events {
-            match event.kind {
-                SpeciesEvent::KIND_CREATE => {
-                    self.population.species = self.population.species.saturating_add(1);
-                }
-                SpeciesEvent::KIND_EXTINCT => {
-                    self.population.species = self.population.species.saturating_sub(1);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    fn process_event_bookkeeping(&mut self) {
-        if self.cell_death_events.is_empty()
-            && self.cell_division_events.is_empty()
-            && self.link_events.is_empty()
-        {
-            return;
-        }
-        profile_scope!("Process Event Bookkeeping");
-
-        if !self.cell_death_events.is_empty() {
-            let deaths = self.cell_death_events.len() as u32;
-            self.population.cells = self
-                .population
-                .cells
-                .saturating_sub(deaths);
-            self.cell_death_events.clear();
-        }
-
-        if !self.cell_division_events.is_empty() {
-            let divisions = self.cell_division_events.len() as u32;
-            self.population.cells = self
-                .population
-                .cells
-                .saturating_add(divisions);
-            self.cell_division_events.clear();
-        }
-
-        // Link events will be handled in future passes when GPU emits link lifecycle data.
-        if !self.link_events.is_empty() {
-            self.link_events.clear();
-        }
-    }
 
     fn handle_bounds_resize(&mut self, bounds: Rect) {
         profile_scope!("Handle Bounds Resize");
@@ -563,13 +404,11 @@ impl Simulation {
             self.buffers.cell_buffer_write(),
             &self.buffers.uniform_buffer,
             self.buffers.cell_free_list_buffer_write(),
-            self.buffers.alive_counter_buffer(),
+            self.buffers.cell_counter_buffer(),
             self.buffers.spawn_buffer(),
             new_nutrient_buffer.as_ref(),
             self.buffers.link_buffer(),
             self.buffers.link_free_list_buffer(),
-            self.buffers.link_events_buffer(),
-            self.buffers.cell_events_buffer(),
             self.buffers.cell_hash_bucket_heads_buffer(),
             self.buffers.cell_hash_next_indices_buffer(),
             self.buffers.grn_descriptor_buffer(),
@@ -582,8 +421,9 @@ impl Simulation {
             self.buffers.species_free_buffer(),
             self.buffers.next_species_id_buffer(),
             self.buffers.next_gene_id_buffer(),
-            self.buffers.lifeform_events_buffer(),
-            self.buffers.species_events_buffer(),
+            self.buffers.lifeform_counter_buffer(),
+            self.buffers.species_counter_buffer(),
+            self.buffers.position_changes_buffer(),
         );
 
         self.current_bounds = bounds;
@@ -666,13 +506,11 @@ impl Application {
             buffers.cell_buffer_write(), // Compute writes to write buffer
             &buffers.uniform_buffer,
             buffers.cell_free_list_buffer_write(), // Compute uses write buffer's free list
-            buffers.alive_counter_buffer(),
+            buffers.cell_counter_buffer(),
             buffers.spawn_buffer(),
             nutrient_buffer.as_ref(),
             buffers.link_buffer(),
             buffers.link_free_list_buffer(),
-            buffers.link_events_buffer(),
-            buffers.cell_events_buffer(),
             buffers.cell_hash_bucket_heads_buffer(),
             buffers.cell_hash_next_indices_buffer(),
             buffers.grn_descriptor_buffer(),
@@ -685,8 +523,9 @@ impl Application {
             buffers.species_free_buffer(),
             buffers.next_species_id_buffer(),
             buffers.next_gene_id_buffer(),
-            buffers.lifeform_events_buffer(),
-            buffers.species_events_buffer(),
+            buffers.lifeform_counter_buffer(),
+            buffers.species_counter_buffer(),
+            buffers.position_changes_buffer(),
         );
         let speed = Arc::new(parking_lot::Mutex::new(0.05));
 
@@ -818,6 +657,9 @@ impl Application {
                 buffers.cell_free_list_buffer(),
                 buffers.link_buffer(),
                 nutrient_buffer.as_ref(),
+                buffers.cell_hash_bucket_heads_buffer(),
+                buffers.cell_hash_bucket_heads_readonly_buffer(),
+                buffers.cell_hash_next_indices_buffer(),
             );
             self.last_nutrient_dims = nutrient_dims;
         }
@@ -1410,6 +1252,9 @@ impl Application {
             buffers.cell_free_list_buffer(),
             buffers.link_buffer(),
             render_nutrient_buffer.as_ref(),
+            buffers.cell_hash_bucket_heads_buffer(),
+            buffers.cell_hash_bucket_heads_readonly_buffer(),
+            buffers.cell_hash_next_indices_buffer(),
         );
 
         // Initialize bounds renderer (includes planet background)

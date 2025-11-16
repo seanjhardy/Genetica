@@ -60,8 +60,8 @@ fn vs_main(
 
     let dir = delta / dist;
     let perp = vec2<f32>(-dir.y, dir.x);
-    let offset_a = perp * cell_a.radius;
-    let offset_b = perp * cell_b.radius;
+    let offset_a = perp * cell_a.radius * 0.2;
+    let offset_b = perp * cell_b.radius * 0.2;
 
     var world_pos: vec2<f32>;
     var color: vec4<f32>;

@@ -14,6 +14,13 @@ pub static LINKS_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/links.wgsl").to_string()));
 pub static NUTRIENTS_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/nutrients.wgsl").to_string()));
+pub static SEQUENCE_GRN_KERNEL: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/sequence_grn.wgsl").to_string()));
+// TODO: Uncomment when implementing parallel genome operations
+// pub static COPY_GENOMES_KERNEL: Lazy<ShaderSource<'static>> =
+//     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/copy_genomes.wgsl").to_string()));
+// pub static MUTATE_GENOMES_KERNEL: Lazy<ShaderSource<'static>> =
+//     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/mutate_genomes.wgsl").to_string()));
 
 pub static CELLS_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/cells.wgsl").to_string()));
