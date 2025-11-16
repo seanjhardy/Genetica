@@ -173,20 +173,47 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Update GRN: simple timer countdown, run when timer reaches 0
 
     // Decrease energy over time (metabolic rate)
-    var energy_change_rate = 0.0;
-    energy_change_rate -= 0.002 + 0.003 / cell.radius; // Metabolism proportional to size
-    energy_change_rate += 1000.0 * absorb_nutrients(index, 0.001 * cell.radius * cell.radius); // Eat nutrients from the environemnt
-    cell.energy += energy_change_rate * dt;
-    cell.energy = clamp(cell.energy, 0.0, cell.radius * 100.0);
+    //var energy_change_rate = 0.0;
+    //energy_change_rate -= 0.002 + 0.003 / cell.radius; // Metabolism proportional to size
+    //energy_change_rate += 1000.0 * absorb_nutrients(index, 0.001 * cell.radius * cell.radius); // Eat nutrients from the environemnt
+    //cell.energy += energy_change_rate * dt;
+    //cell.energy = clamp(cell.energy, 0.0, cell.radius * 100.0);
 
-    if cell.energy <= 0.0 || random.z < RANDOM_DEATH_PROBABILITY {
+    let nutrients_absorbed = 10.0 * absorb_nutrients(index, 0.001 * cell.radius * cell.radius);
+
+    let mass_change = nutrients_absorbed - 0.001;
+    cell.radius = sqrt(cell.radius * cell.radius + mass_change / 3.1415926535);
+
+    if cell.radius <= 0.1 || random.z < RANDOM_DEATH_PROBABILITY {
         kill_cell(index);
         return;
     }
-    
+
+    let new_pos = calculate_cell_position(index, dt, random.xy);
+    cell.pos = new_pos.xy;
+    cell.prev_pos = new_pos.zw;
+
+
+    let division_probability = calculate_division_probability(cell.radius, cell.cell_wall_thickness);
+
+    if random.w < division_probability && cell.lifeform_slot < LIFEFORM_CAPACITY {
+        let seed = vec2<u32>(u32(index) * 97u + 13u + u32(cell.pos.x) * 31u,
+            u32(cell.lifeform_slot) * 211u + 17u + u32(cell.pos.y) * 31u);
+        create_lifeform_cell(index, seed);
+    }
+
+    cell.color = compute_cell_color(cell.energy);
+    cells[index] = cell;
+}
+
+fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> {
+    var cell = cells[index];
+    var new_pos = cell.pos;
+    var new_prev_pos = cell.prev_pos;
+
     // Random position offset per timestep (added directly to position, no accumulation)
     let random_offset_magnitude = 0.5; // World units per timestep (small offset for subtle movement)
-    let random_offset = (random.xy * 2.0 - 1.0) * random_offset_magnitude * dt / min(cell.radius, 10.0);
+    let random_offset = (random * 2.0 - 1.0) * random_offset_magnitude * dt / min(cell.radius, 10.0);
     
     // Store random offset for potential future use (but not using it for accumulation anymore)
     cell.random_force = random_offset;
@@ -202,8 +229,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         clamped_velocity = velocity * (max_velocity / velocity_mag);
     }
 
-    // Add random offset directly to position instead of using acceleration
-    var new_pos = cell.pos + clamped_velocity * 0.95;// + random_offset;
+    new_pos += clamped_velocity * 0.98 + random_offset;
 
     // Apply averaged position changes from links
     if index < arrayLength(&position_changes) {
@@ -225,14 +251,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
 
-    cell.prev_pos = cell.pos;
-    cell.pos = new_pos;
+    new_prev_pos = cell.pos;
 
     let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
     if (collision_correction.x != 0.0) || (collision_correction.y != 0.0) {
-        cell.pos += collision_correction;
+        new_pos += collision_correction;
         // Update prev_pos to maintain velocity when applying collision correction
-        cell.prev_pos += collision_correction;
+        new_prev_pos += collision_correction;
     }
     
     // Boundary constraints
@@ -243,24 +268,21 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let min_y = uniforms.bounds.y + radius;
     let max_y = uniforms.bounds.w - radius; // bounds.w is bottom edge
 
-    cell.pos.x = clamp(cell.pos.x, min_x, max_x);
-    cell.pos.y = clamp(cell.pos.y, min_y, max_y);
+    new_pos.x = clamp(new_pos.x, min_x, max_x);
+    new_pos.y = clamp(new_pos.y, min_y, max_y);
+    new_prev_pos.x = clamp(new_prev_pos.x, min_x, max_x);
+    new_prev_pos.y = clamp(new_prev_pos.y, min_y, max_y);
 
-    if cell.energy > MIN_DIVISION_ENERGY && random.w < DIVISION_PROBABILITY && cell.lifeform_slot < LIFEFORM_CAPACITY {
-        let original_energy = cell.energy;
-        let child_energy = original_energy * 0.5;
-        let success = create_division_offspring(index, cell, child_energy);
-        if success {
-            cell.energy = child_energy;
-        } else {
-            cell.energy = original_energy;
-        }
-    }
-
-    cell.color = compute_cell_color(cell.energy);
-    cells[index] = cell;
+    return vec4<f32>(new_pos.x, new_pos.y, new_prev_pos.x, new_prev_pos.y);
 }
 
+fn calculate_division_probability(radius: f32, cell_wall_thickness: f32) -> f32 {
+    let base = 4.0;
+    let slope = 10.0;
+    let k = 2.0;
+    let radius_split_threshold = base + slope * cell_wall_thickness;
+    return 1.0 / (1.0 + exp(-k * (radius - radius_split_threshold)));
+}
 
 fn spawn_cells() {
     loop {
@@ -277,7 +299,7 @@ fn spawn_cells() {
         if request_exchange.old_value == prev_requests && request_exchange.exchanged {
             let spawn_idx = desired_requests;
             var new_cell = spawn_buffer.requests[spawn_idx];
-            let parent_marker = new_cell.metadata;
+            let parent_marker = new_cell.generation;
             new_cell.color = compute_cell_color(new_cell.energy);
             var spawned = false;
             loop {
@@ -294,8 +316,8 @@ fn spawn_cells() {
                 );
                 if free_exchange.old_value == free_prev && free_exchange.exchanged {
                     let slot_index = cell_free_list.indices[free_desired];
-                    let previous_generation = cells[slot_index].metadata;
-                    new_cell.metadata = previous_generation;
+                    let previous_generation = cells[slot_index].generation;
+                    new_cell.generation = previous_generation;
                     new_cell.is_alive = 1u;
                     cells[slot_index] = new_cell;
                     atomicAdd(&cell_counter.value, 1u);
@@ -332,11 +354,11 @@ fn spawn_cells() {
                                         links[link_slot].a = parent_index;
                                         links[link_slot].b = slot_index;
                                         links[link_slot].flags = LINK_FLAG_ALIVE | LINK_FLAG_ADHESIVE;
-                                        links[link_slot].generation_a = parent_cell.metadata;
+                                        links[link_slot].generation_a = parent_cell.generation;
                                         links[link_slot].rest_length = rest_length;
                                         links[link_slot].stiffness = 0.6;
                                         links[link_slot].energy_transfer_rate = 0.0;
-                                        links[link_slot].generation_b = new_cell.metadata;
+                                        links[link_slot].generation_b = new_cell.generation;
                                         link_created = true;
                                         break;
                                     }
@@ -363,7 +385,7 @@ fn kill_cell(index: u32) {
     var cell = cells[index];
     // Cell death - counter is already updated in the atomic decrement below
 
-    cell.metadata = cell.metadata + 1u;
+    cell.generation = cell.generation + 1u;
     cell.energy = 0.0;
     cell.is_alive = 0u;
     cell.color = compute_cell_color(cell.energy);

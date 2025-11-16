@@ -231,7 +231,7 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_SRC,
         });
 
-        let lifeforms_init = vec![Lifeform::inactive(); LIFEFORM_CAPACITY];
+        let lifeforms_init = vec![Lifeform::zeroed(); LIFEFORM_CAPACITY];
         let lifeforms = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Lifeforms Buffer"),
             contents: bytemuck::cast_slice(&lifeforms_init),

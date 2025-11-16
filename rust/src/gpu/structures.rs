@@ -1,16 +1,13 @@
 // GPU structures for lifeforms and cells - optimized for parallel processing
 
-use bytemuck::{self, Zeroable};
+use bytemuck::{self};
 
 pub const MAX_GRN_RECEPTOR_INPUTS: usize = 2;
 pub const MAX_GRN_REGULATORY_UNITS: usize = 2;
 pub const MAX_GRN_INPUTS_PER_UNIT: usize = 8;
 pub const MAX_GRN_STATE_SIZE: usize = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
-pub const GRN_EVALUATION_INTERVAL: u32 = 8;
 
 pub const MAX_GENES_PER_GENOME: usize = 200;
-pub const BASE_PAIRS_PER_GENE: usize = 55;
-pub const BASE_PAIRS_PER_GENOME: usize = MAX_GENES_PER_GENOME * BASE_PAIRS_PER_GENE;
 pub const WORDS_PER_GENE: usize = 4; // 55 base pairs = 110 bits, need 4 u32 words (128 bits)
 pub const GENOME_WORD_COUNT: usize = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
 
@@ -28,44 +25,10 @@ pub struct Cell {
     pub cell_wall_thickness: f32,
     pub is_alive: u32,
     pub lifeform_slot: u32,
-    pub metadata: u32,
+    pub generation: u32,
+    pub parent_index: u32,
     pub color: [f32; 4],
 }
-
-impl Cell {
-    pub fn new(pos: [f32; 2], radius: f32, lifeform_slot: u32, initial_energy: f32) -> Self {
-        let mut cell = Self {
-            pos,
-            prev_pos: pos,
-            random_force: [0.0, 0.0],
-            radius,
-            energy: initial_energy,
-            cell_wall_thickness: 0.2,
-            is_alive: 1,
-            lifeform_slot,
-            metadata: 0,
-            color: [0.0; 4],
-        };
-        cell.update_color_from_energy();
-        cell
-    }
-
-    #[inline]
-    fn energy_to_color(energy: f32) -> [f32; 4] {
-        let energy_normalized = (energy / 100.0).clamp(0.0, 1.0);
-        let brightness = 0.1 + energy_normalized * 0.9;
-        let r = (1.0 - brightness) * 0.5;
-        let g = brightness;
-        let b = brightness;
-        [r, g, b, 1.0]
-    }
-
-    pub fn update_color_from_energy(&mut self) {
-        self.color = Self::energy_to_color(self.energy);
-    }
-
-}
-
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -115,29 +78,6 @@ pub struct GrnDescriptor {
     pub _pad3: u32,
 }
 
-#[derive(Clone, Debug)]
-pub struct CompiledGrn {
-    pub descriptor: GrnDescriptor,
-    pub units: Vec<CompiledRegulatoryUnit>,
-}
-
-impl CompiledGrn {
-    pub fn empty() -> Self {
-        Self {
-            descriptor: GrnDescriptor {
-                receptor_count: 0,
-                unit_count: 0,
-                state_stride: 0,
-                unit_offset: 0,
-                _pad0: 0,
-                _pad1: 0,
-                _pad2: 0,
-                _pad3: 0,
-            },
-            units: Vec::new(),
-        }
-    }
-}
 
 #[repr(C, align(16))]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable)]
@@ -159,37 +99,6 @@ pub struct Lifeform {
 }
 
 unsafe impl bytemuck::Pod for Lifeform {}
-
-impl Lifeform {
-    pub const FLAG_ACTIVE: u32 = 1 << 0;
-    pub const FLAG_PRESERVED: u32 = 1 << 1;
-
-    pub fn inactive() -> Self {
-        Self::zeroed()
-    }
-
-    pub fn from_descriptor(
-        lifeform_id: u32,
-        grn_descriptor_slot: u32,
-        descriptor: &GrnDescriptor,
-    ) -> Self {
-        let mut lifeform = Self::zeroed();
-        lifeform.lifeform_id = lifeform_id;
-        lifeform.species_slot = 0;
-        lifeform.species_id = 0;
-        lifeform.gene_count = 0;
-        lifeform.rng_state = 0;
-        lifeform.first_cell_slot = 0;
-        lifeform.cell_count = 0;
-        lifeform.grn_descriptor_slot = grn_descriptor_slot;
-        lifeform.grn_unit_offset = descriptor.unit_offset;
-        lifeform.grn_timer = 0;
-        lifeform.flags = Self::FLAG_ACTIVE;
-        lifeform._pad = 0;
-        lifeform._pad2 = [0; 2];
-        lifeform
-    }
-}
 
 /// Link that connects two cells together.
 #[repr(C, align(16))]

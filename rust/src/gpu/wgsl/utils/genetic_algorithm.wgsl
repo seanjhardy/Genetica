@@ -704,19 +704,26 @@ fn initialise_grn(slot: u32) {
 }
 
 fn create_lifeform_cell(
-    parent_slot: u32,
-    position: vec2<f32>,
-    radius: f32,
-    energy: f32,
-    metadata: u32,
+    parent_index: u32,
     seed: vec2<u32>,
-) -> bool {
-    let lifeform_slot = allocate_lifeform_slot();
-    if lifeform_slot >= LIFEFORM_CAPACITY {
-        return false;
+) {
+    var lifeform_slot = LIFEFORM_CAPACITY;
+    var lifeform_id = 0u;
+    var is_new_lifeform = false;
+    if parent_index < CELL_CAPACITY {
+        lifeform_slot = cells[parent_index].lifeform_slot;
+        lifeform_id = lifeforms[lifeform_slot].lifeform_id;
+    } else {
+        lifeform_slot = allocate_lifeform_slot();
+        is_new_lifeform = true;
+        // Early return if we can't allocate a lifeform slot
+        if lifeform_slot >= LIFEFORM_CAPACITY {
+            return;
+        }
+        lifeform_id = atomicAdd(&next_lifeform_id.value, 1u);
+        lifeforms[lifeform_slot].lifeform_id = lifeform_id;
     }
 
-    let lifeform_id = atomicAdd(&next_lifeform_id.value, 1u);
     let genome_slot = lifeform_slot; // Use lifeform slot as genome slot for now
 
     /*if parent_slot < LIFEFORM_CAPACITY && (lifeforms[parent_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
@@ -734,7 +741,6 @@ fn create_lifeform_cell(
     let species_slot = species_info.x;
     let species_id = species_info.y;
 
-    lifeforms[lifeform_slot].lifeform_id = lifeform_id;
     let valid_species = species_slot < MAX_SPECIES_CAPACITY;
     if valid_species {
         lifeforms[lifeform_slot].species_slot = species_slot;
@@ -762,38 +768,55 @@ fn create_lifeform_cell(
     atomicAdd(&lifeform_counter.value, 1u);
 
     var new_cell: Cell;
-    new_cell.pos = position;
-    new_cell.prev_pos = position;
-    new_cell.random_force = vec2<f32>(0.0, 0.0);
-    new_cell.radius = radius;
-    new_cell.energy = energy;
-    new_cell.cell_wall_thickness = 0.2;
+
     new_cell.is_alive = 1u;
     new_cell.lifeform_slot = lifeform_slot;
-    new_cell.metadata = metadata;
-    new_cell.color = compute_cell_color(energy);
+
+    if parent_index < CELL_CAPACITY {
+        let parent_cell = cells[parent_index];
+        let offset_seed = vec2<u32>(parent_index * 97u + 13u, parent_cell.lifeform_slot * 211u + 17u);
+        let angle = rand(offset_seed) * 6.2831853;
+        let distance = parent_cell.radius;
+        let child_position = parent_cell.pos;// + vec2<f32>(cos(angle), sin(angle)) * distance;
+        let child_radius = parent_cell.radius * 0.5;
+
+        new_cell.pos = child_position;
+        new_cell.prev_pos = child_position;
+        new_cell.random_force = vec2<f32>(0.0, 0.0);
+        new_cell.radius = 0.001;
+        new_cell.energy = parent_cell.energy * 0.5;
+        new_cell.cell_wall_thickness = parent_cell.cell_wall_thickness;
+        new_cell.generation = parent_cell.generation + 1u;
+    } else {
+        let position = random_position(vec2<u32>(seed.x * 97u + 11u, seed.y * 131u + 23u));
+        let radius = 1.0 + rand(vec2<u32>(seed.x * 17u + 7u, seed.y * 29u + 3u)) * 3.0;
+        let energy = 60.0 + rand(vec2<u32>(seed.x * 53u + 5u, seed.y * 71u + 19u)) * 80.0;
+        let cell_wall_thickness = 0.2;
+
+        new_cell.pos = position;
+        new_cell.prev_pos = position;
+        new_cell.random_force = vec2<f32>(0.0, 0.0);
+        new_cell.radius = radius;
+        new_cell.energy = energy;
+        new_cell.cell_wall_thickness = cell_wall_thickness;
+        new_cell.generation = 0u;
+    }
+    new_cell.color = compute_cell_color(new_cell.energy);
 
     if !queue_spawn_cell(new_cell) {
-        release_lifeform(lifeform_slot);
-        return false;
+        if is_new_lifeform {
+            recycle_lifeform_slot(lifeform_slot);
+        }
+        return;
     }
 
-    return true;
+    if parent_index < CELL_CAPACITY {
+        var parent_cell = cells[parent_index];
+        parent_cell.radius *= 0.5;
+        cells[parent_index] = parent_cell;
+    }
 }
 
-fn create_random_lifeform(seed: u32) -> bool {
-    let position = random_position(vec2<u32>(seed * 97u + 11u, seed * 131u + 23u));
-    let radius = 1.0 + rand(vec2<u32>(seed * 17u + 7u, seed * 29u + 3u)) * 3.0;
-    let energy = 60.0 + rand(vec2<u32>(seed * 53u + 5u, seed * 71u + 19u)) * 80.0;
-    return create_lifeform_cell(
-        LIFEFORM_CAPACITY,
-        position,
-        radius,
-        energy,
-        0u,
-        vec2<u32>(seed * 191u + 37u, seed * 223u + 41u),
-    );
-}
 
 // Optimized: distribute population maintenance across threads instead of running serially on thread 0
 // Each thread checks if it should create a lifeform based on its index
@@ -815,24 +838,6 @@ fn ensure_minimum_population_parallel(thread_index: u32, total_threads: u32) {
         if current_alive >= MIN_ACTIVE_CELLS {
             break;
         }
-        if !create_random_lifeform(i + current_alive * 13u + 1u) {
-            break;
-        }
+        create_lifeform_cell(CELL_CAPACITY, vec2<u32>(i + current_alive * 13u + 1u, 0u));
     }
-}
-
-fn create_division_offspring(parent_index: u32, parent_cell: Cell, child_energy: f32) -> bool {
-    let offset_seed = vec2<u32>(parent_index * 97u + 13u, parent_cell.lifeform_slot * 211u + 17u);
-    let angle = rand(offset_seed) * 6.2831853;
-    let distance = parent_cell.radius * 2;
-    let child_position = parent_cell.pos + vec2<f32>(cos(angle), sin(angle)) * distance;
-    let child_radius = parent_cell.radius;
-    return create_lifeform_cell(
-        parent_cell.lifeform_slot,
-        child_position,
-        child_radius,
-        child_energy,
-        parent_index + 1u,
-        offset_seed,
-    );
 }

@@ -10,7 +10,8 @@ struct Cell {
     cell_wall_thickness: f32,
     is_alive: u32,
     lifeform_slot: u32,
-    metadata: u32,
+    generation: u32,
+    parent_index: u32,
     color: vec4<f32>,
 }
 

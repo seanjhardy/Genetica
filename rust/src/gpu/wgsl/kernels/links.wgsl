@@ -59,7 +59,7 @@ var<storage, read_write> species_free: FreeList;
 @group(0) @binding(20)
 var<storage, read_write> next_species_id: Counter;
 
-@group(0) @binding(21)
+@group(0) @binding(24)
 var<storage, read_write> position_changes: array<PositionChangeEntry>;
 
 fn compute_cell_color(energy: f32) -> vec4<f32> {
@@ -91,7 +91,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var cell_a = cells[link.a];
     var cell_b = cells[link.b];
 
-    if link.generation_a != cell_a.metadata || link.generation_b != cell_b.metadata {
+    if link.generation_a != cell_a.generation || link.generation_b != cell_b.generation {
         release_link(index);
         return;
     }

@@ -210,17 +210,17 @@ impl Simulation {
                     compute_pass.set_pipeline(&self.compute_pipelines.reset_cell_hash);
                     compute_pass.dispatch_workgroups(hash_workgroups, 1, 1);
 
+                    if link_capacity > 0 {
+                        compute_pass.set_pipeline(&self.compute_pipelines.update_links);
+                        compute_pass.dispatch_workgroups(link_workgroups, 1, 1);
+                    }
+
                     if cell_workgroups > 0 {
                         compute_pass.set_pipeline(&self.compute_pipelines.build_cell_hash);
                         compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
 
                         compute_pass.set_pipeline(&self.compute_pipelines.update_cells);
                         compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
-                    }
-
-                    if link_capacity > 0 {
-                        compute_pass.set_pipeline(&self.compute_pipelines.update_links);
-                        compute_pass.dispatch_workgroups(link_workgroups, 1, 1);
                     }
                 }
             }
