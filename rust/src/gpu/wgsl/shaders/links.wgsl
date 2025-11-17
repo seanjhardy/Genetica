@@ -52,6 +52,10 @@ fn vs_main(
         return empty_vertex();
     }
 
+    if cell_a.generation != link.generation_a || cell_b.generation != link.generation_b {
+        return empty_vertex();
+    }
+
     let delta = cell_b.pos - cell_a.pos;
     let dist = length(delta);
     if dist <= 0.0001 {

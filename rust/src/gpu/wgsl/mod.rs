@@ -32,8 +32,8 @@ pub static NUTRIENTS_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/nutrients.wgsl").to_string()));
 pub static PERLIN_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/perlin.wgsl").to_string()));
-pub static PLANET_TEXTURE_SHADER: Lazy<ShaderSource<'static>> =
-    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/planet_texture.wgsl").to_string()));
+pub static ENV_TEXTURE_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/env_texture.wgsl").to_string()));
 pub static POST_PROCESSING_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/post_processing.wgsl").to_string()));
 pub static TEXT_SHADER: Lazy<ShaderSource<'static>> =

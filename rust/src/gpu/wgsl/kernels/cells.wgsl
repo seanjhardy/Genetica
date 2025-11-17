@@ -2,6 +2,7 @@
 @include src/gpu/wgsl/constants.wgsl;
 @include src/gpu/wgsl/utils/genetic_algorithm.wgsl;
 @include src/gpu/wgsl/utils/compute_collisions.wgsl;
+@include src/gpu/wgsl/utils/events.wgsl;
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
@@ -75,8 +76,8 @@ var<storage, read_write> species_counter: Counter;
 @group(0) @binding(24)
 var<storage, read_write> position_changes: array<PositionChangeEntry>;
 
-fn compute_cell_color(energy: f32) -> vec4<f32> {
-    let energy_normalized = clamp(energy / 100.0, 0.0, 1.0);
+fn compute_cell_color(radius: f32, energy: f32) -> vec4<f32> {
+    let energy_normalized = clamp(energy / (radius * 50.0), 0.0, 1.0);
     let brightness = 0.1 + energy_normalized * 0.9;
     let r = (1.0 - brightness) * 0.5;
     let g = brightness;
@@ -173,18 +174,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Update GRN: simple timer countdown, run when timer reaches 0
 
     // Decrease energy over time (metabolic rate)
-    //var energy_change_rate = 0.0;
-    //energy_change_rate -= 0.002 + 0.003 / cell.radius; // Metabolism proportional to size
-    //energy_change_rate += 1000.0 * absorb_nutrients(index, 0.001 * cell.radius * cell.radius); // Eat nutrients from the environemnt
-    //cell.energy += energy_change_rate * dt;
-    //cell.energy = clamp(cell.energy, 0.0, cell.radius * 100.0);
+    var energy_change_rate = 0.0;
+    energy_change_rate -= 0.02 + 0.003 * cell.radius; // Metabolism proportional to size
+    energy_change_rate += 1000.0 * absorb_nutrients(index, 0.001 * cell.radius * cell.radius); // Eat nutrients from the environemnt
+    cell.energy += energy_change_rate * dt;
+    cell.energy = clamp(cell.energy, 0.0, cell.radius * 100.0);
 
-    let nutrients_absorbed = 10.0 * absorb_nutrients(index, 0.001 * cell.radius * cell.radius);
-
-    let mass_change = nutrients_absorbed - 0.001;
-    cell.radius = sqrt(cell.radius * cell.radius + mass_change / 3.1415926535);
-
-    if cell.radius <= 0.1 || random.z < RANDOM_DEATH_PROBABILITY {
+    if cell.radius <= 1.0 || cell.energy <= 0.0 || random.z < RANDOM_DEATH_PROBABILITY {
         kill_cell(index);
         return;
     }
@@ -193,16 +189,14 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     cell.pos = new_pos.xy;
     cell.prev_pos = new_pos.zw;
 
-
-    let division_probability = calculate_division_probability(cell.radius, cell.cell_wall_thickness);
-
-    if random.w < division_probability && cell.lifeform_slot < LIFEFORM_CAPACITY {
+    if cell.energy > MIN_DIVISION_ENERGY && random.w < DIVISION_PROBABILITY && cell.lifeform_slot < LIFEFORM_CAPACITY && atomicLoad(&cell_counter.value) < 15000u {
+        cell.energy /= 2.0;
         let seed = vec2<u32>(u32(index) * 97u + 13u + u32(cell.pos.x) * 31u,
             u32(cell.lifeform_slot) * 211u + 17u + u32(cell.pos.y) * 31u);
         create_lifeform_cell(index, seed);
     }
 
-    cell.color = compute_cell_color(cell.energy);
+    cell.color = compute_cell_color(cell.radius, cell.energy);
     cells[index] = cell;
 }
 
@@ -222,14 +216,14 @@ fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> 
     let velocity = cell.pos - cell.prev_pos;
     
     // Clamp velocity to prevent excessive movement from physics jankiness
-    let max_velocity = 10.0 * dt; // Max movement per timestep
+    let max_velocity = 100.0 * dt; // Max movement per timestep
     let velocity_mag = length(velocity);
     var clamped_velocity = velocity;
     if velocity_mag > max_velocity {
         clamped_velocity = velocity * (max_velocity / velocity_mag);
     }
 
-    new_pos += clamped_velocity * 0.98 + random_offset;
+    new_pos += clamped_velocity * 0.97;// + random_offset;
 
     // Apply averaged position changes from links
     if index < arrayLength(&position_changes) {
@@ -276,14 +270,6 @@ fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> 
     return vec4<f32>(new_pos.x, new_pos.y, new_prev_pos.x, new_prev_pos.y);
 }
 
-fn calculate_division_probability(radius: f32, cell_wall_thickness: f32) -> f32 {
-    let base = 4.0;
-    let slope = 10.0;
-    let k = 2.0;
-    let radius_split_threshold = base + slope * cell_wall_thickness;
-    return 1.0 / (1.0 + exp(-k * (radius - radius_split_threshold)));
-}
-
 fn spawn_cells() {
     loop {
         let prev_requests = atomicLoad(&spawn_buffer.counter.value);
@@ -300,7 +286,6 @@ fn spawn_cells() {
             let spawn_idx = desired_requests;
             var new_cell = spawn_buffer.requests[spawn_idx];
             let parent_marker = new_cell.generation;
-            new_cell.color = compute_cell_color(new_cell.energy);
             var spawned = false;
             loop {
                 let free_prev = atomicLoad(&cell_free_list.count);
@@ -319,6 +304,11 @@ fn spawn_cells() {
                     let previous_generation = cells[slot_index].generation;
                     new_cell.generation = previous_generation;
                     new_cell.is_alive = 1u;
+                    new_cell.link_count = 0u;
+                    for (var i: u32 = 0u; i < 6u; i = i + 1u) {
+                        new_cell.link_indices[i] = 0u;
+                    }
+                    new_cell._pad = 0u;
                     cells[slot_index] = new_cell;
                     atomicAdd(&cell_counter.value, 1u);
                     let lf_idx = new_cell.lifeform_slot;
@@ -359,6 +349,11 @@ fn spawn_cells() {
                                         links[link_slot].stiffness = 0.6;
                                         links[link_slot].energy_transfer_rate = 0.0;
                                         links[link_slot].generation_b = new_cell.generation;
+                                        
+                                        // Add link to both cells' link_indices arrays
+                                        add_link_to_cell(parent_index, link_slot);
+                                        add_link_to_cell(slot_index, link_slot);
+
                                         link_created = true;
                                         break;
                                     }
@@ -385,14 +380,25 @@ fn kill_cell(index: u32) {
     var cell = cells[index];
     // Cell death - counter is already updated in the atomic decrement below
 
+    // Release all links connected to this cell before killing it
+    // We iterate through a copy of link_count since release_link will modify the array
+    let link_count = cell.link_count;
+    for (var i: u32 = 0u; i < link_count; i = i + 1u) {
+        let link_index = cell.link_indices[i];
+        if link_index < arrayLength(&links) {
+            release_link(link_index);
+        }
+    }
+
     cell.generation = cell.generation + 1u;
     cell.energy = 0.0;
     cell.is_alive = 0u;
-    cell.color = compute_cell_color(cell.energy);
+    cell.link_count = 0u;
+    // Clear link_indices array
+    for (var i: u32 = 0u; i < 6u; i = i + 1u) {
+        cell.link_indices[i] = 0u;
+    }
     cells[index] = cell;
-
-    let next_free_index = atomicAdd(&cell_free_list.count, 1u);
-    cell_free_list.indices[next_free_index] = index;
 
     loop {
         let current = atomicLoad(&cell_counter.value);

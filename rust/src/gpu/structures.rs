@@ -26,8 +26,10 @@ pub struct Cell {
     pub is_alive: u32,
     pub lifeform_slot: u32,
     pub generation: u32,
-    pub parent_index: u32,
     pub color: [f32; 4],
+    pub link_count: u32,
+    pub link_indices: [u32; 6],
+    pub _pad: u32, // Padding to maintain 16-byte alignment (total size: 96 bytes)
 }
 
 #[repr(C)]

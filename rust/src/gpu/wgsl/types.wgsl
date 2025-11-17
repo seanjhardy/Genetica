@@ -11,8 +11,10 @@ struct Cell {
     is_alive: u32,
     lifeform_slot: u32,
     generation: u32,
-    parent_index: u32,
     color: vec4<f32>,
+    link_count: u32,
+    link_indices: array<u32, 6>,
+    _pad: u32, // Padding to maintain 16-byte alignment
 }
 
 struct GrnInput {

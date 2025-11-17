@@ -527,7 +527,7 @@ impl Application {
             buffers.species_counter_buffer(),
             buffers.position_changes_buffer(),
         );
-        let speed = Arc::new(parking_lot::Mutex::new(0.05));
+        let speed = Arc::new(parking_lot::Mutex::new(0.2));
 
         let initial_nutrient_dims = buffers.nutrient_grid_dimensions();
 

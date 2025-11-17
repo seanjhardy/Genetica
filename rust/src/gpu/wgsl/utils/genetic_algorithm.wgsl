@@ -1,5 +1,6 @@
 @include src/gpu/wgsl/types.wgsl;
 @include src/gpu/wgsl/constants.wgsl;
+@include src/gpu/wgsl/utils/events.wgsl;
 
 // ============================================
 // Free List Management
@@ -63,6 +64,140 @@ fn queue_spawn_cell(new_cell: Cell) -> bool {
     }
     atomicSub(&spawn_buffer.counter.value, 1u);
     return false;
+}
+
+// ============================================
+// Cell-to-Link Mapping Functions
+// ============================================
+
+// Add a link index to a cell's link_indices array
+fn add_link_to_cell(cell_index: u32, link_index: u32) {
+    if cell_index >= arrayLength(&cells) {
+        return;
+    }
+    var cell = cells[cell_index];
+    if cell.link_count >= 6u {
+        return; // Maximum 6 links per cell
+    }
+    // Check if link already exists
+    for (var i: u32 = 0u; i < cell.link_count; i = i + 1u) {
+        if cell.link_indices[i] == link_index {
+            return; // Link already exists
+        }
+    }
+    // Add the link
+    cell.link_indices[cell.link_count] = link_index;
+    cell.link_count = cell.link_count + 1u;
+    cells[cell_index] = cell;
+}
+
+// Redistribute links from a parent cell to either parent or child based on proximity
+fn redistribute_cell_links(parent_index: u32, child_index: u32) {
+    if parent_index >= arrayLength(&cells) || child_index >= arrayLength(&cells) {
+        return;
+    }
+
+    var parent_cell = cells[parent_index];
+    var child_cell = cells[child_index];
+
+    if parent_cell.is_alive == 0u || child_cell.is_alive == 0u {
+        return;
+    }
+
+    let parent_pos = parent_cell.pos;
+    let child_pos = child_cell.pos;
+    
+    // Iterate through all links connected to the parent
+    // We need to iterate through the parent's link_indices
+    let link_count = parent_cell.link_count;
+    
+    // Since we might modify the array while iterating, we'll collect link indices first
+    var links_to_redistribute: array<u32, 6>;
+    var links_count: u32 = 0u;
+    
+    // Collect links that need redistribution (exclude the direct parent-child link)
+    for (var i: u32 = 0u; i < link_count; i = i + 1u) {
+        let link_index = parent_cell.link_indices[i];
+        if link_index >= arrayLength(&links) {
+            continue;
+        }
+        let link = links[link_index];
+        if (link.flags & LINK_FLAG_ALIVE) == 0u {
+            continue;
+        }
+        
+        // Skip the direct parent-child link
+        if (link.a == parent_index && link.b == child_index) || (link.a == child_index && link.b == parent_index) {
+            continue;
+        }
+
+        links_to_redistribute[links_count] = link_index;
+        links_count = links_count + 1u;
+    }
+    
+    // Redistribute each link
+    for (var i: u32 = 0u; i < links_count; i = i + 1u) {
+        let link_index = links_to_redistribute[i];
+        if link_index >= arrayLength(&links) {
+            continue;
+        }
+
+        var link = links[link_index];
+        if (link.flags & LINK_FLAG_ALIVE) == 0u {
+            continue;
+        }
+        
+        // Determine which cell this link connects to (the other end, not the parent)
+        var other_cell_index: u32;
+        if link.a == parent_index {
+            other_cell_index = link.b;
+        } else if link.b == parent_index {
+            other_cell_index = link.a;
+        } else {
+            continue; // This link doesn't connect to parent - should not happen
+        }
+
+        if other_cell_index >= arrayLength(&cells) {
+            continue;
+        }
+
+        var other_cell = cells[other_cell_index];
+        if other_cell.is_alive == 0u {
+            continue;
+        }
+
+        let other_pos = other_cell.pos;
+        
+        // Calculate distances to parent and child
+        let dist_to_parent_sq = dot(parent_pos - other_pos, parent_pos - other_pos);
+        let dist_to_child_sq = dot(child_pos - other_pos, child_pos - other_pos);
+        
+        // Choose the closer cell (parent or child)
+        let target_cell_index = select(parent_index, child_index, dist_to_child_sq < dist_to_parent_sq);
+        
+        // If target is different from parent, update the link
+        if target_cell_index != parent_index {
+            // Remove link from parent
+            remove_link_from_cell(parent_index, link_index);
+            
+            // Update link to point to child instead of parent
+            if link.a == parent_index {
+                link.a = child_index;
+                link.generation_a = child_cell.generation;
+            } else {
+                link.b = child_index;
+                link.generation_b = child_cell.generation;
+            }
+            links[link_index] = link;
+            
+            // Add link to child
+            add_link_to_cell(child_index, link_index);
+            
+            // Also update the other cell's link reference if needed
+            // (The link is already in the other cell's list, but we may need to verify)
+        }
+        // If target is parent, keep the link as is
+    }
 }
 
 // ============================================
@@ -750,13 +885,21 @@ fn create_lifeform_cell(
         lifeforms[lifeform_slot].species_id = 0u;
     }
     lifeforms[lifeform_slot].rng_state = lifeform_id * 1664525u + 1013904223u;
-    // Initialize cell_count to 0 atomically
-    loop {
-        let current = atomicLoad(&lifeforms[lifeform_slot].cell_count);
-        let exchange = atomicCompareExchangeWeak(&lifeforms[lifeform_slot].cell_count, current, 0u);
-        if exchange.exchanged {
-            break;
+    // For newly allocated lifeforms, initialize cell_count and increment lifeform_counter
+    if is_new_lifeform {
+        // Initialize cell_count to 0 atomically
+        loop {
+            let current = atomicLoad(&lifeforms[lifeform_slot].cell_count);
+            let exchange = atomicCompareExchangeWeak(
+                &lifeforms[lifeform_slot].cell_count,
+                current,
+                0u,
+            );
+            if exchange.exchanged {
+                break;
+            }
         }
+        atomicAdd(&lifeform_counter.value, 1u);
     }
     lifeforms[lifeform_slot].flags = LIFEFORM_FLAG_ACTIVE;
     lifeforms[lifeform_slot]._pad = 0u;
@@ -765,31 +908,34 @@ fn create_lifeform_cell(
     //initialise_lifeform_state(lifeform_slot, lifeform_id);
     //initialise_grn(lifeform_slot);
 
-    atomicAdd(&lifeform_counter.value, 1u);
-
     var new_cell: Cell;
 
     new_cell.is_alive = 1u;
     new_cell.lifeform_slot = lifeform_slot;
+    new_cell.link_count = 0u;
+    for (var i: u32 = 0u; i < 6u; i = i + 1u) {
+        new_cell.link_indices[i] = 0u;
+    }
+    new_cell._pad = 0u;
 
     if parent_index < CELL_CAPACITY {
         let parent_cell = cells[parent_index];
         let offset_seed = vec2<u32>(parent_index * 97u + 13u, parent_cell.lifeform_slot * 211u + 17u);
         let angle = rand(offset_seed) * 6.2831853;
-        let distance = parent_cell.radius;
-        let child_position = parent_cell.pos;// + vec2<f32>(cos(angle), sin(angle)) * distance;
-        let child_radius = parent_cell.radius * 0.5;
+        let distance = parent_cell.radius * 2.0;
+        let child_position = parent_cell.pos + vec2<f32>(cos(angle), sin(angle)) * distance;
+        let cell_wall_thickness = parent_cell.cell_wall_thickness + rand(vec2<u32>(seed.x * 17u + 7u, seed.y * 29u + 3u)) * 0.05;
 
         new_cell.pos = child_position;
         new_cell.prev_pos = child_position;
         new_cell.random_force = vec2<f32>(0.0, 0.0);
-        new_cell.radius = 0.001;
+        new_cell.radius = parent_cell.radius;
         new_cell.energy = parent_cell.energy * 0.5;
-        new_cell.cell_wall_thickness = parent_cell.cell_wall_thickness;
+        new_cell.cell_wall_thickness = clamp(cell_wall_thickness, 0.1, 0.8);
         new_cell.generation = parent_cell.generation + 1u;
     } else {
         let position = random_position(vec2<u32>(seed.x * 97u + 11u, seed.y * 131u + 23u));
-        let radius = 1.0 + rand(vec2<u32>(seed.x * 17u + 7u, seed.y * 29u + 3u)) * 3.0;
+        let radius = 0.5 + rand(vec2<u32>(seed.x * 17u + 7u, seed.y * 29u + 3u)) * 3.0;
         let energy = 60.0 + rand(vec2<u32>(seed.x * 53u + 5u, seed.y * 71u + 19u)) * 80.0;
         let cell_wall_thickness = 0.2;
 
@@ -801,19 +947,98 @@ fn create_lifeform_cell(
         new_cell.cell_wall_thickness = cell_wall_thickness;
         new_cell.generation = 0u;
     }
-    new_cell.color = compute_cell_color(new_cell.energy);
 
-    if !queue_spawn_cell(new_cell) {
-        if is_new_lifeform {
-            recycle_lifeform_slot(lifeform_slot);
-        }
-        return;
-    }
-
+    // For division, spawn child immediately and create a link; for other uses, go through the spawn buffer.
     if parent_index < CELL_CAPACITY {
-        var parent_cell = cells[parent_index];
-        parent_cell.radius *= 0.5;
-        cells[parent_index] = parent_cell;
+        // Allocate a free cell slot
+        loop {
+            let free_prev = atomicLoad(&cell_free_list.count);
+            if free_prev == 0u {
+                // No free slots available - abort this division
+                return;
+            }
+            let free_desired = free_prev - 1u;
+            let free_exchange = atomicCompareExchangeWeak(
+                &cell_free_list.count,
+                free_prev,
+                free_desired,
+            );
+            if free_exchange.old_value == free_prev && free_exchange.exchanged {
+                let slot_index = cell_free_list.indices[free_desired];
+                let previous_generation = cells[slot_index].generation;
+
+                var spawned_cell = new_cell;
+                spawned_cell.generation = previous_generation;
+                spawned_cell.is_alive = 1u;
+                cells[slot_index] = spawned_cell;
+
+                atomicAdd(&cell_counter.value, 1u);
+
+                let lf_idx = spawned_cell.lifeform_slot;
+                if lf_idx < LIFEFORM_CAPACITY {
+                    if lf_idx < arrayLength(&lifeforms) {
+                        // Atomically increment cell_count
+                        let previous = atomicAdd(&lifeforms[lf_idx].cell_count, 1u);
+                        if previous == 0u {
+                            lifeforms[lf_idx].first_cell_slot = slot_index;
+                        }
+                    }
+                }
+
+                // Create a link between parent and child if possible
+                var link_created = false;
+                loop {
+                    let link_prev = atomicLoad(&link_free_list.count);
+                    if link_prev == 0u {
+                        break;
+                    }
+                    let link_desired = link_prev - 1u;
+                    let link_exchange = atomicCompareExchangeWeak(
+                        &link_free_list.count,
+                        link_prev,
+                        link_desired,
+                    );
+                    if link_exchange.old_value == link_prev && link_exchange.exchanged {
+                        if link_desired < arrayLength(&link_free_list.indices) {
+                            let link_slot = link_free_list.indices[link_desired];
+                            let parent_cell_link = cells[parent_index];
+                            let rest_length = parent_cell_link.radius + spawned_cell.radius;
+
+                            links[link_slot].a = parent_index;
+                            links[link_slot].b = slot_index;
+                            links[link_slot].flags = LINK_FLAG_ALIVE | LINK_FLAG_ADHESIVE;
+                            links[link_slot].generation_a = parent_cell_link.generation;
+                            links[link_slot].rest_length = rest_length;
+                            links[link_slot].stiffness = 0.6;
+                            links[link_slot].energy_transfer_rate = 0.0;
+                            links[link_slot].generation_b = spawned_cell.generation;
+                            
+                            // Add link to both cells' link_indices arrays
+                            add_link_to_cell(parent_index, link_slot);
+                            add_link_to_cell(slot_index, link_slot);
+
+                            link_created = true;
+                            break;
+                        }
+                        atomicAdd(&link_free_list.count, 1u);
+                    }
+                }
+                
+                // Redistribute parent cell's existing links to parent or child based on proximity
+                if link_created {
+                    redistribute_cell_links(parent_index, slot_index);
+                }
+                
+                break;
+            }
+        }
+    } else {
+        if !queue_spawn_cell(new_cell) {
+            if is_new_lifeform {
+                recycle_lifeform_slot(lifeform_slot);
+            }
+            return;
+        }
     }
 }
 

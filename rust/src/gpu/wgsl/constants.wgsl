@@ -1,3 +1,6 @@
+const SQRT_2: f32 = 1.4142135623730951;
+const M_PI: f32 = 3.14159265358979323846;
+
 const MAX_GRN_RECEPTOR_INPUTS: u32 = 16u;
 const MAX_GRN_REGULATORY_UNITS: u32 = 16u;
 const MAX_GRN_INPUTS_PER_UNIT: u32 = 8u;
@@ -12,8 +15,13 @@ const GRN_EVALUATION_FALLBACK: u32 = 8u;
 
 const DIVISION_PROBABILITY: f32 = 0.001;
 const RANDOM_DEATH_PROBABILITY: f32 = 0.0;
-const LIFEFORM_CAPACITY: u32 = 5000u;
-const CELL_CAPACITY: u32 = 10000u;
+
+// NOTE: These capacities MUST match the values in `rust/src/gpu/buffers.rs`
+// (CELL_CAPACITY and LIFEFORM_CAPACITY) to keep CPU/GPU in sync.
+// If they diverge, index-based checks like `parent_index < CELL_CAPACITY`
+// will behave incorrectly and break division/spawn logic.
+const LIFEFORM_CAPACITY: u32 = 50000u;
+const CELL_CAPACITY: u32 = 100000u;
 const MIN_DIVISION_ENERGY: f32 = 20.0;
 
 const LINK_FLAG_ALIVE: u32 = 1u;

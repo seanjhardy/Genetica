@@ -62,15 +62,6 @@ var<storage, read_write> next_species_id: Counter;
 @group(0) @binding(24)
 var<storage, read_write> position_changes: array<PositionChangeEntry>;
 
-fn compute_cell_color(energy: f32) -> vec4<f32> {
-    let energy_normalized = clamp(energy / 100.0, 0.0, 1.0);
-    let brightness = 0.1 + energy_normalized * 0.9;
-    let r = (1.0 - brightness) * 0.5;
-    let g = brightness;
-    let b = brightness;
-    return vec4<f32>(r, g, b, 1.0);
-}
-
 @compute @workgroup_size(128)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
@@ -108,13 +99,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     let dist = sqrt(dist_sq);
-    let max_distance = (cell_a.radius + cell_b.radius) * 2.0;
+    let max_distance = (cell_a.radius + cell_b.radius) * 1.5;
     if dist > max_distance {
         release_link(index);
         return;
     }
 
-    let rest_length = link.rest_length;
+    let rest_length = cell_a.radius + cell_b.radius;
     if rest_length == 0.0 {
         return;
     }
@@ -147,9 +138,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let energy_transfer = clamp(-energy_transfer_rate, energy_difference, energy_transfer_rate);
     cell_a.energy -= energy_transfer;
     cell_b.energy += energy_transfer;
-
-    cell_a.color = compute_cell_color(cell_a.energy);
-    cell_b.color = compute_cell_color(cell_b.energy);
 
     cells[link.a] = cell_a;
     cells[link.b] = cell_b;

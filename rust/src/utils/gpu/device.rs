@@ -36,9 +36,6 @@ impl GpuDevice {
 
         // Enable timestamp queries for GPU profiling
         let mut required_features = wgpu::Features::empty();
-        if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-            required_features |= wgpu::Features::TIMESTAMP_QUERY;
-        }
 
         let required_limits = adapter.limits();
 
@@ -69,7 +66,14 @@ impl GpuDevice {
             .present_modes
             .iter()
             .copied()
-            .find(|&mode| mode == wgpu::PresentMode::Mailbox)
+            .find(|&mode| mode == wgpu::PresentMode::Fifo)
+            .or_else(|| {
+                surface_caps
+                    .present_modes
+                    .iter()
+                    .copied()
+                    .find(|&mode| mode == wgpu::PresentMode::Mailbox)
+            })
             .or_else(|| {
                 surface_caps
                     .present_modes
@@ -77,8 +81,8 @@ impl GpuDevice {
                     .copied()
                     .find(|&mode| mode == wgpu::PresentMode::Immediate)
             })
-            .unwrap_or(surface_caps.present_modes[0]); // Fall back to first available if neither exists
-        
+            .unwrap_or(surface_caps.present_modes[0]); // Fall back to first available if none exist
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
