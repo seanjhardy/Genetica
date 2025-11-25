@@ -34,7 +34,7 @@ impl Renderer {
     ) -> bool {
         profile_scope!("Render Simulation");
         
-        // CRITICAL: Copy write buffer to read buffer before rendering
+        // Copy write buffer to read buffer before rendering
         // This synchronizes compute results (in write buffer) to read buffer (for rendering)
         let cell_capacity = buffers.cell_capacity();
         if cell_capacity > 0 {
@@ -182,7 +182,7 @@ impl Renderer {
             }
 
             render_pass.set_pipeline(&render_pipelines.points);
-            render_pass.set_bind_group(0, &render_pipelines.render_bind_group, &[]);
+            render_pass.set_bind_group(0, &render_pipelines.cell_render_bind_group, &[]);
             render_pass.draw(0..4, 0..(num_points as u32)); // 4 vertices per quad, num_points instances
         }
 

@@ -640,7 +640,7 @@ impl ComputePipelines {
 /// Render pipelines for drawing points
 pub struct RenderPipelines {
     pub points: wgpu::RenderPipeline,
-    pub render_bind_group: wgpu::BindGroup,
+    pub cell_render_bind_group: wgpu::BindGroup,
     pub links: wgpu::RenderPipeline,
     pub link_bind_group: wgpu::BindGroup,
     pub nutrient_overlay: wgpu::RenderPipeline,
@@ -660,7 +660,7 @@ impl RenderPipelines {
         spatial_hash_bucket_heads_readonly_buffer: &wgpu::Buffer,
         spatial_hash_next_indices_buffer: &wgpu::Buffer,
     ) -> Self {
-        let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        let cell_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Cells Shader"),
             source: CELLS_SHADER.clone(),
         });
@@ -675,8 +675,8 @@ impl RenderPipelines {
             source: NUTRIENTS_SHADER.clone(),
         });
 
-        let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Render Bind Group Layout"),
+        let cell_render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Cell Render Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -700,6 +700,16 @@ impl RenderPipelines {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
                     visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -799,9 +809,9 @@ impl RenderPipelines {
             push_constant_ranges: &[],
         });
 
-        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&render_bind_group_layout],
+        let cell_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Cell Render Pipeline Layout"),
+            bind_group_layouts: &[&cell_render_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -850,16 +860,16 @@ impl RenderPipelines {
         });
 
         let points = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
+            label: Some("Cell Render Pipeline"),
+            layout: Some(&cell_render_pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &render_shader,
+                module: &cell_shader,
                 entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                module: &render_shader,
+                module: &cell_shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_config.format,
@@ -936,9 +946,9 @@ impl RenderPipelines {
             multiview: None,
         });
 
-        let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Render Bind Group"),
-            layout: &render_bind_group_layout,
+        let cell_render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Cell Render Bind Group"),
+            layout: &cell_render_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -951,6 +961,10 @@ impl RenderPipelines {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: cell_free_list_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: link_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 9,
@@ -999,7 +1013,7 @@ impl RenderPipelines {
 
         Self {
             points,
-            render_bind_group,
+            cell_render_bind_group,
             links,
             link_bind_group,
             nutrient_overlay,

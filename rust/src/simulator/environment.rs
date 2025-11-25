@@ -70,6 +70,12 @@ impl Environment {
     pub fn get_bounds(&self) -> Rect {
         self.bounds
     }
+    
+    /// Set bounds (for reset functionality)
+    pub fn set_bounds(&mut self, bounds: Rect) {
+        self.bounds = bounds;
+        self.planet.set_bounds(bounds);
+    }
     /// Get cursor hint for drag handle
     pub fn get_cursor_hint(&self) -> Option<&'static str> {
         self.drag_handler.get_cursor_hint()

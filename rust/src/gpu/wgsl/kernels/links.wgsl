@@ -79,6 +79,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
+    if link.a == link.b {
+        release_link(index);
+        return;
+    }
+
     var cell_a = cells[link.a];
     var cell_b = cells[link.b];
 
@@ -93,53 +98,81 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     let delta = cell_b.pos - cell_a.pos;
-    let dist_sq = dot(delta, delta);
-    if dist_sq == 0.0 {
-        return;
+    var dist_sq = dot(delta, delta);
+    if dist_sq <= 0.001 {
+        dist_sq = 0.001;
     }
 
     let dist = sqrt(dist_sq);
-    let max_distance = (cell_a.radius + cell_b.radius) * 1.5;
+    let max_distance = (cell_a.radius + cell_b.radius) * 2.0;
     if dist > max_distance {
         release_link(index);
         return;
     }
 
-    let rest_length = cell_a.radius + cell_b.radius;
+    let rest_length = (cell_a.radius + cell_b.radius) * 0.7;
     if rest_length == 0.0 {
         return;
     }
 
-    let stiffness = link.stiffness;
+    // Simple Verlet distance constraint
     let diff = dist - rest_length;
-    let correction = (diff / dist) * 0.5 * stiffness;
-    let adjustment = delta * correction;
+    
+    // Use stiffness to control how much of the correction is applied per frame
+    // This prevents overshooting and oscillation
+    let stiffness = clamp(0.0, 1.0, link.stiffness);
+    let correction = diff * stiffness;
+
+    let a_weight = cell_a.radius * cell_a.radius;
+    let b_weight = cell_b.radius * cell_b.radius;
+    let inverse_a_weight = 1.0 / a_weight;
+    let inverse_b_weight = 1.0 / b_weight;
+    let inverse_total_weight = 1.0 / (a_weight + b_weight);
+
+    // Normalize delta to get direction vector
+    let delta_normalized = delta / dist;
+
+    // Calculate position adjustments weighted by cell masses (area)
+    // Apply stiffness to prevent over-correction and oscillation
+    let adjustment_a_magnitude = correction * inverse_a_weight * inverse_total_weight;
+    let adjustment_b_magnitude = correction * inverse_b_weight * inverse_total_weight;
 
     // Accumulate position changes in the buffer instead of modifying cells directly
     // This allows averaging multiple link forces and prevents race conditions
-    if link.a < arrayLength(&position_changes) {
-        let adjustment_x_fixed = i32(adjustment.x * POSITION_CHANGE_SCALE);
-        let adjustment_y_fixed = i32(adjustment.y * POSITION_CHANGE_SCALE);
-        atomicAdd(&position_changes[link.a].delta_x, u32(adjustment_x_fixed));
-        atomicAdd(&position_changes[link.a].delta_y, u32(adjustment_y_fixed));
+    if link.a < arrayLength(&position_changes) && link.a < arrayLength(&cells) {
+        let adjustment_a: vec2<i32> = vec2<i32>(delta_normalized * adjustment_a_magnitude * POSITION_CHANGE_SCALE);
+        atomicAdd(&position_changes[link.a].delta_x, adjustment_a.x);
+        atomicAdd(&position_changes[link.a].delta_y, adjustment_a.y);
         atomicAdd(&position_changes[link.a].num_changes, 1u);
     }
 
-    if link.b < arrayLength(&position_changes) {
-        let adjustment_x_fixed = i32(-adjustment.x * POSITION_CHANGE_SCALE);
-        let adjustment_y_fixed = i32(-adjustment.y * POSITION_CHANGE_SCALE);
-        atomicAdd(&position_changes[link.b].delta_x, u32(adjustment_x_fixed));
-        atomicAdd(&position_changes[link.b].delta_y, u32(adjustment_y_fixed));
+    if link.b < arrayLength(&position_changes) && link.b < arrayLength(&cells) {
+        let adjustment_b: vec2<i32> = vec2<i32>(-delta_normalized * adjustment_b_magnitude * POSITION_CHANGE_SCALE);
+        atomicAdd(&position_changes[link.b].delta_x, adjustment_b.x);
+        atomicAdd(&position_changes[link.b].delta_y, adjustment_b.y);
         atomicAdd(&position_changes[link.b].num_changes, 1u);
     }
 
-    let energy_transfer_rate = link.energy_transfer_rate;
+    /*let energy_transfer_rate = link.energy_transfer_rate;
     let energy_difference = cell_a.energy - cell_b.energy;
     let energy_transfer = clamp(-energy_transfer_rate, energy_difference, energy_transfer_rate);
     cell_a.energy -= energy_transfer;
     cell_b.energy += energy_transfer;
 
-    cells[link.a] = cell_a;
-    cells[link.b] = cell_b;
+    // Re-read cells right before writing to prevent overwriting changes made by other kernels
+    // This is especially important for the color field which is computed by the cells kernel
+    // If we don't re-read, we'll overwrite the color with stale data
+    if link.a < arrayLength(&cells) && cell_a.is_alive != 0u {
+        var latest_cell_a = cells[link.a];
+        // Only update energy - preserve all other fields (especially color) from the latest read
+        latest_cell_a.energy = cell_a.energy;
+        cells[link.a] = latest_cell_a;
+    }
+    if link.b < arrayLength(&cells) && cell_b.is_alive != 0u {
+        var latest_cell_b = cells[link.b];
+        // Only update energy - preserve all other fields (especially color) from the latest read
+        latest_cell_b.energy = cell_b.energy;
+        cells[link.b] = latest_cell_b;
+    }*/
 }
 

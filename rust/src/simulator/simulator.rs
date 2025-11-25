@@ -41,6 +41,7 @@ pub struct Simulation {
     population: PopulationState,
     transfers: GpuTransferState,
     current_bounds: Rect,
+    initial_bounds: Rect, // Store initial bounds for reset
     
     // Simulation parameters
     workgroup_size: u32,
@@ -48,6 +49,10 @@ pub struct Simulation {
     // Step counter (atomic for thread-safe access)
     step_count: Arc<AtomicU64>,
     submission: SubmissionState,
+    
+    // Add a field to track last readback time
+    last_readback_time: Instant,
+    readback_interval: Duration, // Poll readbacks every ~100ms for smooth UI updates
 }
 
 impl Simulation {
@@ -71,9 +76,12 @@ impl Simulation {
             population: PopulationState::new(),
             transfers: GpuTransferState::default(),
             current_bounds: initial_bounds,
+            initial_bounds,
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
             submission: SubmissionState::new(32, Duration::from_millis(10)),
+            last_readback_time: Instant::now(),
+            readback_interval: Duration::from_millis(300), // Poll readbacks every 1 second
         };
 
         simulation
@@ -115,9 +123,24 @@ impl Simulation {
 
         let iterations = (10.0 * speed).max(1.0).floor() as u32;
         self.run_compute_batch(iterations);
-        // Poll GPU readbacks less frequently - only every 10 steps to reduce overhead
-        if self.step_count.load(Ordering::Relaxed) % 10 == 0 {
+        
+        // Check bounds every step (not just during readbacks)
+        // This ensures bounds changes are detected immediately
+        let bounds = {
+            profile_scope!("Fetch Environment Bounds");
+            let env = self.environment.lock();
+            env.get_bounds()
+        };
+
+        if bounds != self.current_bounds {
+            self.handle_bounds_resize(bounds);
+        }
+        
+        // Poll GPU readbacks based on simple time check: if > 1 second since last read, then read
+        let now = Instant::now();
+        if now.duration_since(self.last_readback_time) >= self.readback_interval {
             self.poll_gpu_readbacks();
+            self.last_readback_time = now;
         }
     }
     
@@ -378,15 +401,8 @@ impl Simulation {
             }
         }
 
-        let bounds = {
-            profile_scope!("Fetch Environment Bounds");
-            let env = self.environment.lock();
-            env.get_bounds()
-        };
-
-        if bounds != self.current_bounds {
-            self.handle_bounds_resize(bounds);
-        }
+        // NOTE: Bounds checking moved to step() function so it happens every step
+        // This ensures bounds changes are detected immediately regardless of readback frequency
     }
 
 
@@ -429,6 +445,47 @@ impl Simulation {
         self.current_bounds = bounds;
     }
 
+    /// Reset the simulation to its initial state
+    /// This clears all cells/lifeforms/GPU data and resets bounds and camera to original values
+    pub fn reset(&mut self) {
+        profile_scope!("Simulation Reset");
+        
+        // Flush any pending submissions before resetting
+        self.flush_pending_submissions();
+        
+        // Wait for GPU to finish all operations
+        let _ = self.device.poll(wgpu::MaintainBase::Wait);
+        
+        // Reset all GPU buffers to initial empty state
+        {
+            profile_scope!("Reset GPU Buffers");
+            self.buffers.reset(&self.device, &self.queue, self.initial_bounds);
+        }
+        
+        // Reset environment bounds to initial bounds
+        {
+            profile_scope!("Reset Environment Bounds");
+            let mut env = self.environment.lock();
+            env.set_bounds(self.initial_bounds);
+        }
+        
+        // Reset current bounds to initial bounds
+        if self.current_bounds != self.initial_bounds {
+            self.handle_bounds_resize(self.initial_bounds);
+        }
+        
+        // Reset step counter
+        self.step_count.store(0, Ordering::Relaxed);
+        
+        // Reset population counters
+        self.population = PopulationState::new();
+        
+        // Reset transfer state
+        self.transfers = GpuTransferState::default();
+        
+        // Reset submission state
+        self.submission = SubmissionState::new(32, Duration::from_millis(10));
+    }
 }
 
 /// Application structure - manages rendering at 60 FPS and window events
@@ -446,6 +503,8 @@ pub struct Application {
     
     // Camera and UI
     camera: Camera,
+    initial_camera_position: Vec2, // Store initial camera position for reset
+    initial_camera_zoom: f32, // Store initial camera zoom for reset
     environment: Arc<parking_lot::Mutex<Environment>>,
     bounds: Rect,
     key_states: KeyStates,
@@ -527,7 +586,7 @@ impl Application {
             buffers.species_counter_buffer(),
             buffers.position_changes_buffer(),
         );
-        let speed = Arc::new(parking_lot::Mutex::new(0.2));
+        let speed = Arc::new(parking_lot::Mutex::new(0.08779149519));
 
         let initial_nutrient_dims = buffers.nutrient_grid_dimensions();
 
@@ -542,7 +601,9 @@ impl Application {
         let simulation_paused = simulation_inner.paused_handle();
         let simulation = Arc::new(parking_lot::Mutex::new(simulation_inner));
 
-        Self {
+        let initial_camera_position = camera.get_position();
+        let initial_camera_zoom = camera.get_zoom();
+        let mut app = Self {
             simulation,
             render_pipelines,
             gpu,
@@ -550,6 +611,8 @@ impl Application {
             ui_renderer,
             ui_manager,
             camera,
+            initial_camera_position,
+            initial_camera_zoom,
             environment,
             bounds,
             key_states: KeyStates::default(),
@@ -571,7 +634,9 @@ impl Application {
             simulation_paused,
             rendering_enabled: true,
             show_grid: false,
-        }
+        };
+        app.update_speed_display();
+        app
     }
     
     // Spawn simulation thread (runs as fast as possible)
@@ -665,7 +730,8 @@ impl Application {
         }
         
         // Calculate simulation rate
-        let _steps_per_frame = current_step - self.last_render_step_count;
+        // Use saturating_sub to handle reset case where current_step might be less than last_render_step_count
+        let _steps_per_frame = current_step.saturating_sub(self.last_render_step_count);
         self.last_render_step_count = current_step;
         
         // Update framerate tracking
@@ -695,7 +761,7 @@ impl Application {
         }
         
         // Update uniforms for rendering (use actual render delta time for UI effects)
-        // CRITICAL: Only the render thread updates uniforms to avoid race conditions
+        // Only the render thread updates uniforms to avoid race conditions
         // The compute shader uses the same uniform buffer but only reads bounds/capacity
         let camera_pos = self.camera.get_position();
         let zoom = self.camera.get_zoom();
@@ -981,7 +1047,29 @@ impl Application {
     fn toggle_grid(&mut self) {
         self.show_grid = !self.show_grid;
     }
-    
+
+
+    fn reset(&mut self) {
+        // Reset simulation (clears GPU data and resets bounds)
+        {
+            let mut simulation = self.simulation.lock();
+            simulation.reset();
+        }
+        
+        // Reset camera to initial position and zoom
+        self.camera.set_position(self.initial_camera_position);
+        self.camera.set_zoom(self.initial_camera_zoom);
+        
+        // Reset bounds tracking
+        self.bounds = {
+            let env = self.environment.lock();
+            env.get_bounds()
+        };
+        
+        // Reset render step count to prevent underflow when calculating steps_per_frame
+        self.last_render_step_count = 0;
+    }
+
     fn handle_ui_function(&mut self, function_name: &str) {
         match function_name {
             "speedUp" => self.speed_up(),
@@ -989,6 +1077,7 @@ impl Application {
             "togglePaused" => self.toggle_paused(),
             "showUI" => self.toggle_ui(),
             "toggleGrid" => self.toggle_grid(),
+            "reset" => self.reset(),
             _ => {
                 // Unknown function - log it for debugging
                 eprintln!("Unknown UI function: {}", function_name);

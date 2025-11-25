@@ -40,9 +40,26 @@ fn compute_collision_correction(index: u32, position: vec2<f32>, radius: f32) ->
             let neighbor_pos = position + vec2<f32>(f32(dx), f32(dy)) * HASH_CELL_SIZE;
             let neighbor_hash = hash_cell_position(neighbor_pos);
 
+            // CRITICAL FIX 1: Bounds check before array access
+            if neighbor_hash >= bucket_count {
+                dy = dy + 1;
+                continue;
+            }
+
             var head = atomicLoad(&cell_bucket_heads[neighbor_hash]);
+            
+            // CRITICAL FIX 2: Add iteration limit to prevent infinite loops
+            var iterations: u32 = 0u;
+            let max_iterations: u32 = cell_capacity; // Safety limit
+            
             loop {
-                if head == -1 {
+                if head == -1 || iterations >= max_iterations {
+                    break;
+                }
+                iterations = iterations + 1u;
+
+                // CRITICAL FIX 3: Validate head is non-negative before conversion
+                if head < 0 {
                     break;
                 }
 

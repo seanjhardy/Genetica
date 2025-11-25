@@ -127,6 +127,22 @@ impl Camera {
         self.scene_bounds = bounds;
         self.constrain_to_bounds();
     }
+    
+    pub fn set_position(&mut self, position: Vec2) {
+        self.position = position;
+        self.constrain_to_bounds();
+    }
+    
+    pub fn set_zoom(&mut self, zoom: f32) {
+        if let Some(bounds) = self.scene_bounds {
+            let zoom_x = self.view_size.x / bounds.width;
+            let zoom_y = self.view_size.y / bounds.height;
+            let min_zoom = zoom_x.min(zoom_y);
+            self.zoom_level = zoom.max(min_zoom);
+        } else {
+            self.zoom_level = zoom.max(0.1);
+        }
+    }
 
 
     fn constrain_to_bounds(&mut self) {

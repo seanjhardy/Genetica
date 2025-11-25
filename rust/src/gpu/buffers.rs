@@ -747,4 +747,102 @@ impl GpuBuffers {
         buffer
     }
 
+    /// Reset all GPU buffers to their initial empty state
+    pub fn reset(&self, device: &wgpu::Device, queue: &wgpu::Queue, bounds: Rect) {
+        use crate::gpu::structures::{Cell, CompiledRegulatoryUnit, GrnDescriptor, GenomeEntry, Lifeform, Link, PositionChangeEntry, SpeciesEntry};
+        
+        // Reset cell vectors
+        let initial_count = 0u32;
+        
+        // Clear cell buffers
+        let cell_capacity = self.cell_capacity();
+        let cell_zero_data = vec![Cell::zeroed(); cell_capacity];
+        queue.write_buffer(self.cell_vector_a.buffer(), 0, bytemuck::cast_slice(&cell_zero_data));
+        queue.write_buffer(self.cell_vector_b.buffer(), 0, bytemuck::cast_slice(&cell_zero_data));
+        
+        // Reset cell free lists
+        self.cell_vector_a.initialize_free_list(queue, initial_count);
+        self.cell_vector_b.initialize_free_list(queue, initial_count);
+        
+        // Reset counters
+        queue.write_buffer(&self.cell_counter, 0, bytemuck::cast_slice(&[initial_count]));
+        queue.write_buffer(&self.lifeform_counter, 0, bytemuck::cast_slice(&[0u32]));
+        queue.write_buffer(&self.species_counter, 0, bytemuck::cast_slice(&[0u32]));
+        
+        // Reset spawn buffer
+        let spawn_header_size = (std::mem::size_of::<u32>() * 2) as u64;
+        let spawn_buffer_size = spawn_header_size + (MAX_SPAWN_REQUESTS * std::mem::size_of::<Cell>()) as u64;
+        let spawn_zero = vec![0u8; spawn_buffer_size as usize];
+        queue.write_buffer(&self.spawn_buffer, 0, &spawn_zero);
+        
+        // Reset link buffer
+        let link_zero = vec![Link::zeroed(); self.link_capacity];
+        queue.write_buffer(&self.link_buffer, 0, bytemuck::cast_slice(&link_zero));
+        
+        // Reset link free list
+        let mut link_free_list_init: Vec<u32> = Vec::with_capacity(self.link_capacity + 2);
+        link_free_list_init.push(self.link_capacity as u32);
+        link_free_list_init.push(0u32);
+        link_free_list_init.extend((0..self.link_capacity as u32).rev());
+        queue.write_buffer(&self.link_free_list, 0, bytemuck::cast_slice(&link_free_list_init));
+        
+        // Reset spatial hash
+        let spatial_hash_init = vec![-1i32; CELL_HASH_TABLE_SIZE];
+        queue.write_buffer(&self.spatial_hash_bucket_heads, 0, bytemuck::cast_slice(&spatial_hash_init));
+        queue.write_buffer(&self.spatial_hash_bucket_heads_readonly, 0, bytemuck::cast_slice(&spatial_hash_init));
+        let spatial_hash_next_indices_init = vec![-1i32; cell_capacity];
+        queue.write_buffer(&self.spatial_hash_next_indices, 0, bytemuck::cast_slice(&spatial_hash_next_indices_init));
+        
+        // Reset GRN descriptors
+        let grn_descriptor_init = vec![GrnDescriptor::zeroed(); LIFEFORM_CAPACITY];
+        queue.write_buffer(&self.grn_descriptors, 0, bytemuck::cast_slice(&grn_descriptor_init));
+        
+        // Reset GRN units
+        let total_grn_units = LIFEFORM_CAPACITY * MAX_GRN_REGULATORY_UNITS;
+        let grn_units_init = vec![CompiledRegulatoryUnit::zeroed(); total_grn_units];
+        queue.write_buffer(&self.grn_units, 0, bytemuck::cast_slice(&grn_units_init));
+        
+        // Reset lifeforms
+        let lifeforms_init = vec![Lifeform::zeroed(); LIFEFORM_CAPACITY];
+        queue.write_buffer(&self.lifeforms, 0, bytemuck::cast_slice(&lifeforms_init));
+        
+        // Reset lifeform free list
+        let mut lifeform_free_init: Vec<u32> = Vec::with_capacity(LIFEFORM_CAPACITY + 2);
+        lifeform_free_init.push(LIFEFORM_CAPACITY as u32);
+        lifeform_free_init.push(0u32);
+        lifeform_free_init.extend((0..LIFEFORM_CAPACITY as u32).rev());
+        queue.write_buffer(&self.lifeform_free_list, 0, bytemuck::cast_slice(&lifeform_free_init));
+        
+        // Reset next lifeform ID
+        queue.write_buffer(&self.next_lifeform_id, 0, bytemuck::cast_slice(&[0u32]));
+        
+        // Reset genome buffer
+        let genome_entries_init = vec![GenomeEntry::inactive(); LIFEFORM_CAPACITY];
+        queue.write_buffer(&self.genome_buffer, 0, bytemuck::cast_slice(&genome_entries_init));
+        
+        // Reset species entries
+        let species_entries_init = vec![SpeciesEntry::inactive(); MAX_SPECIES_CAPACITY];
+        queue.write_buffer(&self.species_entries, 0, bytemuck::cast_slice(&species_entries_init));
+        
+        // Reset species free list
+        let mut species_free_init: Vec<u32> = Vec::with_capacity(MAX_SPECIES_CAPACITY + 2);
+        species_free_init.push(MAX_SPECIES_CAPACITY as u32);
+        species_free_init.push(0u32);
+        species_free_init.extend((0..MAX_SPECIES_CAPACITY as u32).rev());
+        queue.write_buffer(&self.species_free_list, 0, bytemuck::cast_slice(&species_free_init));
+        
+        // Reset next species ID
+        queue.write_buffer(&self.next_species_id, 0, bytemuck::cast_slice(&[0u32]));
+        
+        // Reset next gene ID
+        queue.write_buffer(&self.next_gene_id, 0, bytemuck::cast_slice(&[0u32]));
+        
+        // Reset position changes
+        let position_changes_init = vec![PositionChangeEntry::zero(); cell_capacity];
+        queue.write_buffer(&self.position_changes, 0, bytemuck::cast_slice(&position_changes_init));
+        
+        // Reset nutrient grid
+        let _ = self.resize_nutrient_grid(device, bounds);
+    }
+
 }

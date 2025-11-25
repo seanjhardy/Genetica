@@ -45,7 +45,11 @@
             </view>
             
             <!-- Control buttons -->
-            <view class="w-400 h-80 p-10 gap-20 flex-row col-center bg-black-50 border-2 border-white-40 rounded-full">
+            <view class="w-500 h-80 p-10 gap-20 flex-row col-center bg-black-50 border-2 border-white-40 rounded-full">
+                <view class="w-80 text-base p-3 bg-white-10 hover:bg-teal-50 border-none 
+                    rounded-30 shadow-lg col-center row-center h-full group" on-click="reset">
+                    <image id="resetBtnIcon" class="w-40 h-40 icon-delete group-hover:icon-deleteHighlighted"/>
+                </view>
                 <view class="bg-white-30 rounded-full bg-white-10 flex-row h-full flex-1 col-center row-start gap-10 p-8">
                     <view id="slowDownBtn" class="flex-1 text-base p-3 bg-white-10 hover:bg-teal-50 border-none 
                     rounded-10 shadow-lg col-center row-center h-full rounded-l-200 group" on-click="slowDown">

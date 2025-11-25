@@ -180,6 +180,10 @@ fn redistribute_cell_links(parent_index: u32, child_index: u32) {
             // Remove link from parent
             remove_link_from_cell(parent_index, link_index);
             
+            // Re-read parent cell after removal to get fresh state
+            // This prevents issues where the link_indices array has shifted
+            parent_cell = cells[parent_index];
+            
             // Update link to point to child instead of parent
             if link.a == parent_index {
                 link.a = child_index;
@@ -190,11 +194,9 @@ fn redistribute_cell_links(parent_index: u32, child_index: u32) {
             }
             links[link_index] = link;
             
-            // Add link to child
+            // Add link to both cells' link_indices arrays to ensure symmetry
             add_link_to_cell(child_index, link_index);
-            
-            // Also update the other cell's link reference if needed
-            // (The link is already in the other cell's list, but we may need to verify)
+            add_link_to_cell(other_cell_index, link_index);
         }
         // If target is parent, keep the link as is
     }
@@ -922,7 +924,7 @@ fn create_lifeform_cell(
         let parent_cell = cells[parent_index];
         let offset_seed = vec2<u32>(parent_index * 97u + 13u, parent_cell.lifeform_slot * 211u + 17u);
         let angle = rand(offset_seed) * 6.2831853;
-        let distance = parent_cell.radius * 2.0;
+        let distance = parent_cell.radius * 1.4;
         let child_position = parent_cell.pos + vec2<f32>(cos(angle), sin(angle)) * distance;
         let cell_wall_thickness = parent_cell.cell_wall_thickness + rand(vec2<u32>(seed.x * 17u + 7u, seed.y * 29u + 3u)) * 0.05;
 
@@ -935,7 +937,7 @@ fn create_lifeform_cell(
         new_cell.generation = parent_cell.generation + 1u;
     } else {
         let position = random_position(vec2<u32>(seed.x * 97u + 11u, seed.y * 131u + 23u));
-        let radius = 0.5 + rand(vec2<u32>(seed.x * 17u + 7u, seed.y * 29u + 3u)) * 3.0;
+        let radius = 0.5 + rand(vec2<u32>(seed.x * 17u + 7u, seed.y * 29u + 3u)) * 5.0;
         let energy = 60.0 + rand(vec2<u32>(seed.x * 53u + 5u, seed.y * 71u + 19u)) * 80.0;
         let cell_wall_thickness = 0.2;
 
@@ -964,8 +966,26 @@ fn create_lifeform_cell(
                 free_desired,
             );
             if free_exchange.old_value == free_prev && free_exchange.exchanged {
+                if free_desired >= arrayLength(&cell_free_list.indices) {
+                    atomicAdd(&cell_free_list.count, 1u);
+                    break;
+                }
                 let slot_index = cell_free_list.indices[free_desired];
-                let previous_generation = cells[slot_index].generation;
+                if slot_index >= arrayLength(&cells) {
+                    atomicAdd(&cell_free_list.count, 1u);
+                    break;
+                }
+                var slot_cell = cells[slot_index];
+                if slot_cell.is_alive != 0u {
+                    atomicAdd(&cell_free_list.count, 1u);
+                    break;
+                }
+                let previous_generation = slot_cell.generation;
+                var verify_slot_cell = cells[slot_index];
+                if verify_slot_cell.is_alive != 0u || verify_slot_cell.generation != previous_generation {
+                    atomicAdd(&cell_free_list.count, 1u);
+                    break;
+                }
 
                 var spawned_cell = new_cell;
                 spawned_cell.generation = previous_generation;
@@ -1001,7 +1021,19 @@ fn create_lifeform_cell(
                     if link_exchange.old_value == link_prev && link_exchange.exchanged {
                         if link_desired < arrayLength(&link_free_list.indices) {
                             let link_slot = link_free_list.indices[link_desired];
+                            if link_slot >= arrayLength(&links) {
+                                atomicAdd(&link_free_list.count, 1u);
+                                break;
+                            }
+                            if parent_index >= arrayLength(&cells) || slot_index >= arrayLength(&cells) || parent_index == slot_index {
+                                atomicAdd(&link_free_list.count, 1u);
+                                break;
+                            }
                             let parent_cell_link = cells[parent_index];
+                            if parent_cell_link.is_alive == 0u {
+                                atomicAdd(&link_free_list.count, 1u);
+                                break;
+                            }
                             let rest_length = parent_cell_link.radius + spawned_cell.radius;
 
                             links[link_slot].a = parent_index;

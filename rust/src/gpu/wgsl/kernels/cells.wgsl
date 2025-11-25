@@ -153,14 +153,14 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
     let dt = uniforms.sim_params.x;
 
-    let random = get_random_values(index);
-
     // Optimized: distribute population maintenance across all threads instead of just thread 0
     let total_threads = arrayLength(&cells);
     ensure_minimum_population_parallel(index, total_threads);
 
     spawn_cells();
 
+    // Check bounds and cell alive status BEFORE accessing cell data
+    // This prevents reading garbage data from dead or out-of-bounds cells
     let total_cells = arrayLength(&cells);
     if index >= total_cells {
         return;
@@ -170,6 +170,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if cell.is_alive == 0u {
         return;
     }
+
+    // Now safe to get random values since we know the cell is alive
+    let random = get_random_values(index);
 
     // Update GRN: simple timer countdown, run when timer reaches 0
 
@@ -189,7 +192,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     cell.pos = new_pos.xy;
     cell.prev_pos = new_pos.zw;
 
-    if cell.energy > MIN_DIVISION_ENERGY && random.w < DIVISION_PROBABILITY && cell.lifeform_slot < LIFEFORM_CAPACITY && atomicLoad(&cell_counter.value) < 15000u {
+    if cell.energy > MIN_DIVISION_ENERGY && random.w < DIVISION_PROBABILITY && cell.lifeform_slot < LIFEFORM_CAPACITY && atomicLoad(&cell_counter.value) < CELL_CAPACITY {
         cell.energy /= 2.0;
         let seed = vec2<u32>(u32(index) * 97u + 13u + u32(cell.pos.x) * 31u,
             u32(cell.lifeform_slot) * 211u + 17u + u32(cell.pos.y) * 31u);
@@ -207,14 +210,59 @@ fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> 
 
     // Random position offset per timestep (added directly to position, no accumulation)
     let random_offset_magnitude = 0.5; // World units per timestep (small offset for subtle movement)
-    let random_offset = (random * 2.0 - 1.0) * random_offset_magnitude * dt / min(cell.radius, 10.0);
+    let random_offset = (random * 2.0 - 1.0) * random_offset_magnitude * dt / min(cell.radius * cell.radius, 10.0);
     
     // Store random offset for potential future use (but not using it for accumulation anymore)
     cell.random_force = random_offset;
     
     // Verlet integration with stronger damping to prevent drift
-    let velocity = cell.pos - cell.prev_pos;
-    
+    var velocity = cell.pos - cell.prev_pos;
+
+    // Apply averaged position changes from links
+    // Only access position_changes if index is valid and cell is alive
+    // This prevents reading from wrong memory locations or dead cells
+    if index < arrayLength(&position_changes) && index < arrayLength(&cells) {
+        let num_changes = atomicLoad(&position_changes[index].num_changes);
+        if num_changes > 0u {
+            let delta_x_fixed = atomicLoad(&position_changes[index].delta_x);
+            let delta_y_fixed = atomicLoad(&position_changes[index].delta_y);
+
+            // Convert from fixed-point and calculate average
+            // Prevent division by zero (shouldn't happen due to num_changes > 0 check, but be safe)
+            let num_changes_f = f32(num_changes);
+            if num_changes_f > 0.0 {
+                let avg_delta_x = f32(i32(delta_x_fixed)) / POSITION_CHANGE_SCALE / num_changes_f;
+                let avg_delta_y = f32(i32(delta_y_fixed)) / POSITION_CHANGE_SCALE / num_changes_f;
+                
+                // Apply link forces as velocity changes with proper damping
+                // The link forces are position corrections, so we apply them as velocity changes
+                // but with damping and clamping to prevent unbounded accumulation
+                let link_force = vec2<f32>(avg_delta_x, avg_delta_y);
+                
+                // Clamp link forces to prevent excessive corrections
+                // This prevents large constraint violations from causing unbounded movement
+                let max_link_force = 10.0 * dt; // Max link force per timestep
+                let link_force_mag = length(link_force);
+                var clamped_link_force = link_force;
+                if link_force_mag > max_link_force {
+                    clamped_link_force = link_force * (max_link_force / link_force_mag);
+                }
+                
+                // Apply additional damping to link forces to prevent oscillation
+                // This ensures that if forces keep pushing in the same direction, they don't accumulate infinitely
+                let link_force_damped = clamped_link_force * 0.8;
+
+                velocity += link_force_damped;
+            }
+
+            // Reset the change accumulator for next frame
+            // Use atomic operations to prevent race conditions
+            atomicStore(&position_changes[index].delta_x, 0);
+            atomicStore(&position_changes[index].delta_y, 0);
+            atomicStore(&position_changes[index].num_changes, 0u);
+        }
+    }
+
     // Clamp velocity to prevent excessive movement from physics jankiness
     let max_velocity = 100.0 * dt; // Max movement per timestep
     let velocity_mag = length(velocity);
@@ -223,36 +271,16 @@ fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> 
         clamped_velocity = velocity * (max_velocity / velocity_mag);
     }
 
-    new_pos += clamped_velocity * 0.97;// + random_offset;
-
-    // Apply averaged position changes from links
-    if index < arrayLength(&position_changes) {
-        let num_changes = atomicLoad(&position_changes[index].num_changes);
-        if num_changes > 0u {
-            let delta_x_fixed = atomicLoad(&position_changes[index].delta_x);
-            let delta_y_fixed = atomicLoad(&position_changes[index].delta_y);
-
-            // Convert from fixed-point and calculate average
-            let avg_delta_x = f32(i32(delta_x_fixed)) / POSITION_CHANGE_SCALE / f32(num_changes);
-            let avg_delta_y = f32(i32(delta_y_fixed)) / POSITION_CHANGE_SCALE / f32(num_changes);
-
-            new_pos += vec2<f32>(avg_delta_x, avg_delta_y);
-
-            // Reset the change accumulator for next frame
-            atomicStore(&position_changes[index].delta_x, 0u);
-            atomicStore(&position_changes[index].delta_y, 0u);
-            atomicStore(&position_changes[index].num_changes, 0u);
-        }
-    }
-
+    new_pos += clamped_velocity * 0.95 + random_offset;
     new_prev_pos = cell.pos;
 
-    let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
+
+    // Apply collision correction
+    /*let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
     if (collision_correction.x != 0.0) || (collision_correction.y != 0.0) {
-        new_pos += collision_correction;
-        // Update prev_pos to maintain velocity when applying collision correction
-        new_prev_pos += collision_correction;
-    }
+        new_pos += collision_correction * 0.95;
+        new_prev_pos += collision_correction * 0.95;
+    }*/
     
     // Boundary constraints
     // Note: bounds is [left, top, right, bottom]
@@ -300,8 +328,34 @@ fn spawn_cells() {
                     free_desired,
                 );
                 if free_exchange.old_value == free_prev && free_exchange.exchanged {
+                    if free_desired >= arrayLength(&cell_free_list.indices) {
+                        atomicAdd(&cell_free_list.count, 1u);
+                        break;
+                    }
                     let slot_index = cell_free_list.indices[free_desired];
-                    let previous_generation = cells[slot_index].generation;
+                    // Validate slot_index before using it to prevent buffer overflow
+                    if slot_index >= arrayLength(&cells) {
+                        atomicAdd(&cell_free_list.count, 1u);
+                        break;
+                    }
+                    // Verify the slot is actually free before allocating
+                    // This prevents allocating to a slot that's still in use (race condition protection)
+                    var slot_cell = cells[slot_index];
+                    if slot_cell.is_alive != 0u {
+                        // Slot is still in use - this shouldn't happen if free list is correct
+                        // But during high churn, race conditions can occur
+                        atomicAdd(&cell_free_list.count, 1u);
+                        break;
+                    }
+                    let previous_generation = slot_cell.generation;
+                    // Re-read cell right before writing to ensure it's still free
+                    // This prevents race conditions where another thread allocated to this slot
+                    var verify_slot_cell = cells[slot_index];
+                    if verify_slot_cell.is_alive != 0u || verify_slot_cell.generation != previous_generation {
+                        // Slot was taken by another thread or cell was revived
+                        atomicAdd(&cell_free_list.count, 1u);
+                        break;
+                    }
                     new_cell.generation = previous_generation;
                     new_cell.is_alive = 1u;
                     new_cell.link_count = 0u;
@@ -339,14 +393,26 @@ fn spawn_cells() {
                                 if link_exchange.old_value == link_prev && link_exchange.exchanged {
                                     if link_desired < arrayLength(&link_free_list.indices) {
                                         let link_slot = link_free_list.indices[link_desired];
+                                        if link_slot >= arrayLength(&links) {
+                                            atomicAdd(&link_free_list.count, 1u);
+                                            break;
+                                        }
+                                        if parent_index >= arrayLength(&cells) || slot_index >= arrayLength(&cells) || parent_index == slot_index {
+                                            atomicAdd(&link_free_list.count, 1u);
+                                            break;
+                                        }
                                         let parent_cell = cells[parent_index];
+                                        if parent_cell.is_alive == 0u {
+                                            atomicAdd(&link_free_list.count, 1u);
+                                            break;
+                                        }
                                         let rest_length = parent_cell.radius + new_cell.radius;
                                         links[link_slot].a = parent_index;
                                         links[link_slot].b = slot_index;
                                         links[link_slot].flags = LINK_FLAG_ALIVE | LINK_FLAG_ADHESIVE;
                                         links[link_slot].generation_a = parent_cell.generation;
                                         links[link_slot].rest_length = rest_length;
-                                        links[link_slot].stiffness = 0.6;
+                                        links[link_slot].stiffness = 0.8;
                                         links[link_slot].energy_transfer_rate = 0.0;
                                         links[link_slot].generation_b = new_cell.generation;
                                         
@@ -427,6 +493,28 @@ fn kill_cell(index: u32) {
             break;
         }
         // Retry if compare-exchange failed (another thread modified it)
+    }
+
+    // Add killed cell back to free list so its slot can be reused
+    // This is essential for proper memory management during constant cell churn
+    // Without this, the free list becomes stale and cells can be allocated to slots still in use
+    // We must validate the index is within bounds before adding to prevent corruption
+    if index < arrayLength(&cell_free_list.indices) {
+        let free_index = atomicAdd(&cell_free_list.count, 1u);
+        if free_index < arrayLength(&cell_free_list.indices) {
+            // Double-check the cell is actually dead before recycling
+            // This prevents recycling a cell that was just revived by another thread
+            var verify_cell = cells[index];
+            if verify_cell.is_alive == 0u {
+                cell_free_list.indices[free_index] = index;
+            } else {
+                // Cell was revived, don't recycle it
+                atomicSub(&cell_free_list.count, 1u);
+            }
+        } else {
+            // Free list is full - this shouldn't happen but be safe
+            atomicSub(&cell_free_list.count, 1u);
+        }
     }
 }
 

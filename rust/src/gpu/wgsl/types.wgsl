@@ -108,8 +108,8 @@ struct NutrientGrid {
 
 struct PositionChangeEntry {
     // Fixed-point: multiply by POSITION_CHANGE_SCALE for actual values
-    delta_x: atomic<u32>,
-    delta_y: atomic<u32>,
+    delta_x: atomic<i32>,
+    delta_y: atomic<i32>,
     num_changes: atomic<u32>,
     _pad: u32,
 }

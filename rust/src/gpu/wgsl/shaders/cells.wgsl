@@ -10,6 +10,9 @@ var<storage, read> cells: array<Cell>;
 @group(0) @binding(2)
 var<storage, read> cell_free_list: CellFreeList;
 
+@group(0) @binding(6)
+var<storage, read> links: array<Link>;
+
 @group(0) @binding(9)
 var<storage, read> cell_bucket_heads_readonly: array<i32>;
 
@@ -113,7 +116,8 @@ fn calculate_directional_radius(
     point_on_circumference: vec2<f32>,
     cell_center: vec2<f32>,
     current_radius: f32,
-    search_radius: f32
+    search_radius: f32,
+    cell_index: u32
 ) -> f32 {
     var min_adjusted_radius = current_radius;
     
@@ -303,7 +307,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         point_on_circumference,
         in.world_pos,
         in.radius,
-        search_radius
+        search_radius,
+        cell_idx
     );
     
     // Render circle with adjusted radius
