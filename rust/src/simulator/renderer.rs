@@ -183,7 +183,12 @@ impl Renderer {
 
             render_pass.set_pipeline(&render_pipelines.points);
             render_pass.set_bind_group(0, &render_pipelines.cell_render_bind_group, &[]);
-            render_pass.draw(0..4, 0..(num_points as u32)); // 4 vertices per quad, num_points instances
+            
+            // Render all instances in one efficient draw call
+            // Each cell has 6 instances: 1 cell body (index 0) + 5 organelles (indices 1-5)
+            // Instances render in order, so organelles will naturally render after their cell body
+            const INSTANCES_PER_CELL: u32 = 6;
+            render_pass.draw(0..4, 0..(num_points as u32 * INSTANCES_PER_CELL));
         }
 
         true

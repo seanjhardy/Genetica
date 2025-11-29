@@ -805,6 +805,70 @@ fn random_position(seed: vec2<u32>) -> vec2<f32> {
     );
 }
 
+// Simple hash function for perlin noise
+fn hash_noise(p: vec2<f32>) -> f32 {
+    let p_int = vec2<u32>(u32(p.x * 1000.0), u32(p.y * 1000.0));
+    var x = p_int.x * 1664525u + 1013904223u;
+    var y = p_int.y * 22695477u + 1u;
+    let n = x ^ y;
+    return (f32(n & 0x00FFFFFFu) / f32(0x01000000u)) * 2.0 - 1.0; // [-1, 1]
+}
+
+// Simple 2D perlin noise
+fn perlin_noise(pos: vec2<f32>) -> f32 {
+    let i = floor(pos);
+    let f = pos - i;
+    
+    // Smooth interpolation
+    let u = f.x * f.x * (3.0 - 2.0 * f.x);
+    let v = f.y * f.y * (3.0 - 2.0 * f.y);
+    
+    // Get noise values at corners
+    let a = hash_noise(i);
+    let b = hash_noise(i + vec2<f32>(1.0, 0.0));
+    let c = hash_noise(i + vec2<f32>(0.0, 1.0));
+    let d = hash_noise(i + vec2<f32>(1.0, 1.0));
+    
+    // Interpolate
+    let ab = mix(a, b, u);
+    let cd = mix(c, d, u);
+    return mix(ab, cd, v);
+}
+
+// Layered perlin noise (fractional Brownian motion)
+fn layered_perlin_noise(pos: vec2<f32>, octaves: u32) -> f32 {
+    var value = 0.0;
+    var amplitude = 1.0;
+    var frequency = 1.0;
+    var max_value = 0.0;
+    
+    for (var i: u32 = 0u; i < octaves; i = i + 1u) {
+        value += perlin_noise(pos * frequency) * amplitude;
+        max_value += amplitude;
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+    
+    // Normalize to [-1, 1]
+    return value / max_value;
+}
+
+// Generate noise permutations using layered perlin noise
+fn generate_noise_permutations(seed: vec2<u32>, out_permutations: ptr<function, array<u32, CELL_WALL_SAMPLES>>) {
+    // Use seed to create a base position for noise
+    let base_pos = vec2<f32>(f32(seed.x) * 0.001, f32(seed.y) * 0.001);
+    
+    for (var i: u32 = 0u; i < CELL_WALL_SAMPLES; i = i + 1u) {
+        // Sample noise at different positions for each permutation value
+        let noise_pos = base_pos + vec2<f32>(f32(i) * 0.1, f32(i) * 0.07);
+        // Use 3 octaves for smooth, layered noise
+        let noise_value = layered_perlin_noise(noise_pos, 3u);
+        // Map from [-1, 1] to [0, 255]
+        let normalized = (noise_value + 1.0) * 0.5; // [0, 1]
+        (*out_permutations)[i] = u32(normalized * 255.0) % 256u;
+    }
+}
+
 fn initialise_lifeform_state(slot: u32, lifeform_id: u32) {
     if slot >= arrayLength(&lifeforms) {
         return;
@@ -918,7 +982,39 @@ fn create_lifeform_cell(
     for (var i: u32 = 0u; i < 6u; i = i + 1u) {
         new_cell.link_indices[i] = 0u;
     }
-    new_cell._pad = 0u;
+    new_cell._pad[0] = 0u;
+    new_cell._pad[1] = 0u;
+    new_cell._pad[2] = 0u;
+    
+    // Initialize perlin noise permutation values using layered perlin noise
+    generate_noise_permutations(seed, &new_cell.noise_permutations);
+    
+    // Initialize organelle positions in unit circle
+    // 0: nucleus (near center, smaller radius)
+    // 1-3: 3 small white blobs (random positions)
+    // 4: 1 large dark blob (near center)
+    // Stored as flat array: [x0, y0, x1, y1, x2, y2, x3, y3, x4, y4]
+    for (var i: u32 = 0u; i < 5u; i = i + 1u) {
+        let org_seed = vec2<u32>(seed.x * 41u + i * 43u + 13u, seed.y * 47u + i * 53u + 17u);
+        let angle = rand(org_seed) * 6.2831853; // 2 * PI
+        let radius_rand = rand(vec2<u32>(org_seed.y, org_seed.x + 19u));
+        
+        var radius: f32;
+        if i == 0u {
+            // Nucleus: near center, small radius (0.0 to 0.3)
+            radius = radius_rand * 0.3;
+        } else if i < 4u {
+            // Small white blobs: random positions (0.2 to 0.8)
+            radius = 0.6 + radius_rand * 0.4;
+        } else {
+            // Large dark blob: slightly off-center (0.1 to 0.3) - not at exact center
+            radius = 0.1 + radius_rand * 0.2;
+        }
+        
+        let pos = vec2<f32>(cos(angle), sin(angle)) * radius;
+        new_cell.organelles[i * 2u] = pos.x;
+        new_cell.organelles[i * 2u + 1u] = pos.y;
+    }
 
     if parent_index < CELL_CAPACITY {
         let parent_cell = cells[parent_index];
@@ -939,7 +1035,7 @@ fn create_lifeform_cell(
         let position = random_position(vec2<u32>(seed.x * 97u + 11u, seed.y * 131u + 23u));
         let radius = 0.5 + rand(vec2<u32>(seed.x * 17u + 7u, seed.y * 29u + 3u)) * 5.0;
         let energy = 60.0 + rand(vec2<u32>(seed.x * 53u + 5u, seed.y * 71u + 19u)) * 80.0;
-        let cell_wall_thickness = 0.2;
+        let cell_wall_thickness = 0.4;
 
         new_cell.pos = position;
         new_cell.prev_pos = position;

@@ -3,6 +3,7 @@
 @include src/gpu/wgsl/utils/genetic_algorithm.wgsl;
 @include src/gpu/wgsl/utils/compute_collisions.wgsl;
 @include src/gpu/wgsl/utils/events.wgsl;
+@include src/gpu/wgsl/utils/color.wgsl;
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
@@ -78,11 +79,9 @@ var<storage, read_write> position_changes: array<PositionChangeEntry>;
 
 fn compute_cell_color(radius: f32, energy: f32) -> vec4<f32> {
     let energy_normalized = clamp(energy / (radius * 50.0), 0.0, 1.0);
-    let brightness = 0.1 + energy_normalized * 0.9;
-    let r = (1.0 - brightness) * 0.5;
-    let g = brightness;
-    let b = brightness;
-    return vec4<f32>(r, g, b, 1.0);
+    let color = mix(vec4<f32>(46, 133, 48, 255.0) / 255.0, 
+    vec4<f32>(46, 133, 48, 255.0) / 255.0, energy_normalized);
+    return srgb(color);
 }
 
 
@@ -362,7 +361,29 @@ fn spawn_cells() {
                     for (var i: u32 = 0u; i < 6u; i = i + 1u) {
                         new_cell.link_indices[i] = 0u;
                     }
-                    new_cell._pad = 0u;
+                    // Noise permutations should already be set when cell was created in create_lifeform_cell
+                    // Initialize organelles (flat array: [x0, y0, x1, y1, ...])
+                    let seed = vec2<u32>(slot_index * 97u + 13u, new_cell.lifeform_slot * 211u + 17u);
+                    for (var i: u32 = 0u; i < 5u; i = i + 1u) {
+                        let org_seed = vec2<u32>(seed.x + i * 43u + 13u, seed.y + i * 53u + 17u);
+                        let angle = rand(org_seed) * 6.2831853;
+                        let radius_rand = rand(vec2<u32>(org_seed.y, org_seed.x + 19u));
+                        var radius: f32;
+                        if i == 0u {
+                            radius = radius_rand * 0.3;
+                        } else if i < 4u {
+                            radius = 0.2 + radius_rand * 0.6;
+                        } else {
+                            // Large dark blob: slightly off-center (0.1 to 0.3)
+                            radius = 0.1 + radius_rand * 0.2;
+                        }
+                        let pos = vec2<f32>(cos(angle), sin(angle)) * radius;
+                        new_cell.organelles[i * 2u] = pos.x;
+                        new_cell.organelles[i * 2u + 1u] = pos.y;
+                    }
+                    new_cell._pad[0] = 0u;
+                    new_cell._pad[1] = 0u;
+                    new_cell._pad[2] = 0u;
                     cells[slot_index] = new_cell;
                     atomicAdd(&cell_counter.value, 1u);
                     let lf_idx = new_cell.lifeform_slot;
@@ -464,6 +485,16 @@ fn kill_cell(index: u32) {
     for (var i: u32 = 0u; i < 6u; i = i + 1u) {
         cell.link_indices[i] = 0u;
     }
+    // Clear noise permutations and organelles
+    for (var i: u32 = 0u; i < CELL_WALL_SAMPLES; i = i + 1u) {
+        cell.noise_permutations[i] = 0u;
+    }
+    for (var i: u32 = 0u; i < 10u; i = i + 1u) {
+        cell.organelles[i] = 0.0;
+    }
+    cell._pad[0] = 0u;
+    cell._pad[1] = 0u;
+    cell._pad[2] = 0u;
     cells[index] = cell;
 
     loop {

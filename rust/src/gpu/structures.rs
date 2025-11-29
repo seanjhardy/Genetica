@@ -2,6 +2,8 @@
 
 use bytemuck::{self};
 
+pub const CELL_WALL_SAMPLES: usize = 20;
+
 pub const MAX_GRN_RECEPTOR_INPUTS: usize = 2;
 pub const MAX_GRN_REGULATORY_UNITS: usize = 2;
 pub const MAX_GRN_INPUTS_PER_UNIT: usize = 8;
@@ -14,7 +16,7 @@ pub const GENOME_WORD_COUNT: usize = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
 pub const MAX_SPECIES_CAPACITY: usize = 1024;
 
 /// Cell structure for GPU processing
-#[repr(C, align(16))]
+#[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Cell {
     pub pos: [f32; 2],
@@ -29,7 +31,13 @@ pub struct Cell {
     pub color: [f32; 4],
     pub link_count: u32,
     pub link_indices: [u32; 6],
-    pub _pad: u32, // Padding to maintain 16-byte alignment (total size: 96 bytes)
+    // Perlin noise permutation values for cell wall perturbation (20 values)
+    pub noise_permutations: [u32; CELL_WALL_SAMPLES],
+    // Organelle positions in unit circle (5 coordinates: nucleus, 3 small white blobs, 1 large dark blob)
+    pub organelles: [f32; 10],
+    // Padding to maintain 16-byte alignment (total size should be multiple of 16)
+    // Current size without padding: 220 bytes. Need 4 more bytes to reach 224 (16 * 14)
+    pub _pad: [u32; 3], // 12 bytes padding (makes total 224 bytes, which is 16 * 14)
 }
 
 #[repr(C)]

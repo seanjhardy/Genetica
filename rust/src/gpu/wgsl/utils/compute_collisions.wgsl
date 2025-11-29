@@ -67,25 +67,40 @@ fn compute_collision_correction(index: u32, position: vec2<f32>, radius: f32) ->
                 if neighbor_index != index && neighbor_index < cell_capacity {
                     let neighbor = cells[neighbor_index];
                     if neighbor.is_alive != 0u {
-                        let delta = position - neighbor.pos;
-                        let dist_sq = dot(delta, delta);
-                        let min_dist = radius + neighbor.radius;
-                        if min_dist > 0.0 && dist_sq < (min_dist * min_dist) {
-                            let dist = sqrt(max(dist_sq, COLLISION_EPSILON));
-                            var push_dir = vec2<f32>(0.0, 0.0);
-                            if dist > 0.0 {
-                                push_dir = delta / dist;
-                            }
-                            if push_dir.x == 0.0 && push_dir.y == 0.0 {
-                                if index < neighbor_index {
-                                    push_dir = vec2<f32>(1.0, 0.0);
-                                } else {
-                                    push_dir = vec2<f32>(-1.0, 0.0);
+
+                        // Ignore linked cells
+                        var is_linked = false;
+                        for (var i: u32 = 0u; i < neighbor.link_count; i = i + 1u) {
+                            let link_index = neighbor.link_indices[i];
+                            if link_index < arrayLength(&links) {
+                                let link = links[link_index];
+                                if link.a == index || link.b == index {
+                                    is_linked = true;
+                                    break;
                                 }
                             }
-                            let overlap = min_dist - dist;
-                            if overlap > 0.0 {
-                                correction += push_dir * (overlap * 0.5);
+                        }
+                        if !is_linked {
+                            let delta = position - neighbor.pos;
+                            let dist_sq = dot(delta, delta);
+                            let min_dist = radius + neighbor.radius;
+                            if min_dist > 0.0 && dist_sq < (min_dist * min_dist) {
+                                let dist = sqrt(max(dist_sq, COLLISION_EPSILON));
+                                var push_dir = vec2<f32>(0.0, 0.0);
+                                if dist > 0.0 {
+                                    push_dir = delta / dist;
+                                }
+                                if push_dir.x == 0.0 && push_dir.y == 0.0 {
+                                    if index < neighbor_index {
+                                        push_dir = vec2<f32>(1.0, 0.0);
+                                    } else {
+                                        push_dir = vec2<f32>(-1.0, 0.0);
+                                    }
+                                }
+                                let overlap = min_dist - dist;
+                                if overlap > 0.0 {
+                                    correction += push_dir * (overlap * 0.5);
+                                }
                             }
                         }
                     }
