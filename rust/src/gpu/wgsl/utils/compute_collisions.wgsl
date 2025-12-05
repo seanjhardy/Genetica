@@ -21,7 +21,15 @@ fn compute_collision_correction(index: u32, position: vec2<f32>, radius: f32) ->
     }
 
     let cell_capacity = arrayLength(&cells);
+    if index >= cell_capacity {
+        return vec2<f32>(0.0, 0.0);
+    }
+
     let next_length = arrayLength(&cell_hash_next);
+    let link_capacity = arrayLength(&links);
+
+    let self_cell = cells[index];
+    let self_link_count = min(self_cell.link_count, 6u);
 
     var correction = vec2<f32>(0.0, 0.0);
 
@@ -68,22 +76,26 @@ fn compute_collision_correction(index: u32, position: vec2<f32>, radius: f32) ->
                     let neighbor = cells[neighbor_index];
                     if neighbor.is_alive != 0u {
 
-                        // Ignore linked cells
+                        // Ignore linked cells by checking the current cell's known links
                         var is_linked = false;
-                        for (var i: u32 = 0u; i < neighbor.link_count; i = i + 1u) {
-                            let link_index = neighbor.link_indices[i];
-                            if link_index < arrayLength(&links) {
-                                let link = links[link_index];
-                                if link.a == index || link.b == index {
-                                    is_linked = true;
-                                    break;
-                                }
+                        for (var i: u32 = 0u; i < self_link_count; i = i + 1u) {
+                            let link_index = self_cell.link_indices[i];
+                            if link_index >= link_capacity {
+                                continue;
+                            }
+                            let link = links[link_index];
+                            if (link.flags & LINK_FLAG_ALIVE) == 0u {
+                                continue;
+                            }
+                            if (link.a == index && link.b == neighbor_index) || (link.a == neighbor_index && link.b == index) {
+                                is_linked = true;
+                                break;
                             }
                         }
                         if !is_linked {
                             let delta = position - neighbor.pos;
                             let dist_sq = dot(delta, delta);
-                            let min_dist = radius + neighbor.radius;
+                            let min_dist = (radius + neighbor.radius) * 0.7;
                             if min_dist > 0.0 && dist_sq < (min_dist * min_dist) {
                                 let dist = sqrt(max(dist_sq, COLLISION_EPSILON));
                                 var push_dir = vec2<f32>(0.0, 0.0);

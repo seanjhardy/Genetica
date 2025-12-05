@@ -11,15 +11,16 @@ struct Cell {
     is_alive: u32,
     lifeform_slot: u32,
     generation: u32,
-    color: vec4<f32>,
+    color: vec4<f32>, // Takes 16 bytes total (12 data + 4 implicit padding)
     link_count: u32,
     link_indices: array<u32, 6>,
     // Perlin noise permutation values for cell wall perturbation (20 values)
     noise_permutations: array<u32, CELL_WALL_SAMPLES>,
     // Organelle positions in unit circle (5 coordinates: nucleus, 3 small white blobs, 1 large dark blob)
     organelles: array<f32, 10>,
-    // Padding to maintain 16-byte alignment (12 bytes to make total 224 bytes = 16 * 14)
-    _pad: array<u32, 3>,
+    angle: f32, // Rotation angle in radians
+    // Random offset for sampling perlin noise texture (ensures cell stays within texture bounds)
+    noise_texture_offset: vec2<f32>,
 }
 
 struct GrnInput {

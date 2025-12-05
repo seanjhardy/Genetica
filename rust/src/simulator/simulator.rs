@@ -79,7 +79,7 @@ impl Simulation {
             initial_bounds,
             workgroup_size: 128,
             step_count: Arc::new(AtomicU64::new(0)),
-            submission: SubmissionState::new(32, Duration::from_millis(10)),
+            submission: SubmissionState::new(8, Duration::from_millis(2)),
             last_readback_time: Instant::now(),
             readback_interval: Duration::from_millis(300), // Poll readbacks every 1 second
         };
@@ -160,7 +160,7 @@ impl Simulation {
         self.pause.is_paused()
     }
 
-    fn flush_pending_submissions(&mut self) {
+    pub fn flush_pending_submissions(&mut self) {
         profile_scope!("Flush Pending Submissions");
         if self.submission.pending_command_buffers.is_empty() {
             return;
@@ -179,140 +179,157 @@ impl Simulation {
             return;
         }
 
-        // Submit simulation compute pass (non-blocking - GPU operations are async)
-        let command_buffer = {
-            profile_scope!("Encode Cell Simulation");
-            let mut encoder = {
-                profile_scope!("Create Command Encoder");
-                self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Simulation Encoder"),
-                })
+        // Keep command buffers small to avoid queue stalls; chunk the work
+        let mut remaining = iterations;
+        let mut executed_iterations: u64 = 0;
+
+        while remaining > 0 {
+            let iter_chunk = remaining.min(4);
+            remaining -= iter_chunk;
+
+            // Dispatch based on live count plus a safety pad (free list now hands out low indices first)
+            let live_cells_estimate = self.population.cells as u32;
+            let pad = self.workgroup_size * 8;
+            let target_cells = (live_cells_estimate.saturating_add(pad))
+                .max(self.workgroup_size * 2)
+                .min(self.buffers.cell_capacity() as u32);
+            let cell_workgroups = (target_cells + self.workgroup_size - 1) / self.workgroup_size;
+
+            // Submit simulation compute pass (non-blocking - GPU operations are async)
+            let command_buffer = {
+                profile_scope!("Encode Cell Simulation");
+                let mut encoder = {
+                    profile_scope!("Create Command Encoder");
+                    self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Simulation Encoder"),
+                    })
+                };
+
+                {
+                    profile_scope!("Dispatch Nutrient Regeneration");
+                    let mut nutrient_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("Nutrient Regeneration Pass"),
+                        timestamp_writes: None,
+                    });
+                    let (grid_w, grid_h) = self.buffers.nutrient_grid_dimensions();
+                    let total_cells = grid_w.saturating_mul(grid_h);
+                    if total_cells > 0 {
+                        let workgroup_size: u32 = 256;
+                        let workgroups = (total_cells + workgroup_size - 1) / workgroup_size;
+                        nutrient_pass.set_pipeline(&self.compute_pipelines.update_nutrients);
+                        nutrient_pass.set_bind_group(0, &self.compute_pipelines.update_nutrients_bind_group, &[]);
+                        for _ in 0..iter_chunk {
+                            nutrient_pass.dispatch_workgroups(workgroups, 1, 1);
+                        }
+                    }
+                }
+
+                {
+                    profile_scope!("Dispatch Cell Simulation Compute Batch");
+                    let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("Update Compute Pass"),
+                        timestamp_writes: None,
+                    });
+
+                    let hash_table_size = self.buffers.cell_hash_table_size() as u32;
+                    let hash_workgroups =
+                        (hash_table_size + self.workgroup_size - 1) / self.workgroup_size;
+                    let link_capacity = self.buffers.link_capacity() as u32;
+                    let link_workgroups =
+                        (link_capacity + self.workgroup_size - 1) / self.workgroup_size;
+
+                    compute_pass.set_bind_group(
+                        0,
+                        &self.compute_pipelines.update_cells_bind_group,
+                        &[],
+                    );
+                    for _ in 0..iter_chunk {
+                        compute_pass.set_pipeline(&self.compute_pipelines.reset_cell_hash);
+                        compute_pass.dispatch_workgroups(hash_workgroups, 1, 1);
+
+                        if link_capacity > 0 {
+                            compute_pass.set_pipeline(&self.compute_pipelines.update_links);
+                            compute_pass.dispatch_workgroups(link_workgroups, 1, 1);
+                        }
+
+                        if cell_workgroups > 0 {
+                            compute_pass.set_pipeline(&self.compute_pipelines.build_cell_hash);
+                            compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
+
+                            compute_pass.set_pipeline(&self.compute_pipelines.update_cells);
+                            compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
+                        }
+                    }
+                }
+
+                // Try to consume any ready readbacks before scheduling new copies
+                // This frees up staging buffer slots and prevents "buffer still mapped" errors
+                {
+                    profile_scope!("Consume Ready Readbacks");
+                    // Poll device to check for ready readbacks (non-blocking)
+                    let _ = self.device.poll(wgpu::MaintainBase::Poll);
+                    
+                    // Try to consume counters if ready
+                    if self.transfers.cell_counter_pending {
+                        if let Some(value) = self.buffers.try_consume_cell_counter() {
+                            self.population.cells = value;
+                            self.transfers.cell_counter_pending = false;
+                        }
+                    }
+                    if self.transfers.lifeform_counter_pending {
+                        if let Some(value) = self.buffers.try_consume_lifeform_counter() {
+                            self.population.lifeforms = value;
+                            self.transfers.lifeform_counter_pending = false;
+                        }
+                    }
+                    if self.transfers.species_counter_pending {
+                        if let Some(value) = self.buffers.try_consume_species_counter() {
+                            self.population.species = value;
+                            self.transfers.species_counter_pending = false;
+                        }
+                    }
+                }
+
+                // Schedule counter copies
+                if !self.transfers.cell_counter_pending {
+                    self.buffers
+                        .schedule_cell_counter_copy(&mut encoder);
+                    self.transfers.cell_counter_pending = true;
+                }
+                if !self.transfers.lifeform_counter_pending {
+                    self.buffers
+                        .schedule_lifeform_counter_copy(&mut encoder);
+                    self.transfers.lifeform_counter_pending = true;
+                }
+                if !self.transfers.species_counter_pending {
+                    self.buffers
+                        .schedule_species_counter_copy(&mut encoder);
+                    self.transfers.species_counter_pending = true;
+                }
+
+                profile_scope!("Finish Command Encoder");
+                encoder.finish()
             };
 
             {
-                profile_scope!("Dispatch Nutrient Regeneration");
-                let mut nutrient_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("Nutrient Regeneration Pass"),
-                    timestamp_writes: None,
-                });
-                let (grid_w, grid_h) = self.buffers.nutrient_grid_dimensions();
-                let total_cells = grid_w.saturating_mul(grid_h);
-                if total_cells > 0 {
-                    let workgroup_size: u32 = 256;
-                    let workgroups = (total_cells + workgroup_size - 1) / workgroup_size;
-                    nutrient_pass.set_pipeline(&self.compute_pipelines.update_nutrients);
-                    nutrient_pass.set_bind_group(0, &self.compute_pipelines.update_nutrients_bind_group, &[]);
-                    for _ in 0..iterations {
-                        nutrient_pass.dispatch_workgroups(workgroups, 1, 1);
-                    }
+                profile_scope!("Submit Simulation Commands");
+                {
+                    profile_scope!("Queue Command Buffer");
+                    self.submission.pending_command_buffers.push(command_buffer);
+                }
+                if self.submission.pending_command_buffers.len() >= self.submission.submission_batch_size
+                    || self.submission.last_submission.elapsed() >= self.submission.max_submission_delay
+                {
+                    self.flush_pending_submissions();
                 }
             }
 
-            {
-                profile_scope!("Dispatch Cell Simulation Compute Batch");
-                let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("Update Compute Pass"),
-                    timestamp_writes: None,
-                });
-
-                let num_cells = self.buffers.cell_capacity() as u32;
-                let cell_workgroups = (num_cells + self.workgroup_size - 1) / self.workgroup_size;
-                let hash_table_size = self.buffers.cell_hash_table_size() as u32;
-                let hash_workgroups =
-                    (hash_table_size + self.workgroup_size - 1) / self.workgroup_size;
-                let link_capacity = self.buffers.link_capacity() as u32;
-                let link_workgroups =
-                    (link_capacity + self.workgroup_size - 1) / self.workgroup_size;
-
-                compute_pass.set_bind_group(
-                    0,
-                    &self.compute_pipelines.update_cells_bind_group,
-                    &[],
-                );
-                for _ in 0..iterations {
-                    compute_pass.set_pipeline(&self.compute_pipelines.reset_cell_hash);
-                    compute_pass.dispatch_workgroups(hash_workgroups, 1, 1);
-
-                    if link_capacity > 0 {
-                        compute_pass.set_pipeline(&self.compute_pipelines.update_links);
-                        compute_pass.dispatch_workgroups(link_workgroups, 1, 1);
-                    }
-
-                    if cell_workgroups > 0 {
-                        compute_pass.set_pipeline(&self.compute_pipelines.build_cell_hash);
-                        compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
-
-                        compute_pass.set_pipeline(&self.compute_pipelines.update_cells);
-                        compute_pass.dispatch_workgroups(cell_workgroups, 1, 1);
-                    }
-                }
-            }
-
-            // Try to consume any ready readbacks before scheduling new copies
-            // This frees up staging buffer slots and prevents "buffer still mapped" errors
-            {
-                profile_scope!("Consume Ready Readbacks");
-                // Poll device to check for ready readbacks (non-blocking)
-                let _ = self.device.poll(wgpu::MaintainBase::Poll);
-                
-                // Try to consume counters if ready
-                if self.transfers.cell_counter_pending {
-                    if let Some(value) = self.buffers.try_consume_cell_counter() {
-                        self.population.cells = value;
-                        self.transfers.cell_counter_pending = false;
-                    }
-                }
-                if self.transfers.lifeform_counter_pending {
-                    if let Some(value) = self.buffers.try_consume_lifeform_counter() {
-                        self.population.lifeforms = value;
-                        self.transfers.lifeform_counter_pending = false;
-                    }
-                }
-                if self.transfers.species_counter_pending {
-                    if let Some(value) = self.buffers.try_consume_species_counter() {
-                        self.population.species = value;
-                        self.transfers.species_counter_pending = false;
-                    }
-                }
-            }
-
-            // Schedule counter copies
-            if !self.transfers.cell_counter_pending {
-                self.buffers
-                    .schedule_cell_counter_copy(&mut encoder);
-                self.transfers.cell_counter_pending = true;
-            }
-            if !self.transfers.lifeform_counter_pending {
-                self.buffers
-                    .schedule_lifeform_counter_copy(&mut encoder);
-                self.transfers.lifeform_counter_pending = true;
-            }
-            if !self.transfers.species_counter_pending {
-                self.buffers
-                    .schedule_species_counter_copy(&mut encoder);
-                self.transfers.species_counter_pending = true;
-            }
-
-            profile_scope!("Finish Command Encoder");
-            encoder.finish()
-        };
-
-        {
-            profile_scope!("Submit Simulation Commands");
-            {
-                profile_scope!("Queue Command Buffer");
-                self.submission.pending_command_buffers.push(command_buffer);
-            }
-            if self.submission.pending_command_buffers.len() >= self.submission.submission_batch_size
-                || self.submission.last_submission.elapsed() >= self.submission.max_submission_delay
-            {
-                self.flush_pending_submissions();
-            }
+            executed_iterations += iter_chunk as u64;
         }
 
         // Increment step counter
         self.step_count
-            .fetch_add(iterations as u64, Ordering::Relaxed);
+            .fetch_add(executed_iterations, Ordering::Relaxed);
 
     }
 
@@ -694,20 +711,18 @@ impl Application {
         // Get current simulation state and clone buffers
         let (current_step, buffers, bounds, alive_count, lifeform_count, species_count) = {
             profile_scope!("Sync Simulation State");
-            let simulation = self.simulation.lock();
-            // No need to flush - GPU works asynchronously and render doesn't need immediate completion
-            {
-                profile_scope!("Get Simulation State");
-                let current_step = simulation.get_step_count();
-                let buffers = simulation.get_buffers();
-                let alive_count = simulation.population.cells;
-                let lifeform_count = simulation.population.lifeforms;
-                let species_count = simulation.population.species;
-                drop(simulation);
-                let environment = self.environment.lock();
-                let bounds = environment.get_bounds();
-                (current_step, buffers, bounds, alive_count, lifeform_count, species_count)
-            }
+            let mut simulation = self.simulation.lock();
+            // Flush pending compute work so render sees latest buffers
+            simulation.flush_pending_submissions();
+            let current_step = simulation.get_step_count();
+            let buffers = simulation.get_buffers();
+            let alive_count = simulation.population.cells;
+            let lifeform_count = simulation.population.lifeforms;
+            let species_count = simulation.population.species;
+            drop(simulation);
+            let environment = self.environment.lock();
+            let bounds = environment.get_bounds();
+            (current_step, buffers, bounds, alive_count, lifeform_count, species_count)
         };
 
         let nutrient_dims = buffers.nutrient_grid_dimensions();
@@ -716,10 +731,11 @@ impl Application {
             let nutrient_buffer = buffers.nutrient_grid_buffer();
             self.render_pipelines = RenderPipelines::new(
                 &self.gpu.device,
+                &self.gpu.queue,
                 &self.gpu.config,
-                buffers.cell_buffer(),
+                buffers.cell_buffer_write(),
                 &buffers.uniform_buffer,
-                buffers.cell_free_list_buffer(),
+                buffers.cell_free_list_buffer_write(),
                 buffers.link_buffer(),
                 nutrient_buffer.as_ref(),
                 buffers.cell_hash_bucket_heads_buffer(),
@@ -1335,10 +1351,11 @@ impl Application {
         let render_nutrient_buffer = buffers.nutrient_grid_buffer();
         let render_pipelines = RenderPipelines::new(
             &gpu.device,
+            &gpu.queue,
             &gpu.config,
-            buffers.cell_buffer(),
+            buffers.cell_buffer_write(),
             &buffers.uniform_buffer,
-            buffers.cell_free_list_buffer(),
+            buffers.cell_free_list_buffer_write(),
             buffers.link_buffer(),
             render_nutrient_buffer.as_ref(),
             buffers.cell_hash_bucket_heads_buffer(),

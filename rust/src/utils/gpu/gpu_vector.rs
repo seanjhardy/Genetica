@@ -230,7 +230,8 @@ impl<T: Pod + Zeroable + Clone> GpuVector<T> {
         );
         if count > 0 {
             let mut indices = Vec::with_capacity(count as usize);
-            for idx in start..capacity {
+            // Hand out low indices first: store in descending order so pop-from-end yields small indices
+            for idx in (start..capacity).rev() {
                 indices.push(idx);
             }
             queue.write_buffer(

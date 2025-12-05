@@ -35,9 +35,10 @@ pub struct Cell {
     pub noise_permutations: [u32; CELL_WALL_SAMPLES],
     // Organelle positions in unit circle (5 coordinates: nucleus, 3 small white blobs, 1 large dark blob)
     pub organelles: [f32; 10],
-    // Padding to maintain 16-byte alignment (total size should be multiple of 16)
-    // Current size without padding: 220 bytes. Need 4 more bytes to reach 224 (16 * 14)
-    pub _pad: [u32; 3], // 12 bytes padding (makes total 224 bytes, which is 16 * 14)
+    pub angle: f32, // Rotation angle in radians
+    // Random offset for sampling perlin noise texture (ensures cell stays within texture bounds)
+    pub noise_texture_offset: [f32; 2], // 8 bytes
+    // Padding to maintain 16-byte alignment (total size should be multiple of 16)// 12 bytes padding for 16-byte alignment
 }
 
 #[repr(C)]

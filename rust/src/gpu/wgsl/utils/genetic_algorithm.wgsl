@@ -982,12 +982,13 @@ fn create_lifeform_cell(
     for (var i: u32 = 0u; i < 6u; i = i + 1u) {
         new_cell.link_indices[i] = 0u;
     }
-    new_cell._pad[0] = 0u;
-    new_cell._pad[1] = 0u;
-    new_cell._pad[2] = 0u;
     
     // Initialize perlin noise permutation values using layered perlin noise
     generate_noise_permutations(seed, &new_cell.noise_permutations);
+    
+    // Initialize random noise texture offset
+    // Offset must be in [radius, 200-radius] to ensure cell stays within texture bounds
+    // We'll calculate this after we know the cell's radius
     
     // Initialize organelle positions in unit circle
     // 0: nucleus (near center, smaller radius)
@@ -1031,6 +1032,20 @@ fn create_lifeform_cell(
         new_cell.energy = parent_cell.energy * 0.5;
         new_cell.cell_wall_thickness = clamp(cell_wall_thickness, 0.1, 0.8);
         new_cell.generation = parent_cell.generation + 1u;
+        // Inherit parent's angle with small random variation
+        let angle_variation = (rand(vec2<u32>(seed.x * 19u + 3u, seed.y * 23u + 7u)) - 0.5) * 0.2; // ±0.1 radians
+        new_cell.angle = parent_cell.angle + angle_variation;
+        
+        // Initialize random noise texture offset (ensure cell stays within 200x200 texture bounds)
+        const TEXTURE_SIZE: f32 = 200.0;
+        let min_offset = new_cell.radius;
+        let max_offset = TEXTURE_SIZE - new_cell.radius;
+        let offset_seed_x = vec2<u32>(seed.x * 37u + 11u, seed.y * 41u + 13u);
+        let offset_seed_y = vec2<u32>(seed.x * 43u + 17u, seed.y * 47u + 19u);
+        new_cell.noise_texture_offset = vec2<f32>(
+            min_offset + rand(offset_seed_x) * (max_offset - min_offset),
+            min_offset + rand(offset_seed_y) * (max_offset - min_offset)
+        );
     } else {
         let position = random_position(vec2<u32>(seed.x * 97u + 11u, seed.y * 131u + 23u));
         let radius = 0.5 + rand(vec2<u32>(seed.x * 17u + 7u, seed.y * 29u + 3u)) * 5.0;
@@ -1044,6 +1059,19 @@ fn create_lifeform_cell(
         new_cell.energy = energy;
         new_cell.cell_wall_thickness = cell_wall_thickness;
         new_cell.generation = 0u;
+        // Initialize with random angle
+        new_cell.angle = rand(vec2<u32>(seed.x * 31u + 11u, seed.y * 37u + 13u)) * 6.2831853; // 2 * PI
+        
+        // Initialize random noise texture offset (ensure cell stays within 200x200 texture bounds)
+        const TEXTURE_SIZE: f32 = 200.0;
+        let min_offset = new_cell.radius;
+        let max_offset = TEXTURE_SIZE - new_cell.radius;
+        let offset_seed_x = vec2<u32>(seed.x * 37u + 11u, seed.y * 41u + 13u);
+        let offset_seed_y = vec2<u32>(seed.x * 43u + 17u, seed.y * 47u + 19u);
+        new_cell.noise_texture_offset = vec2<f32>(
+            min_offset + rand(offset_seed_x) * (max_offset - min_offset),
+            min_offset + rand(offset_seed_y) * (max_offset - min_offset)
+        );
     }
 
     // For division, spawn child immediately and create a link; for other uses, go through the spawn buffer.

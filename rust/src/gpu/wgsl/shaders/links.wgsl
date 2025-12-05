@@ -1,5 +1,6 @@
 @include src/gpu/wgsl/types.wgsl;
 @include src/gpu/wgsl/constants.wgsl;
+@include src/gpu/wgsl/utils/color.wgsl;
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
@@ -97,7 +98,7 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color;
+    return saturate(brighten(in.color, 3), 1.0);
 }
 
 

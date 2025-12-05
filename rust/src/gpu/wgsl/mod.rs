@@ -40,3 +40,5 @@ pub static TEXT_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/text.wgsl").to_string()));
 pub static UI_RECT_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/ui_rect.wgsl").to_string()));
+pub static PERLIN_NOISE_TEXTURE_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/perlin_noise_texture.wgsl").to_string()));

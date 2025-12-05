@@ -79,9 +79,9 @@ var<storage, read_write> position_changes: array<PositionChangeEntry>;
 
 fn compute_cell_color(radius: f32, energy: f32) -> vec4<f32> {
     let energy_normalized = clamp(energy / (radius * 50.0), 0.0, 1.0);
-    let color = mix(vec4<f32>(46, 133, 48, 255.0) / 255.0, 
-    vec4<f32>(46, 133, 48, 255.0) / 255.0, energy_normalized);
-    return srgb(color);
+    let color_vec4 = mix(vec4<f32>(46.0, 133.0, 48.0, 255.0) / 255.0, 
+    vec4<f32>(46.0, 133.0, 48.0, 255.0) / 255.0, energy_normalized);
+    return srgb(color_vec4);
 }
 
 
@@ -191,7 +191,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     cell.pos = new_pos.xy;
     cell.prev_pos = new_pos.zw;
 
-    if cell.energy > MIN_DIVISION_ENERGY && random.w < DIVISION_PROBABILITY && cell.lifeform_slot < LIFEFORM_CAPACITY && atomicLoad(&cell_counter.value) < CELL_CAPACITY {
+    // Stagger division by giving each cell a deterministic, per-cell threshold
+    let division_jitter = rand(vec2<u32>(index * 97u + cell.generation * 13u, cell.lifeform_slot * 211u + 17u)) * MIN_DIVISION_ENERGY;
+    let division_threshold = MIN_DIVISION_ENERGY + division_jitter;
+
+    if cell.energy > division_threshold && cell.lifeform_slot < LIFEFORM_CAPACITY && atomicLoad(&cell_counter.value) < CELL_CAPACITY {
         cell.energy /= 2.0;
         let seed = vec2<u32>(u32(index) * 97u + 13u + u32(cell.pos.x) * 31u,
             u32(cell.lifeform_slot) * 211u + 17u + u32(cell.pos.y) * 31u);
@@ -275,11 +279,11 @@ fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> 
 
 
     // Apply collision correction
-    /*let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
+    let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
     if (collision_correction.x != 0.0) || (collision_correction.y != 0.0) {
         new_pos += collision_correction * 0.95;
         new_prev_pos += collision_correction * 0.95;
-    }*/
+    }
     
     // Boundary constraints
     // Note: bounds is [left, top, right, bottom]
@@ -381,9 +385,20 @@ fn spawn_cells() {
                         new_cell.organelles[i * 2u] = pos.x;
                         new_cell.organelles[i * 2u + 1u] = pos.y;
                     }
-                    new_cell._pad[0] = 0u;
-                    new_cell._pad[1] = 0u;
-                    new_cell._pad[2] = 0u;
+                    // Initialize angle with random value
+                    let angle_seed = vec2<u32>(slot_index * 97u + 13u, new_cell.lifeform_slot * 211u + 17u);
+                    new_cell.angle = rand(angle_seed) * 6.2831853; // 2 * PI
+                    
+                    // Initialize random noise texture offset (ensure cell stays within 200x200 texture bounds)
+                    const TEXTURE_SIZE: f32 = 200.0;
+                    let min_offset = new_cell.radius;
+                    let max_offset = TEXTURE_SIZE - new_cell.radius;
+                    let offset_seed_x = vec2<u32>(slot_index * 37u + 11u, new_cell.lifeform_slot * 41u + 13u);
+                    let offset_seed_y = vec2<u32>(slot_index * 43u + 17u, new_cell.lifeform_slot * 47u + 19u);
+                    new_cell.noise_texture_offset = vec2<f32>(
+                        min_offset + rand(offset_seed_x) * (max_offset - min_offset),
+                        min_offset + rand(offset_seed_y) * (max_offset - min_offset)
+                    );
                     cells[slot_index] = new_cell;
                     atomicAdd(&cell_counter.value, 1u);
                     let lf_idx = new_cell.lifeform_slot;
@@ -481,6 +496,7 @@ fn kill_cell(index: u32) {
     cell.energy = 0.0;
     cell.is_alive = 0u;
     cell.link_count = 0u;
+    cell.angle = 0.0;
     // Clear link_indices array
     for (var i: u32 = 0u; i < 6u; i = i + 1u) {
         cell.link_indices[i] = 0u;
@@ -492,9 +508,7 @@ fn kill_cell(index: u32) {
     for (var i: u32 = 0u; i < 10u; i = i + 1u) {
         cell.organelles[i] = 0.0;
     }
-    cell._pad[0] = 0u;
-    cell._pad[1] = 0u;
-    cell._pad[2] = 0u;
+    cell.angle = 0.0;
     cells[index] = cell;
 
     loop {

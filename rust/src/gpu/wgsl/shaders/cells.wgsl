@@ -2,6 +2,11 @@
 @include src/gpu/wgsl/constants.wgsl;
 @include src/gpu/wgsl/utils/color.wgsl;
 
+@group(0) @binding(3) var nucleus_texture: texture_2d<f32>;
+@group(0) @binding(4) var nucleus_sampler: sampler;
+@group(0) @binding(5) var perlin_noise_texture: texture_2d<f32>;
+@group(0) @binding(7) var perlin_noise_sampler: sampler;
+
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
 
@@ -31,6 +36,7 @@ struct VertexOutput {
     @location(6) organelle_index: f32, // 0 = cell body, 1-5 = organelles
     @location(7) organelle_world_pos: vec2<f32>, // World position of organelle center (or cell center if cell body)
     @location(8) max_radius: f32, // Maximum radius including perturbation (for quad sizing)
+    @location(9) cell_angle: f32, // Cell rotation angle for UV rotation
 }
 
 @vertex
@@ -56,6 +62,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
         out.organelle_index = -1.0;
         out.organelle_world_pos = vec2<f32>(0.0);
         out.max_radius = 0.0;
+        out.cell_angle = 0.0;
         return out;
     }
 
@@ -94,38 +101,41 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
             out.organelle_index = f32(organelle_idx);
             out.organelle_world_pos = cell_center;
             out.max_radius = 0.0;
+            out.cell_angle = cell.angle;
             return out;
         }
         
         // Calculate organelle position relative to cell center (in normalized coordinates)
-        let org_rel_pos = vec2<f32>(org_x_raw, org_y_raw);
+        var org_rel_pos = vec2<f32>(org_x_raw, org_y_raw);
         
-        // Apply momentum offset: organelles lag behind cell movement
-        // Calculate cell velocity (momentum)
-        let cell_velocity = cell.pos - cell.prev_pos;
-        // Apply momentum offset to organelle position (opposite direction of movement)
-        // The organelle should lag behind, so offset in opposite direction of velocity
-        let momentum_offset = -cell_velocity * 0.3; // 30% of velocity as offset
-        let org_rel_pos_with_momentum = org_rel_pos + momentum_offset / cell_radius_world;
+        // Apply cell rotation to organelle position
+        let cell_angle = cell.angle;
+        let cos_angle = cos(cell_angle);
+        let sin_angle = sin(cell_angle);
+        let rotated_org_rel_pos = vec2<f32>(
+            org_rel_pos.x * cos_angle - org_rel_pos.y * sin_angle,
+            org_rel_pos.x * sin_angle + org_rel_pos.y * cos_angle
+        );
+        
+
+        org_rel_pos = rotated_org_rel_pos;
         
         // Clamp organelle position to stay within cell boundary
         // Ensure organelle center stays at least its radius away from cell edge
-        let org_rel_dist = length(org_rel_pos_with_momentum);
+        let org_rel_dist = length(org_rel_pos);
         var max_org_radius: f32 = 0.0;
         if org_idx == 0u {
             max_org_radius = 0.6; // Large blob
         } else if org_idx < 4u {
-            max_org_radius = 0.2; // Small blobs
-        } else {
-            max_org_radius = 0.3; // Nucleus
+            max_org_radius = 0.9; // Small blobs
         }
         // Maximum distance from center = 1.0 - max_org_radius (to keep organelle inside)
         let max_allowed_dist = 1.0 - max_org_radius;
         
-        var clamped_org_rel_pos = org_rel_pos_with_momentum;
+        var clamped_org_rel_pos = org_rel_pos;
         if org_rel_dist > max_allowed_dist {
             // Clamp to maximum allowed distance from center
-            clamped_org_rel_pos = normalize(org_rel_pos_with_momentum) * max_allowed_dist;
+            clamped_org_rel_pos = normalize(org_rel_pos) * max_allowed_dist;
         }
         
         // Convert to world space
@@ -140,12 +150,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
             base_radius_world = cell_radius_world * 0.6;
             max_radius_world = base_radius_world * 1.3; // Account for max perturbation
         } else if org_idx < 4u {
-            // Small white blobs: 30% perturbation max
-            base_radius_world = cell_radius_world * (0.1 + 0.05 * f32(org_idx));
-            max_radius_world = base_radius_world * 1.3; // Account for max perturbation
-        } else {
-            // Nucleus: 25% perturbation max
-            base_radius_world = cell_radius_world * 0.3;
+            base_radius_world = cell_radius_world * 0.2;
             max_radius_world = base_radius_world * 1.25; // Account for max perturbation
         }
         radius_world = max_radius_world; // Use max radius for quad sizing
@@ -178,6 +183,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
         out.organelle_index = f32(organelle_idx);
         out.organelle_world_pos = organelle_world_pos;
         out.max_radius = max_radius_world;
+        out.cell_angle = cell.angle;
         return out;
     }
 
@@ -185,23 +191,6 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     // Use a very lenient threshold - temporarily disabled for debugging
     // TODO: Re-enable LOD check once organelles are confirmed visible
     let cell_size_clip = max((cell_radius_world / view_size_x) * 2.0, (cell_radius_world / view_size_y) * 2.0);
-    const MIN_ORGANELLE_LOD: f32 = 0.0001; // Minimum cell size in clip space to show organelles (lower = more visible)
-    
-    // Temporarily disable LOD check to debug organelle visibility
-    // if is_organelle && cell_size_clip < MIN_ORGANELLE_LOD {
-    //     // Cull organelle by placing it off-screen
-    //     out.clip_position = vec4<f32>(0.0, 0.0, -1.0, 1.0);
-    //     out.cell_index = f32(cell_idx);
-    //     out.uv = vec2<f32>(0.0);
-    //     out.color = cell.color;
-    //     out.cell_wall_thickness = cell.cell_wall_thickness;
-    //     out.radius = base_radius_world;
-    //     out.world_pos = world_pos;
-    //     out.organelle_index = f32(organelle_idx);
-    //     out.organelle_world_pos = organelle_world_pos;
-    //     out.max_radius = max_radius_world;
-    //     return out;
-    // }
 
     let size_clip_x = (radius_world / view_size_x) * 2.0;
     let size_clip_y = (radius_world / view_size_y) * 2.0;
@@ -239,6 +228,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     out.organelle_index = f32(organelle_idx);
     out.organelle_world_pos = organelle_world_pos;
     out.max_radius = max_radius_world; // Store max radius for reference
+    out.cell_angle = cell.angle;
     return out;
 }
 
@@ -399,6 +389,15 @@ fn calculate_directional_radius(
     return min_adjusted_radius;
 }
 
+fn perlin_sample(pos: vec2<f32>) -> f32 {
+    let noise_x_mod = pos.x - floor(pos.x / 200.0) * 200.0;
+    let noise_y_mod = pos.y - floor(pos.y / 200.0) * 200.0;
+    let noise_uv = vec2<f32>(noise_x_mod / 200.0, noise_y_mod / 200.0);
+    let perlin_noise_sample = textureSample(perlin_noise_texture, perlin_noise_sampler, noise_uv).r;
+    
+    return perlin_noise_sample;
+}
+
 // Perlin noise function using permutation table for smooth cell wall perturbation
 fn cell_noise(permutations: array<u32, CELL_WALL_SAMPLES>, angle: f32) -> f32 {
     // Normalize angle to [0, 2π] range
@@ -468,25 +467,6 @@ fn cell_noise(permutations: array<u32, CELL_WALL_SAMPLES>, angle: f32) -> f32 {
     return clamp(result, -1.0, 1.0);
 }
 
-// Helper function to get organelle perturbation based on 3 sample points
-fn get_organelle_perturbation(
-    permutations: array<u32, CELL_WALL_SAMPLES>,
-    organelle_pos: vec2<f32>,
-    organelle_radius: f32
-) -> f32 {
-    // Sample noise at 3 points around the organelle (low frequency)
-    let angle0 = atan2(organelle_pos.y, organelle_pos.x);
-    let angle1 = angle0 + 2.094; // 120 degrees
-    let angle2 = angle0 + 4.189; // 240 degrees
-    
-    let noise0 = cell_noise(permutations, angle0);
-    let noise1 = cell_noise(permutations, angle1);
-    let noise2 = cell_noise(permutations, angle2);
-    
-    // Average the 3 samples for smooth, low-frequency perturbation
-    return (noise0 + noise1 + noise2) / 3.0;
-}
-
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let cell_idx = u32(in.cell_index);
@@ -505,12 +485,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dist = length(uv_offset);
     
     if is_organelle {
+        discard;
         // Render organelle as a simple circle - no perturbation calculations for performance
-        let org_idx = organelle_idx - 1u; // Convert to 0-4 range
+        /*let org_idx = organelle_idx - 1u; // Convert to 0-4 range
         
         // Simple circle check using base radius (no perturbation)
         // in.radius is the base organelle radius, in.max_radius is the quad size
-        let radius_normalized = 0.5 * (in.radius / in.max_radius) + in.radius * 0.05 * cell_noise(cell.noise_permutations, atan2(uv_offset.y, uv_offset.x));
+        var radius_normalized = 0.5 * (in.radius / in.max_radius) + in.radius * 0.05 * cell_noise(cell.noise_permutations, atan2(uv_offset.y, uv_offset.x));
+        
+        if org_idx == 4u {
+            radius_normalized = in.radius;
+        }
         if dist > radius_normalized {
             discard;
         }
@@ -545,7 +530,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             );
             
             // Discard if organelle pixel is outside the actual cell boundary
-            if dist_from_cell_center > cell_boundary_radius {
+            if dist_from_cell_center > cell_boundary_radius - in.cell_wall_thickness {
                 discard;
             }
         }
@@ -554,24 +539,29 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         var color = in.color;
         if org_idx == 0u {
             // Shadow
-            color = brighten(saturate(color + vec4<f32>(0, 0, 0.9, 0), 2.0), 0.1);
-            return alpha(color, 0.4);
-        } else if org_idx < 4u {
-            // Organelles
-            color = brighten(saturate(color + vec4<f32>(0, 0, 0.1, 0), 1.3), 2.5);
-            return alpha(color, 0.2);
-        }  else {
-            // Nucleus
-            color = brighten(color, 1.7);
-            if dist < radius_normalized * 0.5 {
-                color = brighten(color, 1.8); // Additional brightening for center
+            color = brighten(saturate(color + vec4<f32>(0, 0, 0.9, 0), 1.5), 0.1);
+            return alpha(color, 0.9 -dist);
+        } else if org_idx == 1u {
+            // Nucleus - sample texture
+            /*let texture_uv = uv_offset + vec2<f32>(0.5, 0.5);
+            let texture_color = textureSample(nucleus_texture, nucleus_sampler, texture_uv);
+            
+            if texture_color.a < 0.01 {
+                discard;
             }
-            return alpha(color, 0.5);
-        } 
+            color = alpha(over(color, vec4<f32>(texture_color.rgb, texture_color.a/5)), texture_color.a);
+            return color;*/
+            color = brighten(saturate(color, 1.2), 2.0);
+            return alpha(color, 0.9 -dist * 0.3);
+        }
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);*/
     } else {
         // Render cell body (existing logic)
+        // Cell wall is NOT rotated - only organelles rotate
+        let dist = length(uv_offset);
+        
         // Calculate the point on the circumference in the direction of this pixel
-        // Normalize the UV offset to get direction, then project to circumference at original radius
+        // Use non-rotated UV for neighbor calculations
         var pixel_dir_world: vec2<f32>;
         if dist > 0.0 {
             let uv_dir = uv_offset / dist;
@@ -594,6 +584,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         var adjusted_radius: f32;
         // Full detail rendering for normal/zoomed out view
         // FIRST: Apply perlin noise perturbation to cell wall
+        // Use non-rotated angle for noise sampling (cell wall doesn't rotate)
         let angle = atan2(uv_offset.y, uv_offset.x);
         let noise_value = cell_noise(cell.noise_permutations, angle);
         let perturbation_amount = in.radius * 0.1; // 10% of radius
@@ -612,6 +603,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         );
         
         // Render circle with adjusted radius
+        // Use non-rotated distance for circle check
         let radius_normalized = 0.5 * (adjusted_radius / in.radius);
 
         if dist > radius_normalized {
@@ -625,10 +617,24 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let border_radius_normalized = 0.5 * (border_radius / in.radius);
         
         // Darken the border
+        // Use non-rotated distance for border check
         if dist > border_radius_normalized {
             color = saturate(brighten(color, 3), 1.0);
         } else {
             color = saturate(brighten(color, 0.8), 0.9);
+        }
+
+        // Sample perlin noise texture using cell's random offset + pixel offset
+        // Calculate the pixel's offset from cell center in world space
+        let pixel_world_offset = uv_offset * in.max_radius * 2.0; // Scale UV to world space
+        let texture_sample_pos = cell.noise_texture_offset + pixel_world_offset;
+        
+        let bg_sample = perlin_sample(texture_sample_pos);
+
+        // Apply simple thresholded white tint
+        if bg_sample > 0.5 {
+            // Apply fixed white tint when noise is above threshold
+            color = brighten(color, 1.5);
         }
 
         return color;
