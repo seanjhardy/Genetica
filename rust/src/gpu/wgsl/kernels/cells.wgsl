@@ -212,7 +212,7 @@ fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> 
     var new_prev_pos = cell.prev_pos;
 
     // Random position offset per timestep (added directly to position, no accumulation)
-    let random_offset_magnitude = 0.5; // World units per timestep (small offset for subtle movement)
+    let random_offset_magnitude = 5.0; // World units per timestep (small offset for subtle movement)
     let random_offset = (random * 2.0 - 1.0) * random_offset_magnitude * dt / min(cell.radius * cell.radius, 10.0);
     
     // Store random offset for potential future use (but not using it for accumulation anymore)
@@ -279,11 +279,11 @@ fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> 
 
 
     // Apply collision correction
-    let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
+    /*let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
     if (collision_correction.x != 0.0) || (collision_correction.y != 0.0) {
         new_pos += collision_correction * 0.95;
         new_prev_pos += collision_correction * 0.95;
-    }
+    }*/
     
     // Boundary constraints
     // Note: bounds is [left, top, right, bottom]

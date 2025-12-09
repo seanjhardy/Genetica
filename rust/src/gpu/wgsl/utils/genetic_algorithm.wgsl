@@ -633,14 +633,14 @@ fn release_species(slot: u32, species_id: u32) {
     }
 }
 
-fn assign_species(child_slot: u32, parent_slot: u32) -> vec2<u32> {
-    if parent_slot < LIFEFORM_CAPACITY && parent_slot < arrayLength(&lifeforms) {
+fn assign_species(child_slot: u32, lifeform_slot: u32) -> vec2<u32> {
+    if lifeform_slot < LIFEFORM_CAPACITY && lifeform_slot < arrayLength(&lifeforms) {
         // Don't copy the struct - access fields directly (cell_count is atomic and can't be copied)
-        if (lifeforms[parent_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
+        if (lifeforms[lifeform_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
             let child_genome_slot = lifeforms[child_slot].grn_descriptor_slot;
             
             // Compare with parent's species mascot genome
-            let species_slot = lifeforms[parent_slot].species_slot;
+            let species_slot = lifeforms[lifeform_slot].species_slot;
             if species_slot < arrayLength(&species_entries) {
                 // Compare child genome with species mascot genome
                 var compatibility_distance: f32 = 0.0;
@@ -655,7 +655,7 @@ fn assign_species(child_slot: u32, parent_slot: u32) -> vec2<u32> {
                 } else {
                     atomicAdd(&species_entries[species_slot].member_count, 1u);
                     species_entries[species_slot].flags = SPECIES_FLAG_ACTIVE;
-                    return vec2<u32>(species_slot, lifeforms[parent_slot].species_id);
+                    return vec2<u32>(species_slot, lifeforms[lifeform_slot].species_id);
                 }
             }
         }
@@ -927,8 +927,8 @@ fn create_lifeform_cell(
 
     let genome_slot = lifeform_slot; // Use lifeform slot as genome slot for now
 
-    /*if parent_slot < LIFEFORM_CAPACITY && (lifeforms[parent_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
-        let parent_genome_slot = lifeforms[parent_slot].grn_descriptor_slot;
+    /*if lifeform_slot < LIFEFORM_CAPACITY && (lifeforms[lifeform_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
+        let parent_genome_slot = lifeforms[lifeform_slot].grn_descriptor_slot;
         copy_genome(genome_slot, parent_genome_slot);
         mutate_genome(genome_slot, lifeform_id + 11u);
     } else {
@@ -937,8 +937,7 @@ fn create_lifeform_cell(
         random_genome(genome_slot, lifeform_id + 1u, num_genes);
     }*/
 
-    //let species_info = assign_species(lifeform_slot, parent_slot);
-    let species_info = vec2<u32>(0u, 0u);
+    let species_info = assign_species(lifeform_slot, lifeform_slot);
     let species_slot = species_info.x;
     let species_id = species_info.y;
 
@@ -971,8 +970,8 @@ fn create_lifeform_cell(
     lifeforms[lifeform_slot]._pad = 0u;
     lifeforms[lifeform_slot].grn_descriptor_slot = genome_slot; // Store genome slot here
 
-    //initialise_lifeform_state(lifeform_slot, lifeform_id);
-    //initialise_grn(lifeform_slot);
+    initialise_lifeform_state(lifeform_slot, lifeform_id);
+    initialise_grn(lifeform_slot);
 
     var new_cell: Cell;
 

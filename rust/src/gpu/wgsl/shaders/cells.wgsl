@@ -594,13 +594,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // This creates flat edges where cells are close together
         let perturbed_point = in.world_pos + pixel_dir_world * adjusted_radius;
         let search_radius = in.radius * 3.5;
-        adjusted_radius = calculate_directional_radius(
+        /*adjusted_radius = calculate_directional_radius(
             perturbed_point,
             in.world_pos,
             adjusted_radius,
             search_radius,
             cell_idx
-        );
+        );*/
         
         // Render circle with adjusted radius
         // Use non-rotated distance for circle check
