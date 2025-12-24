@@ -3,7 +3,7 @@
 use wgpu;
 use wgpu::util::DeviceExt;
 use parking_lot::{Mutex, RwLock};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use bytemuck::Zeroable;
@@ -13,11 +13,13 @@ use crate::gpu::structures::{
     CompiledRegulatoryUnit,
     GrnDescriptor,
     GenomeEntry,
+    GenomeEvent,
     Lifeform,
     Link,
     PositionChangeEntry,
     SpeciesEntry,
     MAX_GRN_REGULATORY_UNITS,
+    MAX_GENOME_EVENTS,
     MAX_SPECIES_CAPACITY,
 };
 use crate::utils::math::Rect;
@@ -32,9 +34,7 @@ const LINK_FREE_LIST_CAPACITY: usize = LINK_CAPACITY;
 const NUTRIENT_CELL_SIZE: u32 = 20;
 const NUTRIENT_UNIT_SCALE: u32 = 4_000_000_000; // annoyingly we can't do atomicSubCompareExchangeWeak with f32 :sadge:
 pub struct GpuBuffers {
-    pub cell_vector_a: GpuVector<Cell>,
-    pub cell_vector_b: GpuVector<Cell>,
-    cell_read_buffer: AtomicBool,
+    pub cell_vector: GpuVector<Cell>,
     pub uniform_buffer: wgpu::Buffer,
     cell_counter: wgpu::Buffer,
     cell_counter_staging: wgpu::Buffer,
@@ -46,6 +46,7 @@ pub struct GpuBuffers {
     species_counter_staging: wgpu::Buffer,
     species_counter_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
     spawn_buffer: wgpu::Buffer,
+    genome_event_buffer: wgpu::Buffer,
     link_buffer: wgpu::Buffer,
     link_free_list: wgpu::Buffer,
     link_capacity: usize,
@@ -76,12 +77,10 @@ impl GpuBuffers {
         initial_uniforms: &[u8],
         bounds: Rect,
     ) -> Self {
-        // GPU handles all cell generation, so we start with empty buffers
-        // No need to write initial cell data - GPU will populate as needed
         let initial_cells: Vec<Cell> = Vec::new();
         let initial_count = 0u32;
 
-        let cell_vector_a = GpuVector::<Cell>::new(
+        let cell_vector = GpuVector::<Cell>::new(
             device,
             CELL_CAPACITY,
             &initial_cells,
@@ -89,23 +88,9 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC
                 | wgpu::BufferUsages::VERTEX,
-            Some("Cell Buffer A"),
+            Some("Cell Buffer"),
         );
-
-        let cell_vector_b = GpuVector::<Cell>::new(
-            device,
-            CELL_CAPACITY,
-            &initial_cells,
-            wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::VERTEX,
-            Some("Cell Buffer B"),
-        );
-
-        // Initialize free list with all indices free (since we start empty)
-        cell_vector_a.initialize_free_list(queue, initial_count);
-        cell_vector_b.initialize_free_list(queue, initial_count);
+        cell_vector.initialize_free_list(queue, initial_count);
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
@@ -165,6 +150,19 @@ impl GpuBuffers {
         let spawn_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Spawn Buffer"),
             contents: &spawn_zero,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        // Genome event buffer (division copy/mutate queue)
+        let genome_event_header = (std::mem::size_of::<u32>() * 2) as u64;
+        let genome_event_size = (MAX_GENOME_EVENTS * std::mem::size_of::<GenomeEvent>()) as u64;
+        let genome_event_buffer_size = genome_event_header + genome_event_size;
+        let genome_event_zero = vec![0u8; genome_event_buffer_size as usize];
+        let genome_event_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Genome Event Buffer"),
+            contents: &genome_event_zero,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
@@ -331,9 +329,7 @@ impl GpuBuffers {
         let nutrient_grid = Arc::new(nutrient_grid);
 
         Self {
-            cell_vector_a,
-            cell_vector_b,
-            cell_read_buffer: AtomicBool::new(false),
+            cell_vector,
             uniform_buffer,
             cell_counter,
             cell_counter_staging,
@@ -345,6 +341,7 @@ impl GpuBuffers {
             species_counter_staging,
             species_counter_readback: Mutex::new(None),
             spawn_buffer,
+            genome_event_buffer,
             link_buffer,
             link_free_list,
             link_capacity: LINK_CAPACITY,
@@ -368,40 +365,12 @@ impl GpuBuffers {
         }
     }
     
-    /// Get the read buffer (for rendering)
-    pub fn cell_buffer_read(&self) -> &wgpu::Buffer {
-        if self.cell_read_buffer.load(Ordering::Acquire) {
-            self.cell_vector_b.buffer()
-        } else {
-            self.cell_vector_a.buffer()
-        }
+    pub fn cell_buffer(&self) -> &wgpu::Buffer {
+        self.cell_vector.buffer()
     }
     
-    /// Get the write buffer (for compute)
-    pub fn cell_buffer_write(&self) -> &wgpu::Buffer {
-        if self.cell_read_buffer.load(Ordering::Acquire) {
-            self.cell_vector_a.buffer()
-        } else {
-            self.cell_vector_b.buffer()
-        }
-    }
-    
-    /// Get the read buffer's free list (for rendering)
-    pub fn cell_free_list_buffer_read(&self) -> &wgpu::Buffer {
-        if self.cell_read_buffer.load(Ordering::Acquire) {
-            self.cell_vector_b.free_list_buffer()
-        } else {
-            self.cell_vector_a.free_list_buffer()
-        }
-    }
-    
-    /// Get the write buffer's free list (for compute)
-    pub fn cell_free_list_buffer_write(&self) -> &wgpu::Buffer {
-        if self.cell_read_buffer.load(Ordering::Acquire) {
-            self.cell_vector_a.free_list_buffer()
-        } else {
-            self.cell_vector_b.free_list_buffer()
-        }
+    pub fn cell_free_list_buffer(&self) -> &wgpu::Buffer {
+        self.cell_vector.free_list_buffer()
     }
 
     pub fn cell_counter_buffer(&self) -> &wgpu::Buffer {
@@ -600,6 +569,10 @@ impl GpuBuffers {
         &self.spawn_buffer
     }
     
+    pub fn genome_event_buffer(&self) -> &wgpu::Buffer {
+        &self.genome_event_buffer
+    }
+
     pub fn link_buffer(&self) -> &wgpu::Buffer {
         &self.link_buffer
     }
@@ -612,24 +585,8 @@ impl GpuBuffers {
         self.link_capacity
     }
 
-    /// Get cell buffer (for pipelines) - DEPRECATED, use cell_buffer_read instead
-    pub fn cell_buffer(&self) -> &wgpu::Buffer {
-        self.cell_buffer_read()
-    }
-    
-    /// Get cell free list buffer (for pipelines) - DEPRECATED, use cell_free_list_buffer_read instead
-    pub fn cell_free_list_buffer(&self) -> &wgpu::Buffer {
-        self.cell_free_list_buffer_read()
-    }
-
-    /// Get cell capacity
     pub fn cell_capacity(&self) -> usize {
-        self.cell_vector_a.capacity() // Both have same capacity
-    }
-    
-    /// Get cell size (number of initialized cells)
-    pub fn cell_size(&self) -> usize {
-        self.cell_vector_a.size() // Both should have same size
+        self.cell_vector.capacity()
     }
 
     /// Update uniform buffer
@@ -751,18 +708,11 @@ impl GpuBuffers {
     pub fn reset(&self, device: &wgpu::Device, queue: &wgpu::Queue, bounds: Rect) {
         use crate::gpu::structures::{Cell, CompiledRegulatoryUnit, GrnDescriptor, GenomeEntry, Lifeform, Link, PositionChangeEntry, SpeciesEntry};
         
-        // Reset cell vectors
         let initial_count = 0u32;
-        
-        // Clear cell buffers
         let cell_capacity = self.cell_capacity();
         let cell_zero_data = vec![Cell::zeroed(); cell_capacity];
-        queue.write_buffer(self.cell_vector_a.buffer(), 0, bytemuck::cast_slice(&cell_zero_data));
-        queue.write_buffer(self.cell_vector_b.buffer(), 0, bytemuck::cast_slice(&cell_zero_data));
-        
-        // Reset cell free lists
-        self.cell_vector_a.initialize_free_list(queue, initial_count);
-        self.cell_vector_b.initialize_free_list(queue, initial_count);
+        queue.write_buffer(self.cell_vector.buffer(), 0, bytemuck::cast_slice(&cell_zero_data));
+        self.cell_vector.initialize_free_list(queue, initial_count);
         
         // Reset counters
         queue.write_buffer(&self.cell_counter, 0, bytemuck::cast_slice(&[initial_count]));
@@ -774,6 +724,13 @@ impl GpuBuffers {
         let spawn_buffer_size = spawn_header_size + (MAX_SPAWN_REQUESTS * std::mem::size_of::<Cell>()) as u64;
         let spawn_zero = vec![0u8; spawn_buffer_size as usize];
         queue.write_buffer(&self.spawn_buffer, 0, &spawn_zero);
+
+        // Reset genome event buffer
+        let genome_event_header = (std::mem::size_of::<u32>() * 2) as u64;
+        let genome_event_size = (MAX_GENOME_EVENTS * std::mem::size_of::<GenomeEvent>()) as u64;
+        let genome_event_buffer_size = genome_event_header + genome_event_size;
+        let genome_event_zero = vec![0u8; genome_event_buffer_size as usize];
+        queue.write_buffer(&self.genome_event_buffer, 0, &genome_event_zero);
         
         // Reset link buffer
         let link_zero = vec![Link::zeroed(); self.link_capacity];

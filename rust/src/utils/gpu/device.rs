@@ -1,18 +1,18 @@
-// GPU device module - manages GPU initialization and surface
-
+use std::sync::Arc;
 use wgpu;
 use winit::window::Window;
 
-/// GPU device, queue, and surface management
 pub struct GpuDevice {
     pub surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
+    pub size: winit::dpi::PhysicalSize<u32>,
+    window: Arc<Window>,
 }
 
 impl GpuDevice {
-    pub async fn new(window: &Window) -> Self {
+    pub async fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -20,9 +20,8 @@ impl GpuDevice {
             ..Default::default()
         });
 
-        // Create surface with 'static lifetime - surface owns its target internally
         let surface: wgpu::Surface<'static> = unsafe {
-            std::mem::transmute(instance.create_surface(window).unwrap())
+            std::mem::transmute(instance.create_surface(window.clone()).unwrap())
         };
 
         let adapter = instance
@@ -34,8 +33,7 @@ impl GpuDevice {
             .await
             .unwrap();
 
-        // Enable timestamp queries for GPU profiling
-        let mut required_features = wgpu::Features::empty();
+        let required_features = wgpu::Features::empty();
 
         let required_limits = adapter.limits();
 
@@ -61,19 +59,12 @@ impl GpuDevice {
             .unwrap_or(surface_caps.formats[0]);
 
         // Choose a present mode that doesn't block on acquire_texture
-        // Prefer Mailbox (triple buffering - smooth but no blocking), then Immediate (no VSync)
+        // Prefer Mailbox (triple buffering - non-blocking), then Immediate, then Fifo (vsync - blocks)
         let present_mode = surface_caps
             .present_modes
             .iter()
             .copied()
-            .find(|&mode| mode == wgpu::PresentMode::Fifo)
-            .or_else(|| {
-                surface_caps
-                    .present_modes
-                    .iter()
-                    .copied()
-                    .find(|&mode| mode == wgpu::PresentMode::Mailbox)
-            })
+            .find(|&mode| mode == wgpu::PresentMode::Mailbox)
             .or_else(|| {
                 surface_caps
                     .present_modes
@@ -81,7 +72,14 @@ impl GpuDevice {
                     .copied()
                     .find(|&mode| mode == wgpu::PresentMode::Immediate)
             })
-            .unwrap_or(surface_caps.present_modes[0]); // Fall back to first available if none exist
+            .or_else(|| {
+                surface_caps
+                    .present_modes
+                    .iter()
+                    .copied()
+                    .find(|&mode| mode == wgpu::PresentMode::Fifo)
+            })
+            .unwrap_or(surface_caps.present_modes[0]);
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -101,15 +99,22 @@ impl GpuDevice {
             device,
             queue,
             config,
+            size,
+            window,
         }
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
+            self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
         }
+    }
+    
+    pub fn window(&self) -> &Window {
+        &self.window
     }
 }
 

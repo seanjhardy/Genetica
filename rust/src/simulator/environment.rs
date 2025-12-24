@@ -18,7 +18,7 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new(_initial_bounds: Rect, gpu: &GpuDevice) -> Self {
+    pub fn new(_initial_bounds: Rect, _gpu: &GpuDevice) -> Self {
         let mut planet = Planet::new_delune();
         planet.set_bounds(_initial_bounds);
         

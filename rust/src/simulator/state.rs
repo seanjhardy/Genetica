@@ -20,7 +20,6 @@ impl PopulationState {
     }
 }
 
-/// Tracks which GPU readbacks and copies are still pending.
 #[derive(Debug)]
 pub struct GpuTransferState {
     pub cell_counter_pending: bool,
@@ -38,21 +37,16 @@ impl Default for GpuTransferState {
     }
 }
 
-/// Batches command buffer submissions to avoid excessive queue submits.
 #[derive(Debug)]
 pub struct SubmissionState {
     pub pending_command_buffers: Vec<wgpu::CommandBuffer>,
-    pub submission_batch_size: usize,
-    pub max_submission_delay: Duration,
     pub last_submission: Instant,
 }
 
 impl SubmissionState {
-    pub fn new(batch_size: usize, max_delay: Duration) -> Self {
+    pub fn new(_batch_size: usize, _max_delay: Duration) -> Self {
         Self {
-            pending_command_buffers: Vec::with_capacity(batch_size),
-            submission_batch_size: batch_size,
-            max_submission_delay: max_delay,
+            pending_command_buffers: Vec::with_capacity(16),
             last_submission: Instant::now(),
         }
     }
@@ -62,7 +56,6 @@ impl SubmissionState {
     }
 }
 
-/// Handles paused state for the simulation along with an exposed atomic flag.
 #[derive(Debug)]
 pub struct PauseState {
     paused: bool,
@@ -90,4 +83,3 @@ impl PauseState {
         self.flag.clone()
     }
 }
-

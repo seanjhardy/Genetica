@@ -74,7 +74,7 @@ fn compute_collision_correction(index: u32, position: vec2<f32>, radius: f32) ->
                 let neighbor_index = u32(head);
                 if neighbor_index != index && neighbor_index < cell_capacity {
                     let neighbor = cells[neighbor_index];
-                    if neighbor.is_alive != 0u {
+                    if neighbor.is_alive != 0u && neighbor.lifeform_slot == self_cell.lifeform_slot {
 
                         // Ignore linked cells by checking the current cell's known links
                         var is_linked = false;

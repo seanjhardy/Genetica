@@ -1,12 +1,7 @@
-// Main entry point for the Genetica Rust simulation
-// This file should be minimal - just initialization and event loop setup
-
 mod utils;
 mod simulator;
 mod gpu;
 mod ui;
-
-use simulator::Simulator;
 
 fn main() {
     env_logger::init();
@@ -17,7 +12,7 @@ fn main() {
     let _puffin_server = puffin_http::Server::new(&server_addr).unwrap();
     println!("Puffin profiler available at http://{} - view in puffin-viewer", server_addr);
     
-    // Create and run the simulator
-    let simulator = Simulator::new();
-    simulator.run();
+    if let Err(e) = simulator::run() {
+        eprintln!("Error: {:?}", e);
+    }
 }

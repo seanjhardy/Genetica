@@ -11,6 +11,8 @@ const BASE_PAIRS_PER_GENOME: u32 = MAX_GENES_PER_GENOME * BASE_PAIRS_PER_GENE;
 // 55 base pairs = 110 bits, need 4 u32 words per gene (128 bits)
 const WORDS_PER_GENE: u32 = 4u;
 const GENOME_WORD_COUNT: u32 = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
+// Genome event queue (division copies) - must match Rust
+const MAX_GENOME_EVENTS: u32 = 65536u;
 const GRN_EVALUATION_FALLBACK: u32 = 8u;
 
 const DIVISION_PROBABILITY: f32 = 0.001;

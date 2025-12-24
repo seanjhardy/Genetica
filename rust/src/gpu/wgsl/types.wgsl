@@ -88,6 +88,19 @@ struct GenomeEntry {
     gene_sequences: array<u32, GENOME_WORD_COUNT>,
 }
 
+struct GenomeEvent {
+    dst_genome_slot: u32,
+    src_genome_slot: u32,
+    seed: u32,
+    lifeform_slot: u32,
+}
+
+struct GenomeEventBuffer {
+    counter: Counter,
+    _pad: u32,
+    events: array<GenomeEvent, MAX_GENOME_EVENTS>,
+}
+
 struct SpeciesEntry {
     species_id: u32,
     mascot_lifeform_slot: u32,

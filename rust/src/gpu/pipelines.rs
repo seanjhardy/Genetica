@@ -4,7 +4,7 @@ use wgpu;
 use wgpu::util::DeviceExt;
 use std::path::PathBuf;
 
-use crate::gpu::wgsl::{CELLS_KERNEL, LINKS_KERNEL, NUTRIENTS_KERNEL, SEQUENCE_GRN_KERNEL, CELLS_SHADER, LINKS_SHADER, NUTRIENTS_SHADER, PERLIN_NOISE_TEXTURE_SHADER};
+use crate::gpu::wgsl::{CELLS_KERNEL, LINKS_KERNEL, NUTRIENTS_KERNEL, SEQUENCE_GRN_KERNEL, GENOME_EVENTS_KERNEL, CELLS_SHADER, LINKS_SHADER, NUTRIENTS_SHADER, PERLIN_NOISE_TEXTURE_SHADER};
 
 /// Compute pipelines for physics simulation
 pub struct ComputePipelines {
@@ -15,6 +15,7 @@ pub struct ComputePipelines {
     pub update_nutrients: wgpu::ComputePipeline,
     pub update_nutrients_bind_group: wgpu::BindGroup,
     pub update_links: wgpu::ComputePipeline,
+    pub process_genome_events: wgpu::ComputePipeline,
     pub sequence_grn: wgpu::ComputePipeline,
     pub sequence_grn_bind_group: wgpu::BindGroup,
 }
@@ -45,6 +46,7 @@ impl ComputePipelines {
         lifeform_counter_buffer: &wgpu::Buffer,
         species_counter_buffer: &wgpu::Buffer,
         position_changes_buffer: &wgpu::Buffer,
+        genome_event_buffer: &wgpu::Buffer,
     ) -> Self {
         // Create shader module
         let cells_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -76,6 +78,8 @@ impl ComputePipelines {
         // 21: storage, read_write - next_gene_id (Counter)
         // 22: storage, read_write - lifeform_counter (Counter)
         // 23: storage, read_write - species_counter (Counter)
+        // 24: storage, read_write - position_changes (array<PositionChangeEntry>)
+        // 25: storage, read_write - genome_events (GenomeEventBuffer)
         let cells_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Cells Bind Group Layout"),
             entries: &[
@@ -309,6 +313,16 @@ impl ComputePipelines {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 25,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -355,6 +369,20 @@ impl ComputePipelines {
             layout: Some(&cells_pipeline_layout),
             module: &links_shader,
             entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let genome_events_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Genome Events Shader"),
+            source: GENOME_EVENTS_KERNEL.clone(),
+        });
+
+        let process_genome_events = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Process Genome Events Pipeline"),
+            layout: Some(&cells_pipeline_layout),
+            module: &genome_events_shader,
+            entry_point: Some("process_genome_events"),
             compilation_options: Default::default(),
             cache: None,
         });
@@ -454,6 +482,10 @@ impl ComputePipelines {
                 wgpu::BindGroupEntry {
                     binding: 24,
                     resource: position_changes_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 25,
+                    resource: genome_event_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -633,6 +665,7 @@ impl ComputePipelines {
             update_nutrients,
             update_nutrients_bind_group,
             update_links,
+            process_genome_events,
             sequence_grn,
             sequence_grn_bind_group,
         }

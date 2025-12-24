@@ -182,10 +182,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     cell.energy += energy_change_rate * dt;
     cell.energy = clamp(cell.energy, 0.0, cell.radius * 100.0);
 
-    if cell.radius <= 1.0 || cell.energy <= 0.0 || random.z < RANDOM_DEATH_PROBABILITY {
-        kill_cell(index);
+    /*if cell.radius <= 1.0 || cell.energy <= 0.0 || random.z < RANDOM_DEATH_PROBABILITY {
+        //kill_cell(index);
         return;
-    }
+    }*/
 
     let new_pos = calculate_cell_position(index, dt, random.xy);
     cell.pos = new_pos.xy;
@@ -212,7 +212,7 @@ fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> 
     var new_prev_pos = cell.prev_pos;
 
     // Random position offset per timestep (added directly to position, no accumulation)
-    let random_offset_magnitude = 5.0; // World units per timestep (small offset for subtle movement)
+    let random_offset_magnitude = 1.0; // World units per timestep (small offset for subtle movement)
     let random_offset = (random * 2.0 - 1.0) * random_offset_magnitude * dt / min(cell.radius * cell.radius, 10.0);
     
     // Store random offset for potential future use (but not using it for accumulation anymore)
@@ -279,11 +279,11 @@ fn calculate_cell_position(index: u32, dt: f32, random: vec2<f32>) -> vec4<f32> 
 
 
     // Apply collision correction
-    /*let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
+    let collision_correction = compute_collision_correction(index, cell.pos, cell.radius);
     if (collision_correction.x != 0.0) || (collision_correction.y != 0.0) {
         new_pos += collision_correction * 0.95;
         new_prev_pos += collision_correction * 0.95;
-    }*/
+    }
     
     // Boundary constraints
     // Note: bounds is [left, top, right, bottom]

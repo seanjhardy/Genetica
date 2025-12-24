@@ -483,8 +483,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let center = vec2<f32>(0.5, 0.5);
     let uv_offset = in.uv - center; // [-0.5, 0.5]
     let dist = length(uv_offset);
+
+    return vec4<f32>(1.0, 0.0, 0.0, 1.0);
     
-    if is_organelle {
+    /*if is_organelle {
         discard;
         // Render organelle as a simple circle - no perturbation calculations for performance
         /*let org_idx = organelle_idx - 1u; // Convert to 0-4 range
@@ -629,14 +631,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let pixel_world_offset = uv_offset * in.max_radius * 2.0; // Scale UV to world space
         let texture_sample_pos = cell.noise_texture_offset + pixel_world_offset;
         
-        let bg_sample = perlin_sample(texture_sample_pos);
+        /*let bg_sample = perlin_sample(texture_sample_pos);
 
         // Apply simple thresholded white tint
         if bg_sample > 0.5 {
             // Apply fixed white tint when noise is above threshold
             color = brighten(color, 1.5);
-        }
+        }*/
 
         return color;
-    }
+    }*/
 }

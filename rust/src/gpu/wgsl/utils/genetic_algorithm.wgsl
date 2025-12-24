@@ -56,6 +56,19 @@ fn recycle_species_slot(slot: u32) {
     }
 }
 
+@group(0) @binding(25)
+var<storage, read_write> genome_events: GenomeEventBuffer;
+
+fn queue_genome_event(event: GenomeEvent) -> bool {
+    let index = atomicAdd(&genome_events.counter.value, 1u);
+    if index < MAX_GENOME_EVENTS {
+        genome_events.events[index] = event;
+        return true;
+    }
+    atomicSub(&genome_events.counter.value, 1u);
+    return false;
+}
+
 fn queue_spawn_cell(new_cell: Cell) -> bool {
     let index = atomicAdd(&spawn_buffer.counter.value, 1u);
     if index < arrayLength(&spawn_buffer.requests) {
@@ -927,17 +940,24 @@ fn create_lifeform_cell(
 
     let genome_slot = lifeform_slot; // Use lifeform slot as genome slot for now
 
-    /*if lifeform_slot < LIFEFORM_CAPACITY && (lifeforms[lifeform_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u {
+    if lifeform_slot < LIFEFORM_CAPACITY
+        && (lifeforms[lifeform_slot].flags & LIFEFORM_FLAG_ACTIVE) != 0u
+    {
         let parent_genome_slot = lifeforms[lifeform_slot].grn_descriptor_slot;
-        copy_genome(genome_slot, parent_genome_slot);
-        mutate_genome(genome_slot, lifeform_id + 11u);
+        // Defer copy/mutate to the genome event processor
+        _ = queue_genome_event(GenomeEvent(
+            genome_slot,
+            parent_genome_slot,
+            lifeform_id + 11u,
+            lifeform_slot,
+        ));
     } else {
         // Generate random genome
         let num_genes = u32(rand(seed) * 18.0) + 2u; // 2-20 genes
-        random_genome(genome_slot, lifeform_id + 1u, num_genes);
-    }*/
+        //random_genome(genome_slot, lifeform_id + 1u, num_genes);
+    }
 
-    let species_info = assign_species(lifeform_slot, lifeform_slot);
+    let species_info = vec2<u32>(0u, 0u); //assign_species(lifeform_slot, lifeform_slot);
     let species_slot = species_info.x;
     let species_id = species_info.y;
 
