@@ -53,11 +53,6 @@ impl Screen {
         }
     }
     
-    pub fn get_element(&mut self, key: &str) -> Option<&mut Component> {
-        self.keys.get(key)
-            .and_then(|&index| self.elements.get_mut(index))
-    }
-    
     pub fn find_element_by_id(&mut self, id: &str) -> Option<&mut Component> {
         for element in &mut self.elements {
             if let Some(found) = element.find_by_id(id) {

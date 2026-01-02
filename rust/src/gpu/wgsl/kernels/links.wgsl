@@ -22,9 +22,6 @@ var<storage, read_write> cell_free_list: FreeList;
 @group(0) @binding(6)
 var<storage, read_write> cell_counter: atomic<u32>;
 
-@group(0) @binding(7)
-var<storage, read_write> spawn_buffer: SpawnBuffer;
-
 @group(0) @binding(8)
 var<storage, read_write> nutrient_grid: NutrientGrid;
 

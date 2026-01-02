@@ -280,8 +280,8 @@ impl Component {
     /// Calculate absolute screen position by walking up from root
     /// This is deterministic and matches exactly what the renderer calculates
     pub fn calculate_absolute_position(&self, parent_x: f32, parent_y: f32) -> (f32, f32) {
-        let x = parent_x + self.layout.position_x + self.style.margin.left;
-        let y = parent_y + self.layout.position_y + self.style.margin.top;
+        let x = parent_x + self.layout.position_x;
+        let y = parent_y + self.layout.position_y;
         (x, y)
     }
     

@@ -18,7 +18,6 @@ use crate::utils::gpu::device::GpuDevice;
 use crate::gpu::pipelines::{RenderPipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
-use crate::gpu::buffers::CounterType;
 use crate::simulator::environment::Environment;
 use crate::simulator::renderer::Renderer;
 use crate::simulator::simulator::Simulation;
@@ -57,8 +56,6 @@ pub struct Application {
     realtime_frame_counter: u32,
     rendering_enabled: bool,
     show_grid: bool,
-    last_points_count: u32,
-    last_cells_count: u32,
     uniforms_need_update: bool,
     last_render_slot: usize,
 
@@ -121,8 +118,6 @@ impl Application {
             realtime_frame_counter: 0,
             rendering_enabled: true,
             show_grid: false,
-            last_points_count: 0,
-            last_cells_count: 0,
             uniforms_need_update: true, // Need initial update
             last_render_slot: 0,
             compute_time_accum: Duration::ZERO,
@@ -130,39 +125,6 @@ impl Application {
         };
         app.update_speed_display();
         app
-    }
-
-    /// Consolidated counter reading logic for any counter type
-    fn read_counter(
-        buffers: &crate::gpu::buffers::GpuBuffers,
-        counter_type: CounterType,
-        transfer_pending: &mut bool,
-        last_value: &mut u32,
-        encoder: &mut wgpu::CommandEncoder,
-    ) -> u32 {
-        // Phase 1: Schedule copy if not already pending
-        if !*transfer_pending && !buffers.has_counter_pending_readback(counter_type) {
-            buffers.schedule_counter_copy(counter_type, encoder);
-            // Mark that we have scheduled a copy - will map next frame
-            *transfer_pending = true;
-            *last_value
-        }
-        // Phase 2: Map and try to read (happens after command buffer submission)
-        else if *transfer_pending {
-            buffers.begin_counter_map(counter_type);
-
-            if let Some(count) = buffers.try_consume_counter(counter_type) {
-                *transfer_pending = false;
-                *last_value = count;
-                count
-            } else {
-                // Still waiting for mapping to complete
-                *last_value
-            }
-        } else {
-            // Should not reach here, but keep last value
-            *last_value
-        }
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -191,7 +153,7 @@ impl Application {
         self.last_frame_time = now;
 
         // Target 60 FPS = 16.67ms per frame. Reserve ~2ms for rendering overhead.
-        let target_frame_time = 1.0 / 60.0;
+        let target_frame_time = 1.0 / 120.0;
         let compute_budget = target_frame_time * 0.8; // Use 80% of frame time for compute
 
         let speed = *self.speed.lock();
@@ -278,33 +240,16 @@ impl Application {
         }
 
 
-        // Read actual point count from GPU atomic counter
-        let points_count = {
+        let (points_count, cells_count) = {
             profile_scope!("Read Counters");
             let render_slot_idx = self.simulation.render_slot;
             let slot = &mut self.simulation.slots[render_slot_idx];
             let buffers = &slot.buffers;
-            Self::read_counter(
-                buffers,
-                CounterType::Points,
-                &mut slot.buffers.points_counter.has_pending_readback(),
-                &mut self.last_points_count,
-                &mut encoder,
-            )
-        };
-
-        // Read actual cell count from GPU atomic counter
-        let cells_count = {
-            let render_slot_idx = self.simulation.render_slot;
-            let slot = &mut self.simulation.slots[render_slot_idx];
-            let buffers = &slot.buffers;
-            Self::read_counter(
-                buffers,
-                CounterType::Cells,
-                &mut slot.buffers.cells_counter.has_pending_readback(),
-                &mut self.last_cells_count,
-                &mut encoder,
-            )
+            buffers.points_counter.begin_map_if_ready();
+            buffers.points_counter.schedule_copy_if_idle(&mut encoder);
+            buffers.cells_counter.begin_map_if_ready();
+            buffers.cells_counter.schedule_copy_if_idle(&mut encoder);
+            (buffers.points_counter.try_read(), buffers.cells_counter.try_read())
         };
 
         let camera_pos = self.camera.get_position();
@@ -497,7 +442,7 @@ impl Application {
         }
     }
 
-    pub fn get_time_string(&self, step: u64) -> String {
+    pub fn get_time_string(&self, step: usize) -> String {
         let time = step as f32 * SIMULATION_DELTA_TIME;
         let hours = (time / 3600.0).floor() as i32;
         let minutes = ((time % 3600.0) / 60.0).floor() as i32;
@@ -591,8 +536,6 @@ impl Application {
 
         self.real_time = 0.0;
         self.last_render_step_count = 0;
-        self.last_points_count = 0;
-        self.last_cells_count = 0;
         self.realtime_frame_counter = 0;
     }
 
@@ -831,7 +774,7 @@ impl Application {
         );
 
         let render_buffers = simulation.get_render_buffers();
-        
+
         let render_pipelines = RenderPipelines::new(
             &gpu.device,
             &gpu.queue,

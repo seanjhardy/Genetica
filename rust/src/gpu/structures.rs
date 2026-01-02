@@ -1,5 +1,7 @@
 // GPU structures for lifeforms and cells - optimized for parallel processing
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use bytemuck::{self, Pod, Zeroable};
 
 pub const CELL_WALL_SAMPLES: usize = 20;
@@ -56,48 +58,36 @@ pub struct Link {
 impl Link {
     pub const FLAG_ALIVE: u32 = 1 << 0;
 }
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct Lifeform {
-    pub lifeform_id: u32,
-    pub species_id: u32,
-    pub first_cell: u32,
-    pub cell_count: u32,
-    pub flags: u32,
-    pub _pad: [u32; 3],
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct SpeciesEntry {
+pub struct Species {
     pub species_id: u32,
     pub ancestor_species_id: u32,
     pub member_count: u32,
     pub flags: u32,
-    pub mascot_genome: GenomeEntry,
+    pub mascot_genome: Genome,
 }
 
-impl SpeciesEntry {
+impl Species {
     pub fn inactive() -> Self {
         Self {
             species_id: 0,
             ancestor_species_id: 0,
             member_count: 0,
             flags: 0,
-            mascot_genome: GenomeEntry::inactive(),
+            mascot_genome: Genome::inactive(),
         }
     }
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct GenomeEntry {
+pub struct Genome {
     pub gene_ids: [u32; MAX_GENES_PER_GENOME],
     pub gene_sequences: [u32; GENOME_WORD_COUNT],
 }
 
-impl GenomeEntry {
+impl Genome {
     pub fn inactive() -> Self {
         Self {
             gene_ids: [0; MAX_GENES_PER_GENOME],
@@ -143,17 +133,6 @@ impl PositionChangeEntry {
     }
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct SpawnRequest {
-    pub pos: [f32; 2],
-    pub radius: f32,
-    pub energy: f32,
-    pub lifeform_id: u32,
-    pub parent_cell: u32,
-    pub _pad: u32,
-}
-
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -187,4 +166,5 @@ pub struct GrnDescriptor {
     pub _pad3: u32,
 }
 
+pub type CompiledGrn = Vec<CompiledRegulatoryUnit>;
 

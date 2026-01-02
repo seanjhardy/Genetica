@@ -70,7 +70,7 @@ fn fs_main(input: FragmentInput) -> @location(0) vec4<f32> {
     let dist_from_center = length(uv_centered);
 
        // === FISH EYE EFFECT ===
-    let fish_eye_strength = 0.1;
+    let fish_eye_strength = 0.3;
     let fish_eye_radius = fish_eye_strength * dist_from_center * dist_from_center;
     let fish_eye_uv = input.uv + uv_centered * fish_eye_radius;
 

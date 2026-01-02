@@ -46,17 +46,23 @@ pub struct SimSlot {
 }
 
 
-/// A counter with its staging buffer and readback channel for GPU readback
+enum ReadState {
+    Idle,
+    CopyQueued,                    // copy submitted last frame; next step is map
+    Mapping(mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>),
+}
+
 pub struct Counter {
     pub buffer: wgpu::Buffer,
     pub staging: wgpu::Buffer,
-    pub readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
+    state: Mutex<ReadState>,
+    last_value: Mutex<u32>,
 }
 
 impl Counter {
     pub fn new(device: &wgpu::Device, label: &str, initial_value: u32) -> Self {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("{} Counter", label)),
+            label: Some(&format!("{label} Counter")),
             contents: bytemuck::cast_slice(&[initial_value]),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_SRC
@@ -64,7 +70,7 @@ impl Counter {
         });
 
         let staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(&format!("{} Counter Staging", label)),
+            label: Some(&format!("{label} Counter Staging")),
             size: std::mem::size_of::<u32>() as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -73,72 +79,72 @@ impl Counter {
         Self {
             buffer,
             staging,
-            readback: Mutex::new(None),
+            state: Mutex::new(ReadState::Idle),
+            last_value: Mutex::new(initial_value),
         }
     }
 
-    pub fn schedule_copy(&self, encoder: &mut wgpu::CommandEncoder) {
-        {
-            let mut guard = self.readback.lock();
-            if guard.take().is_some() {
-                self.staging.unmap();
+    /// Call while encoding commands for frame N
+    pub fn schedule_copy_if_idle(&self, encoder: &mut wgpu::CommandEncoder) {
+        let mut st = self.state.lock();
+        match &*st {
+            ReadState::Idle => {
+                encoder.copy_buffer_to_buffer(&self.buffer, 0, &self.staging, 0, 4);
+                *st = ReadState::CopyQueued;
             }
+            _ => {}
         }
-        encoder.copy_buffer_to_buffer(
-            &self.buffer,
-            0,
-            &self.staging,
-            0,
-            std::mem::size_of::<u32>() as u64,
-        );
     }
 
-    pub fn begin_map(&self) {
-        let mut guard = self.readback.lock();
-        if guard.is_some() {
+    /// Call AFTER queue.submit (frame N or N+1), and while you are polling every frame.
+    pub fn begin_map_if_ready(&self) {
+        let mut st = self.state.lock();
+        if !matches!(*st, ReadState::CopyQueued) {
             return;
         }
+
         let slice = self.staging.slice(..);
         let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
+        slice.map_async(wgpu::MapMode::Read, move |res| {
+            let _ = sender.send(res);
         });
-        *guard = Some(receiver);
+
+        *st = ReadState::Mapping(receiver);
     }
 
-    pub fn try_consume(&self) -> Option<u32> {
-        let mut receiver_guard = self.readback.lock();
-        let receiver = match receiver_guard.as_ref() {
-            Some(r) => r,
-            None => return None,
+    /// Call after device.poll(Maintain::Poll). Returns newest value if ready; otherwise last known.
+    pub fn try_read(&self) -> u32 {
+        // fast path: if not mapping, just return last
+        let mut st = self.state.lock();
+        let last = *self.last_value.lock();
+
+        let rx = match &*st {
+            ReadState::Mapping(rx) => rx,
+            _ => return last,
         };
 
-        match receiver.try_recv() {
-            Ok(Ok(_)) => {
+        match rx.try_recv() {
+            Ok(Ok(())) => {
                 let mapped = self.staging.slice(..).get_mapped_range();
-                let value = bytemuck::cast_slice::<u8, u32>(&mapped)[0];
+                let val = bytemuck::from_bytes::<u32>(&mapped[..4]);
+                let val = *val;
                 drop(mapped);
                 self.staging.unmap();
-                *receiver_guard = None;
-                Some(value)
+
+                *self.last_value.lock() = val;
+                *st = ReadState::Idle;
+                val
             }
-            Ok(Err(e)) => {
-                eprintln!("Counter read failed: {:?}", e);
+            Ok(Err(_e)) => {
                 self.staging.unmap();
-                *receiver_guard = None;
-                None
+                *st = ReadState::Idle;
+                last
             }
-            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Empty) => last,
             Err(mpsc::TryRecvError::Disconnected) => {
-                eprintln!("Counter readback channel disconnected");
-                *receiver_guard = None;
-                None
+                *st = ReadState::Idle;
+                last
             }
         }
     }
-
-    pub fn has_pending_readback(&self) -> bool {
-        self.readback.lock().is_some()
-    }
 }
-

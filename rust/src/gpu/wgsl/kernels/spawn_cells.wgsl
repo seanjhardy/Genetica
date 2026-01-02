@@ -9,6 +9,9 @@
 @group(0) @binding(4) var<storage, read_write> cells: array<Cell>;
 @group(0) @binding(5) var<storage, read_write> cells_counter: atomic<u32>;
 @group(0) @binding(6) var<storage, read_write> cells_free_list: array<atomic<u32>>;
+@group(0) @binding(7) var<storage, read_write> event_buffer: array<u32>;
+@group(0) @binding(8) var<storage, read_write> event_counter: atomic<u32>;
+@group(0) @binding(9) var<storage, read_write> lifeform_id: atomic<u32>;
 
 // Check if we should spawn more cells (below capacity limit)
 fn should_spawn_more(current_count: u32) -> bool {
@@ -90,33 +93,41 @@ fn create_cell(point_idx: u32, seed: f32) -> Cell {
     return cell;
 }
 
-// Spawn a complete cell entity (physics point + cell)
-fn spawn_cell_entity(current_count: u32) {
-    // Try to acquire both slots
+// Create a new cell directly in the simulation
+fn spawn_cell(seed: f32) {
+    // Try to acquire slots for both physics point and cell
     let slots = try_acquire_slots();
     if slots.x < 0 || slots.y < 0 {
-        return; // Failed to acquire slots
+        // No slots available
+        return;
     }
 
     let physics_slot_idx = u32(slots.x);
     let cell_slot_idx = u32(slots.y);
 
-    // Generate position and velocity
-    let seed = f32(current_count);
+    // Generate position and create physics point
     let position = generate_random_position(seed);
-    let velocity = vec2<f32>(0.0, 0.0); //generate_random_velocity(seed);
+    let velocity = vec2<f32>(0.0, 0.0); // Start with no velocity
+    let point = create_point(position, velocity);
 
-    // Create and store the physics point
-    let physics_point = create_point(position, velocity);
-    points[physics_slot_idx] = physics_point;
+    // Increment the lifeform ID counter
+    let new_lifeform_id = atomicAdd(&lifeform_id, 1u);
 
-    // Create and store the cell
-    let cell = create_cell(physics_slot_idx, seed);
+    // Create cell
+    var cell = create_cell(physics_slot_idx, seed);
+    cell.lifeform_id = new_lifeform_id;
+
+    // Store the point and cell in their respective buffers
+    points[physics_slot_idx] = point;
     cells[cell_slot_idx] = cell;
 
     // Increment counters
     atomicAdd(&points_counter, 1u);
     atomicAdd(&cells_counter, 1u);
+
+    // Send a simple event notification for the new lifeform
+    let event_idx = atomicAdd(&event_counter, 1u);
+    event_buffer[event_idx] = new_lifeform_id;
 }
 
 @compute @workgroup_size(1)
@@ -129,5 +140,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
-    spawn_cell_entity(current_count);
+    // Spawn a new cell directly
+    let seed = f32(current_count);
+    spawn_cell(seed);
 }

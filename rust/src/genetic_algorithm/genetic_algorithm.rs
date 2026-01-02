@@ -8,8 +8,8 @@ use rand::Rng;
 use crate::genetic_algorithm::sequence_grn;
 use crate::genetic_algorithm::systems::GeneRegulatoryNetwork;
 use crate::genetic_algorithm::systems::morphology::compile_grn::compile_grn;
-use crate::gpu::structures::{Cell, Lifeform};
-use crate::utils::math::Rect;
+use crate::genetic_algorithm::Lifeform;
+use crate::simulator::events::{Event, EventQueue};
 use crate::genetic_algorithm::{Genome, Species};
 
 static GENE_ID: AtomicUsize = AtomicUsize::new(0);
@@ -45,7 +45,7 @@ impl GeneticAlgorithm {
     #[allow(dead_code)]
     pub const DELETE_BASE_CHANCE: f32 = 0.00005;
 
-    pub fn new(_device: &wgpu::Device) -> Self {
+    pub fn new() -> Self {
         Self {
             lifeforms: HashMap::new(),
             species: HashMap::new(),
@@ -65,101 +65,67 @@ impl GeneticAlgorithm {
         SPECIES_ID.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub fn init(
-        &mut self,
-        num_lifeforms: u32,
-        bounds: Rect,
-        _device: &wgpu::Device,
-        _queue: &wgpu::Queue,
-    ) -> Vec<Cell> {
-        LIFEFORM_ID.store(0, Ordering::Relaxed);
-        SPECIES_ID.store(0, Ordering::Relaxed);
-        GENE_ID.store(0, Ordering::Relaxed);
-        self.lifeforms.clear();
-        self.species.clear();
-        self.living_species.clear();
-
-        let mut rng = rand::thread_rng();
-        let mut cells = Vec::with_capacity(num_lifeforms as usize);
-
-        for _ in 0..num_lifeforms {
-            let lifeform_id = GeneticAlgorithm::next_lifeform_id();
-            let genome = Self::generate_random_genome(&mut rng);
-            let grn = sequence_grn(&genome);
-            let species_id = self.create_species(lifeform_id, &genome, 0);
-            self.attach_lifeform(lifeform_id, species_id, genome.clone(), grn.clone());
-
-            let cell = Self::create_seed_cell(&mut rng, &bounds, lifeform_id);
-            cells.push(cell);
-        }
-
-        cells
-    }
-
     pub fn num_species(&self) -> usize {
         self.living_species.len()
     }
 
-    fn register_new_lifeform_internal(
-        &mut self,
-        lifeform_id: usize,
-        genome: Genome,
-        grn: GeneRegulatoryNetwork,
-        birth_time: usize,
-    ) -> usize {
-        let species_id = self.create_species(lifeform_id, &genome, birth_time);
-        self.attach_lifeform(lifeform_id, species_id,  genome, grn);
-        species_id
+    pub fn process_events(&mut self, step: usize, event_queue: &EventQueue) {
+        profile_scope!("Process Genetic Events");
+
+        while let Ok(event) = event_queue.try_recv() {
+            match event {
+                Event::CreateLifeform { lifeform_id } => {
+                    self.create_lifeform(step, lifeform_id);
+                }
+                Event::AddCellToLifeform { lifeform_id } => {
+                    self.add_cell_to_lifeform(lifeform_id);
+                }
+                Event::RemoveCellFromLifeform { lifeform_id } => {
+                    self.remove_cell_from_lifeform(step, lifeform_id);
+                }
+            }
+        }
     }
 
-    pub fn spawn_random_lifeform<R: Rng>(
-        &mut self,
-        rng: &mut R,
-        birth_time: usize,
-    ) -> (usize, usize) {
-        profile_scope!("GA Spawn Random Lifeform");
+    fn create_lifeform(&mut self, step: usize, parent_lifeform_id: Option<usize>) {
         let lifeform_id = GeneticAlgorithm::next_lifeform_id();
-        let genome = Self::generate_random_genome(rng);
+        let alive_parent = parent_lifeform_id
+        .and_then(|id| self.lifeforms.get(&id))
+        .filter(|p| p.is_alive());
+
+        let (genome, species_id) = match alive_parent {
+            Some(parent) => {
+                let mut genome = parent.genome.clone();
+                genome.mutate();
+                let child_species_id = self.allocate_species(parent.lifeform_id, lifeform_id, &genome);
+                (genome, child_species_id)
+            }
+            None => {
+                let genome = Self::generate_random_genome(&mut rand::thread_rng());
+                let species_id = self.create_species(lifeform_id, &genome, 0);
+                (genome, species_id)
+            }
+        };
         let grn = sequence_grn(&genome);
-        let species_id = self.register_new_lifeform_internal(lifeform_id, genome, grn, birth_time);
-        (lifeform_id, species_id)
+        let compiled = compile_grn(lifeform_id as u32, grn.clone());
+        let lifeform = Lifeform::new(step, lifeform_id, species_id, genome.clone(), grn, compiled);
+        lifeform.cell_count.store(1, Ordering::Relaxed);
+        self.lifeforms.insert(lifeform_id, lifeform);
     }
 
-    pub fn register_child_lifeform(
-        &mut self,
-        lifeform_id: usize,
-        parent_lifeform_id: usize,
-        genome: Genome,
-        grn: GeneRegulatoryNetwork,
-        birth_time: usize,
-    ) -> usize {
-        let parent_species_entry = self
-            .lifeforms
-            .get(&parent_lifeform_id)
-            .and_then(|lf| {
-                let species_id = lf.species_id;
-                self.species
-                    .get(&species_id)
-                    .map(|species| (species_id, species))
-            });
+    pub fn add_cell_to_lifeform(&mut self, lifeform_id: usize) {
+        if let Some(lifeform) = self.lifeforms.get_mut(&lifeform_id) {
+            lifeform.increment_cell_count();
+        }
+    }
 
-        let (parent_species_id, needs_new_species) = if let Some((_, species)) = parent_species_entry
-        {
-            let needs_new =
-                genome.compare(&species.mascot_genome) > Self::COMPATABILITY_DISTANCE_THRESHOLD;
-            (Some(species.id), needs_new)
-        } else {
-            (None, true)
-        };
-
-        let species_id = if needs_new_species {
-            self.create_species(lifeform_id, &genome, birth_time)
-        } else {
-            parent_species_id.unwrap()
-        };
-
-        self.attach_lifeform(lifeform_id, species_id,  genome, grn);
-        species_id
+    pub fn remove_cell_from_lifeform(&mut self, step: usize, lifeform_id: usize) {
+        if let Some(lifeform) = self.lifeforms.get_mut(&lifeform_id) {
+            lifeform.decrement_cell_count();
+            if !lifeform.has_cells() {
+                self.remove_lifeform(lifeform_id, step);
+            }
+        }
     }
 
     pub fn remove_lifeform(&mut self, lifeform_id: usize, death_time: usize) {
@@ -180,46 +146,11 @@ impl GeneticAlgorithm {
             .collect()
     }
 
-    pub fn compiled_grn(&self, lifeform_id: usize) -> Option<&crate::gpu::structures::CompiledGrn> {
-        self.lifeforms.get(&lifeform_id).map(|lf| lf.compiled_grn())
-    }
-
-    pub fn register_division_offspring<R: Rng>(
-        &mut self,
-        parent_lifeform_id: usize,
-        birth_time: usize,
-        rng: &mut R,
-    ) -> Option<(usize, usize)> {
-        profile_scope!("GA Register Division Offspring");
-        let mut child_genome = self.lifeforms.get(&parent_lifeform_id)?.genome.clone();
-        child_genome.mutate();
-        let child_grn = sequence_grn(&child_genome);
-        let child_lifeform_id = GeneticAlgorithm::next_lifeform_id();
-        let species_id = self.register_child_lifeform(
-            child_lifeform_id,
-            parent_lifeform_id,
-            child_genome,
-            child_grn,
-            birth_time,
-        );
-        Some((child_lifeform_id, species_id))
-    }
-
     fn generate_random_genome<R: Rng>(rng: &mut R) -> Genome {
         profile_scope!("GA Generate Random Genome");
         let num_genes = rng.gen_range(2..20);
         let gene_length = 30;
         Genome::init_random(rng, num_genes, gene_length)
-    }
-
-    fn create_seed_cell<R: Rng>(rng: &mut R, bounds: &Rect, lifeform_id: usize) -> Cell {
-        let pos = [
-            bounds.left + rng.gen::<f32>() * bounds.width,
-            bounds.top + rng.gen::<f32>() * bounds.height,
-        ];
-        let random_radius = rng.gen_range(0.5..4.0);
-        let energy = rng.gen_range(80.0..140.0);
-        Cell::new(pos, random_radius, lifeform_id as u32, energy)
     }
 
     fn create_species(&mut self, mascot_lifeform_id: usize, mascot_genome: &Genome, origin_time: usize) -> usize {
@@ -229,21 +160,13 @@ impl GeneticAlgorithm {
         species_id
     }
 
-    fn attach_lifeform(
-        &mut self,
-        lifeform_id: usize,
-        species_id: usize,
-        genome: Genome,
-        grn: GeneRegulatoryNetwork,
-    ) {
-         if let Some(species) = self.species.get_mut(&species_id) {
-            let first_member = species.register_member();
-            if first_member {
-                self.living_species.insert(species_id);
-            }
+    fn allocate_species(&mut self, parent_lifeform_id: usize, lifeform_id: usize, genome: &Genome) -> usize {
+        let parent_lifeform = self.lifeforms.get(&parent_lifeform_id).unwrap();
+        let difference = parent_lifeform.genome.compare(&genome);
+        if difference < Self::COMPATABILITY_DISTANCE_THRESHOLD {
+            return parent_lifeform.species_id;
         }
-        let compiled = compile_grn(lifeform_id as u32, &grn);
-        let lifeform = Lifeform::new(lifeform_id, species_id, genome, grn, compiled);
-        self.lifeforms.insert(lifeform_id, lifeform);
+        let species_id = self.create_species(lifeform_id, &genome, 0);
+        species_id
     }
 }

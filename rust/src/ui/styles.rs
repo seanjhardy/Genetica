@@ -144,29 +144,8 @@ impl Padding {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Margin {
-    pub top: f32,
-    pub right: f32,
-    pub bottom: f32,
-    pub left: f32,
-}
 
-impl Margin {
-    pub fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
-        Self { top, right, bottom, left }
-    }
-
-    pub fn uniform(value: f32) -> Self {
-        Self { top: value, right: value, bottom: value, left: value }
-    }
-
-    pub fn zero() -> Self {
-        Self { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Size {
     Pixels(f32),
     Percent(f32),
@@ -175,22 +154,77 @@ pub enum Size {
 }
 
 impl Size {
-    pub fn pixels(value: f32) -> Self {
-        Self::Pixels(value)
-    }
-
-    pub fn percent(value: f32) -> Self {
-        Self::Percent(value)
-    }
-
-    pub fn flex(value: f32) -> Self {
-        Self::Flex(value)
-    }
-
-    pub fn auto() -> Self {
-        Self::Auto
+    pub fn to_pixels(&self, container_size: f32) -> f32 {
+        match self {
+            Size::Pixels(value) => *value,
+            Size::Percent(percent) => container_size * percent / 100.0,
+            Size::Flex(_) | Size::Auto => container_size, // Default to container size for flex/auto
+        }
     }
 }
+
+
+#[derive(Debug, Clone, Copy)]
+pub struct Margin {
+    pub top: Size,
+    pub right: Size,
+    pub bottom: Size,
+    pub left: Size,
+}
+
+impl Margin {
+    pub fn new(top: Size, right: Size, bottom: Size, left: Size) -> Self {
+        Self { top, right, bottom, left }
+    }
+
+    pub fn uniform(value: Size) -> Self {
+        Self { top: value, right: value, bottom: value, left: value }
+    }
+
+    pub fn zero() -> Self {
+        Self {
+            top: Size::Pixels(0.0),
+            right: Size::Pixels(0.0),
+            bottom: Size::Pixels(0.0),
+            left: Size::Pixels(0.0),
+        }
+    }
+
+    // Helper method to resolve margin values to pixels
+    pub fn resolve_to_pixels(&self, width: f32, height: f32) -> ResolvedMargin {
+        ResolvedMargin {
+            top: match self.top {
+                Size::Pixels(value) => value,
+                Size::Percent(percent) => height * percent / 100.0,
+                Size::Flex(_) | Size::Auto => 0.0,
+            },
+            right: match self.right {
+                Size::Pixels(value) => value,
+                Size::Percent(percent) => width * percent / 100.0,
+                Size::Flex(_) | Size::Auto => 0.0,
+            },
+            bottom: match self.bottom {
+                Size::Pixels(value) => value,
+                Size::Percent(percent) => height * percent / 100.0,
+                Size::Flex(_) | Size::Auto => 0.0,
+            },
+            left: match self.left {
+                Size::Pixels(value) => value,
+                Size::Percent(percent) => width * percent / 100.0,
+                Size::Flex(_) | Size::Auto => 0.0,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ResolvedMargin {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Style {
@@ -202,6 +236,10 @@ pub struct Style {
     pub margin: Margin,
     pub width: Size,
     pub height: Size,
+    pub top: Option<Size>,
+    pub right: Option<Size>,
+    pub bottom: Option<Size>,
+    pub left: Option<Size>,
     pub z_index: i32,
     pub cursor: Cursor,
 }
@@ -217,6 +255,10 @@ impl Style {
             margin: Margin::zero(),
             width: Size::Auto,
             height: Size::Auto,
+            top: None,
+            right: None,
+            bottom: None,
+            left: None,
             z_index: 0,
             cursor: Cursor::Default,
         }

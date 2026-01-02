@@ -175,6 +175,7 @@ impl Genome {
 
             index += 1;
         }
+        
     }
 
     #[allow(dead_code)]

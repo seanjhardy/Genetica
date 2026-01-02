@@ -315,38 +315,62 @@ impl UiParser {
     /// Parse dynamic Tailwind-style utility classes (e.g., w-50, bg-white-50, p-10, etc.)
     fn parse_dynamic_class(class_name: &str) -> Option<HashMap<String, String>> {
         let mut props = HashMap::new();
-        
-        // Width: w-{number} or w-{number}px
-        if class_name.starts_with("w-") {
-            let value = &class_name[2..];
-            if let Ok(num) = value.parse::<f32>() {
-                props.insert("width".to_string(), format!("{}px", num));
+
+        // Handle negative margins first (they start with -)
+        let (is_negative, class) = if class_name.starts_with('-') {
+            (true, &class_name[1..])
+        } else {
+            (false, class_name)
+        };
+
+        // Width: w-{number} or w-{number}% or w-{number}px
+        if class.starts_with("w-") {
+            let value = &class[2..];
+            if value.ends_with('%') {
+                let num_str = value.trim_end_matches('%');
+                if let Ok(num) = num_str.parse::<f32>() {
+                    let signed_num = if is_negative { -num } else { num };
+                    props.insert("width".to_string(), format!("{}%", signed_num));
+                    return Some(props);
+                }
+            } else if let Ok(num) = value.parse::<f32>() {
+                let signed_num = if is_negative { -num } else { num };
+                props.insert("width".to_string(), format!("{}px", signed_num));
                 return Some(props);
             }
         }
-        
-        // Height: h-{number} or h-{number}px
-        if class_name.starts_with("h-") {
-            let value = &class_name[2..];
-            if let Ok(num) = value.parse::<f32>() {
-                props.insert("height".to_string(), format!("{}px", num));
+
+        // Height: h-{number} or h-{number}% or h-{number}px
+        if class.starts_with("h-") {
+            let value = &class[2..];
+            if value.ends_with('%') {
+                let num_str = value.trim_end_matches('%');
+                if let Ok(num) = num_str.parse::<f32>() {
+                    let signed_num = if is_negative { -num } else { num };
+                    props.insert("height".to_string(), format!("{}%", signed_num));
+                    return Some(props);
+                }
+            } else if let Ok(num) = value.parse::<f32>() {
+                let signed_num = if is_negative { -num } else { num };
+                props.insert("height".to_string(), format!("{}px", signed_num));
                 return Some(props);
             }
         }
         
         // Padding: p-{number}, pt-{number}, pr-{number}, pb-{number}, pl-{number}
         // px-{number} (horizontal), py-{number} (vertical)
-        if class_name.starts_with("p-") || class_name.starts_with("pt-") || 
-           class_name.starts_with("pr-") || class_name.starts_with("pb-") || 
-           class_name.starts_with("pl-") || class_name.starts_with("px-") || 
-           class_name.starts_with("py-") {
-            if let Some(dash_pos) = class_name.rfind('-') {
-                let value = &class_name[dash_pos + 1..];
+        if class.starts_with("p-") || class.starts_with("pt-") || 
+           class.starts_with("pr-") || class.starts_with("pb-") || 
+           class.starts_with("pl-") || class.starts_with("px-") || 
+           class.starts_with("py-") {
+            if let Some(dash_pos) = class.rfind('-') {
+                let value = &class[dash_pos + 1..];
                 if let Ok(num) = value.parse::<f32>() {
-                    let prefix = &class_name[..dash_pos];
+                    let prefix = &class[..dash_pos];
+                    let signed_num = if is_negative { -num } else { num };
                     let padding_props = match prefix {
                         "p" => {
-                            let val = format!("{}px", num);
+                            let val = format!("{}px", signed_num);
                             vec![
                                 ("padding-top".to_string(), val.clone()),
                                 ("padding-right".to_string(), val.clone()),
@@ -354,17 +378,17 @@ impl UiParser {
                                 ("padding-left".to_string(), val),
                             ]
                         }
-                        "pt" => vec![("padding-top".to_string(), format!("{}px", num))],
-                        "pr" => vec![("padding-right".to_string(), format!("{}px", num))],
-                        "pb" => vec![("padding-bottom".to_string(), format!("{}px", num))],
-                        "pl" => vec![("padding-left".to_string(), format!("{}px", num))],
+                        "pt" => vec![("padding-top".to_string(), format!("{}px", signed_num))],
+                        "pr" => vec![("padding-right".to_string(), format!("{}px", signed_num))],
+                        "pb" => vec![("padding-bottom".to_string(), format!("{}px", signed_num))],
+                        "pl" => vec![("padding-left".to_string(), format!("{}px", signed_num))],
                         "px" => vec![
-                            ("padding-left".to_string(), format!("{}px", num)),
-                            ("padding-right".to_string(), format!("{}px", num)),
+                            ("padding-left".to_string(), format!("{}px", signed_num)),
+                            ("padding-right".to_string(), format!("{}px", signed_num)),
                         ],
                         "py" => vec![
-                            ("padding-top".to_string(), format!("{}px", num)),
-                            ("padding-bottom".to_string(), format!("{}px", num)),
+                            ("padding-top".to_string(), format!("{}px", signed_num)),
+                            ("padding-bottom".to_string(), format!("{}px", signed_num)),
                         ],
                         _ => return None,
                     };
@@ -375,37 +399,92 @@ impl UiParser {
                 }
             }
         }
-        
-        // Margin: m-{number}, mt-{number}, mr-{number}, mb-{number}, ml-{number}
-        // mx-{number} (horizontal), my-{number} (vertical)
-        if class_name.starts_with("m-") || class_name.starts_with("mt-") || 
-           class_name.starts_with("mr-") || class_name.starts_with("mb-") || 
-           class_name.starts_with("ml-") || class_name.starts_with("mx-") || 
-           class_name.starts_with("my-") {
-            if let Some(dash_pos) = class_name.rfind('-') {
-                let value = &class_name[dash_pos + 1..];
-                if let Ok(num) = value.parse::<f32>() {
-                    let prefix = &class_name[..dash_pos];
-                    match prefix {
-                        "m" => props.insert("margin".to_string(), format!("{}px", num)),
-                        "mt" => props.insert("margin".to_string(), format!("{}px 0px 0px 0px", num)),
-                        "mr" => props.insert("margin".to_string(), format!("0px {}px 0px 0px", num)),
-                        "mb" => props.insert("margin".to_string(), format!("0px 0px {}px 0px", num)),
-                        "ml" => props.insert("margin".to_string(), format!("0px 0px 0px {}px", num)),
-                        "mx" => props.insert("margin".to_string(), format!("0px {}px", num)),
-                        "my" => props.insert("margin".to_string(), format!("{}px 0px", num)),
-                        _ => None,
-                    };
-                    return Some(props);
-                }
+
+        if class.starts_with("m-") || class.starts_with("mt-") ||
+           class.starts_with("mr-") || class.starts_with("mb-") ||
+           class.starts_with("ml-") || class.starts_with("mx-") ||
+           class.starts_with("my-") {
+            if let Some(dash_pos) = class.rfind('-') {
+                let value = &class[dash_pos + 1..];
+                let prefix = &class[..dash_pos];
+
+                // Handle percentage values
+                let unit = if value.ends_with('%') {
+                    let num_str = value.trim_end_matches('%');
+                    if let Ok(num) = num_str.parse::<f32>() {
+                        let signed_num = if is_negative { -num } else { num };
+                        let val = format!("{}%", signed_num);
+                        val
+                    } else {
+                        return None;
+                    }
+                } else if let Ok(num) = value.parse::<f32>() {
+                    let signed_num = if is_negative { -num } else { num };
+                    let val = format!("{}px", signed_num);
+                    val
+                } else {
+                    return None;
+                };
+
+                match prefix {
+                    "m" => props.insert("margin".to_string(), unit.clone()),
+                    "mt" => props.insert("margin-top".to_string(), unit.clone()),
+                    "mr" => props.insert("margin-right".to_string(), unit.clone()),
+                    "mb" => props.insert("margin-bottom".to_string(), unit.clone()),
+                    "ml" => props.insert("margin-left".to_string(), unit.clone()),
+                    "mx" => {
+                        props.insert("margin-left".to_string(), unit.clone());
+                        props.insert("margin-right".to_string(), unit)
+                    },
+                    "my" => {
+                        props.insert("margin-top".to_string(), unit.clone());
+                        props.insert("margin-bottom".to_string(), unit)
+                    },
+                    _ => return None,
+                };
+                return Some(props);
             }
         }
-        
+
+        // Positioning: top-{number}, right-{number}, bottom-{number}, left-{number}
+        if class.starts_with("top-") || class.starts_with("right-") ||
+           class.starts_with("bottom-") || class.starts_with("left-") {
+            if let Some(dash_pos) = class.rfind('-') {
+                let value = &class[dash_pos + 1..];
+                let prefix = &class[..dash_pos];
+
+                // Handle percentage values
+                let size_str = if value.ends_with('%') {
+                    let num_str = value.trim_end_matches('%');
+                    if let Ok(num) = num_str.parse::<f32>() {
+                        let signed_num = if is_negative { -num } else { num };
+                        format!("{}%", signed_num)
+                    } else {
+                        return None;
+                    }
+                } else if let Ok(num) = value.parse::<f32>() {
+                    let signed_num = if is_negative { -num } else { num };
+                    format!("{}px", signed_num)
+                } else {
+                    return None;
+                };
+
+                match prefix {
+                    "top" => props.insert("top".to_string(), size_str.clone()),
+                    "right" => props.insert("right".to_string(), size_str.clone()),
+                    "bottom" => props.insert("bottom".to_string(), size_str.clone()),
+                    "left" => props.insert("left".to_string(), size_str),
+                    _ => return None,
+                };
+                return Some(props);
+            }
+        }
+
         // Border radius: rounded-{number}, rounded-l-{number}, rounded-r-{number},
         // rounded-t-{number}, rounded-b-{number}, rounded-tl-{number}, rounded-tr-{number}, 
         // rounded-bl-{number}, rounded-br-{number}
-        if class_name.starts_with("rounded-") {
-            let after_rounded = &class_name[8..]; // Everything after "rounded-"
+        if class.starts_with("rounded-") {
+            let after_rounded = &class[8..]; // Everything after "rounded-"
             
             // Try to find a second dash (e.g., "l-200" has dash at position 1)
             if let Some(dash_pos) = after_rounded.find('-') {
@@ -413,7 +492,8 @@ impl UiParser {
                 let prefix = &after_rounded[..dash_pos];
                 let value = &after_rounded[dash_pos + 1..];
                 if let Ok(num) = value.parse::<f32>() {
-                    let px_value = format!("{}px", num);
+                    let signed_num = if is_negative { -num } else { num };
+                    let px_value = format!("{}px", signed_num);
                     
                     match prefix {
                         "l" => {
@@ -462,17 +542,21 @@ impl UiParser {
             } else {
                 // Case: rounded-{number} (e.g., rounded-10) - no second dash
                 if let Ok(num) = after_rounded.parse::<f32>() {
-                    props.insert("border-radius".to_string(), format!("{}px", num));
+                    let signed_num = if is_negative { -num } else { num };
+                    let px_value = format!("{}px", signed_num);
+                    props.insert("border-radius".to_string(), px_value);
                     return Some(props);
                 }
             }
         }
         
         // Gap: gap-{number}
-        if class_name.starts_with("gap-") {
-            let value = &class_name[4..];
+        if class.starts_with("gap-") {
+            let value = &class[4..];
             if let Ok(num) = value.parse::<f32>() {
-                props.insert("gap".to_string(), format!("{}px", num));
+                let signed_num = if is_negative { -num } else { num };
+                let px_value = format!("{}px", signed_num);
+                props.insert("gap".to_string(), px_value);
                 return Some(props);
             }
         }
@@ -607,12 +691,18 @@ impl UiParser {
                 }
             } else if let Some(class_props) = self.css_classes.get(class_name) {
                 style = Self::apply_css_properties(style, class_props)?;
-                
+
                 // Handle position: absolute from CSS classes
                 if let Some(position) = class_props.get("position") {
                     if position == "absolute" {
                         component.absolute = true;
                     }
+                }
+
+                // Mark component as absolute if positioning properties are applied from CSS classes
+                if class_props.contains_key("top") || class_props.contains_key("right") ||
+                   class_props.contains_key("bottom") || class_props.contains_key("left") {
+                    component.absolute = true;
                 }
                 
                 // Handle layout properties from CSS classes
@@ -712,23 +802,34 @@ impl UiParser {
             }
         }
 
+        // Mark component as absolute if positioning properties are applied
+        if style.top.is_some() || style.right.is_some() || style.bottom.is_some() || style.left.is_some() {
+            component.absolute = true;
+        }
+
         // Apply inline style
         if let Some(inline_style) = attributes.get("style") {
             let inline_props = Self::parse_inline_style(inline_style);
             style = Self::apply_css_properties(style, &inline_props)?;
-            
+
             // Handle display: none for visibility
             if let Some(display) = inline_props.get("display") {
                 if display == "none" {
                     component.visible = false;
                 }
             }
-            
+
             // Handle position: absolute
             if let Some(position) = inline_props.get("position") {
                 if position == "absolute" {
                     component.absolute = true;
                 }
+            }
+
+            // Mark component as absolute if positioning properties are applied from inline styles
+            if inline_props.contains_key("top") || inline_props.contains_key("right") ||
+               inline_props.contains_key("bottom") || inline_props.contains_key("left") {
+                component.absolute = true;
             }
             
             // Handle layout properties from inline style
@@ -1197,6 +1298,18 @@ impl UiParser {
                 "height" => {
                     style.height = Self::parse_size_css(value)?;
                 }
+                "top" => {
+                    style.top = Some(Self::parse_size_css(value)?);
+                }
+                "right" => {
+                    style.right = Some(Self::parse_size_css(value)?);
+                }
+                "bottom" => {
+                    style.bottom = Some(Self::parse_size_css(value)?);
+                }
+                "left" => {
+                    style.left = Some(Self::parse_size_css(value)?);
+                }
                 "flex" => {
                     // Parse flex shorthand (e.g., "flex: 1" means flex-grow: 1)
                     if let Ok(flex_value) = value.trim().parse::<f32>() {
@@ -1420,41 +1533,46 @@ impl UiParser {
 
     fn parse_margin_value(value: &str) -> Result<Margin, String> {
         let value = value.trim();
-        
-        // Helper to parse a size value with units (px, etc.)
-        let parse_size_with_unit = |s: &str| -> Result<f32, String> {
+
+        // Helper to parse a margin value with units (px, %, etc.)
+        let parse_margin_value_with_unit = |s: &str| -> Result<Size, String> {
             let s = s.trim();
             if s.ends_with("px") {
                 s.trim_end_matches("px").parse::<f32>()
+                    .map(Size::Pixels)
                     .map_err(|_| format!("Invalid margin value: {}", s))
+            } else if s.ends_with('%') {
+                let num = s.trim_end_matches('%').parse::<f32>()
+                    .map_err(|_| format!("Invalid margin value: {}", s))?;
+                Ok(Size::Percent(num))
             } else if let Ok(num) = s.parse::<f32>() {
-                Ok(num)
+                Ok(Size::Pixels(num))
             } else {
                 Err(format!("Invalid margin value: {}", s))
             }
         };
-        
+
         if value.contains(' ') {
             let parts: Vec<&str> = value.split_whitespace().collect();
             if parts.len() == 4 {
                 Ok(Margin::new(
-                    parse_size_with_unit(parts[0])?,
-                    parse_size_with_unit(parts[1])?,
-                    parse_size_with_unit(parts[2])?,
-                    parse_size_with_unit(parts[3])?,
+                    parse_margin_value_with_unit(parts[0])?,
+                    parse_margin_value_with_unit(parts[1])?,
+                    parse_margin_value_with_unit(parts[2])?,
+                    parse_margin_value_with_unit(parts[3])?,
                 ))
             } else if parts.len() == 2 {
-                let v = parse_size_with_unit(parts[0])?;
-                let h = parse_size_with_unit(parts[1])?;
-                Ok(Margin::new(v, h, v, h))
+                let v = parse_margin_value_with_unit(parts[0])?;
+                let h = parse_margin_value_with_unit(parts[1])?;
+                Ok(Margin::new(v.clone(), h.clone(), v, h))
             } else {
                 // Single value - uniform margin
-                let num = parse_size_with_unit(value)?;
+                let num = parse_margin_value_with_unit(value)?;
                 Ok(Margin::uniform(num))
             }
         } else {
             // Single value - uniform margin
-            let num = parse_size_with_unit(value)?;
+            let num = parse_margin_value_with_unit(value)?;
             Ok(Margin::uniform(num))
         }
     }

@@ -110,21 +110,6 @@ struct FreeList {
     indices: array<u32>,
 }
 
-struct SpawnRequest {
-    pos: vec2<f32>,
-    radius: f32,
-    energy: f32,
-    lifeform_id: u32,
-    parent_cell: u32,
-    _pad: u32,
-}
-
-struct SpawnBuffer {
-    counter: atomic<u32>,
-    _pad: u32,
-    requests: array<SpawnRequest>,
-}
-
 struct NutrientGrid {
     values: array<atomic<u32>>,
 }

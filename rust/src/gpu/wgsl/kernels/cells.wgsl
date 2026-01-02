@@ -25,37 +25,17 @@ var<storage, read_write> cell_free_list: FreeList;
 var<storage, read_write> cell_counter: atomic<u32>;
 
 @group(0) @binding(7)
-var<storage, read_write> spawn_buffer: SpawnBuffer;
-
-@group(0) @binding(8)
 var<storage, read_write> nutrient_grid: NutrientGrid;
 
-@group(0) @binding(9)
+@group(0) @binding(8)
 var<storage, read_write> links: array<Link>;
 
-@group(0) @binding(10)
+@group(0) @binding(9)
 var<storage, read_write> link_free_list: FreeList;
 
-@group(0) @binding(11)
-var<storage, read_write> lifeforms: array<Lifeform>;
-
-@group(0) @binding(12)
-var<storage, read_write> lifeform_free: FreeList;
-
-@group(0) @binding(13)
+@group(0) @binding(10)
 var<storage, read_write> lifeform_counter: atomic<u32>;
 
-@group(0) @binding(14)
-var<storage, read_write> species_entries: array<Species>;
-
-@group(0) @binding(15)
-var<storage, read_write> species_free: FreeList;
-
-@group(0) @binding(16)
-var<storage, read_write> species_counter: atomic<u32>;
-
-@group(0) @binding(17)
-var<storage, read_write> position_changes: array<PositionChangeEntry>;
 
 fn compute_cell_color(radius: f32, energy: f32) -> vec4<f32> {
     let energy_normalized = clamp(energy / (radius * 50.0), 0.0, 1.0);
@@ -103,70 +83,6 @@ fn absorb_nutrients(cell_pos: vec2<f32>, radius: f32, absorption_rate: f32) -> f
     return take;
 }
 
-fn spawn_cells() {
-    /*loop {
-        let pending = atomicLoad(&spawn_buffer.counter);
-        if pending == 0u {
-            break;
-        }
-        let desired = pending - 1u;
-        let exchange = atomicCompareExchangeWeak(&spawn_buffer.counter, pending, desired);
-        if !exchange.exchanged {
-            continue;
-        }
-        let request_index = desired;
-        if request_index >= arrayLength(&spawn_buffer.requests) {
-            continue;
-        }
-
-        let req = spawn_buffer.requests[request_index];
-        let cell_slot = alloc_cell_slot();
-        let phys_slot = alloc_physics_slot();
-        if cell_slot < 0 || phys_slot < 0 {
-            // Put the counter back if we failed to allocate
-            atomicAdd(&spawn_buffer.counter, 1u);
-            if cell_slot >= 0 {
-                free_cell_slot(u32(cell_slot));
-            }
-            if phys_slot >= 0 {
-                free_physics_slot(u32(phys_slot));
-            }
-            break;
-        }
-
-        // Physics setup
-        var phys = VerletPoint(
-            req.pos,
-            req.pos,
-            vec2<f32>(0.0),
-            max(req.radius, 1.0),
-            1u,
-        );
-        points[u32(phys_slot)] = phys;
-        atomicAdd(&physics_counter, 1u);
-
-        // Cell setup
-        var cell = Cell(
-            u32(phys_slot),       // point_idx
-            req.lifeform_id,      // lifeform_id
-            0u,                   // generation
-            req.radius,           // radius
-            req.energy,           // energy
-            1.0,                  // cell_wall_thickness
-            compute_cell_color(req.radius, req.energy),
-            1u,                   // flags
-            array<u32, 20>(), // noise_permutations
-            vec2<f32>(0.0),       // noise_texture_offset
-        );
-        cells[u32(cell_slot)] = cell;
-        atomicAdd(&cell_counter, 1u);
-
-        if req.lifeform_id < arrayLength(&lifeforms) {
-            atomicAdd(&lifeforms[req.lifeform_id].cell_count, 1u);
-        }
-    }*/
-}
-
 @compute @workgroup_size(128)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx = global_id.x;
@@ -187,8 +103,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
-    let seed = point.pos.x * 10000.0 + cell.energy;
-    point.pos += rand_vec2(seed) * 3.0f;
+    let seed = point.pos.x * 1000.0 + point.pos.y * 10.0 + cell.energy;
+    point.pos += rand_vec2(seed) * 0.1f;
     point.prev_pos = point.pos;
     points[cell.point_idx] = point;
 

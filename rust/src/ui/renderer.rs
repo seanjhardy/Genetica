@@ -617,8 +617,8 @@ impl UiRenderer {
             return;
         }
 
-        let x = parent_x + component.layout.position_x + component.style.margin.left;
-        let y = parent_y + component.layout.position_y + component.style.margin.top;
+        let x = parent_x + component.layout.position_x;
+        let y = parent_y + component.layout.position_y;
         let width = component.layout.computed_width.max(0.0);
         let height = component.layout.computed_height.max(0.0);
         

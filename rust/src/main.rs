@@ -2,6 +2,7 @@ mod utils;
 mod simulator;
 mod gpu;
 mod ui;
+mod genetic_algorithm;
 
 fn main() {
     env_logger::init();

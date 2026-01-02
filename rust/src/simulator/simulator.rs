@@ -1,24 +1,29 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
+use std::sync::atomic::AtomicUsize;
 use crate::utils::math::{Rect};
 use puffin::profile_scope;
 use crate::gpu::buffers::{CELL_CAPACITY, GpuBuffers, POINT_CAPACITY};
 use crate::gpu::pipelines::{ComputePipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::simulator::environment::Environment;
+use crate::simulator::events::{EventQueue};
 use crate::simulator::state::{PauseState, SimSlot, SlotState};
+use crate::genetic_algorithm::GeneticAlgorithm;
 
 const WORKGROUP_SIZE: u32 = 512;
 const SIM_STATE_RING_SIZE: usize = 3;
-const CELL_UPDATE_INTERVAL: u64 = 10;
+const CELL_UPDATE_INTERVAL: usize = 10;
 
 pub struct Simulation {
     pub render_slot: usize,
     pub slots: Vec<SimSlot>,
-    step: Arc<AtomicU64>,
+    step: Arc<AtomicUsize>,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     environment: Arc<parking_lot::Mutex<Environment>>,
+    genetic_algorithm: GeneticAlgorithm,
+    event_queue: EventQueue,
     current_bounds: Rect,
     initial_bounds: Rect,
     paused_state: PauseState,
@@ -70,7 +75,9 @@ impl Simulation {
             queue,
             environment,
             slots,
-            step: Arc::new(AtomicU64::new(0)),
+            step: Arc::new(AtomicUsize::new(0)),
+            genetic_algorithm: GeneticAlgorithm::new(),
+            event_queue: EventQueue::new(),
             current_bounds: initial_bounds,
             initial_bounds,
             render_slot: 0,
@@ -120,6 +127,9 @@ impl Simulation {
 
         // Rotate buffers: scratch becomes current, current becomes previous, previous becomes scratch.
         self.slots.rotate_left(1);
+
+        // Process pending events
+        self.genetic_algorithm.process_events(self.step.load(Ordering::Relaxed), &self.event_queue);
     }
 
     pub fn reset(&mut self) {
@@ -143,10 +153,12 @@ impl Simulation {
         }
 
         self.step.store(0, Ordering::Relaxed);
+        self.event_queue.clear();
         self.current_bounds = self.initial_bounds;
     }
 
-    pub fn get_step(&self) -> u64 {
+    pub fn get_step(&self) -> usize {
         self.step.load(Ordering::Relaxed)
     }
+
 }

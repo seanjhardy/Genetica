@@ -127,6 +127,15 @@ impl View {
             return;
         }
 
+        // Check if this layer contains absolute positioned children
+        let has_absolute_children = visible_indices.iter()
+            .any(|&idx| self.children[idx].absolute);
+
+        if has_absolute_children {
+            self.update_absolute_layout(&visible_indices, parent_x, parent_y, parent_width, parent_height, parent_padding);
+            return;
+        }
+
         let is_row = self.flex_direction == FlexDirection::Row;
         let padding = parent_padding;
 
@@ -323,12 +332,18 @@ impl View {
                 _ => cross_pos,
             };
 
+            // Resolve margin values based on child's computed dimensions
+            let resolved_margin = child.style.margin.resolve_to_pixels(
+                parent_width,
+                parent_height
+            );
+
             if is_row {
-                child.layout.position_x = current_main_pos - parent_x;
-                child.layout.position_y = adjusted_cross_pos - parent_y;
+                child.layout.position_x = current_main_pos - parent_x + resolved_margin.left;
+                child.layout.position_y = adjusted_cross_pos - parent_y + resolved_margin.top;
             } else {
-                child.layout.position_x = adjusted_cross_pos - parent_x;
-                child.layout.position_y = current_main_pos - parent_y;
+                child.layout.position_x = adjusted_cross_pos - parent_x + resolved_margin.left;
+                child.layout.position_y = current_main_pos - parent_y + resolved_margin.top;
             }
 
             if let super::ComponentType::View(ref mut view) = child.component_type {
@@ -375,6 +390,87 @@ impl View {
                 self.children[idx].layout.position_x += offset;
             } else {
                 self.children[idx].layout.position_y += offset;
+            }
+        }
+    }
+
+    fn update_absolute_layout(&mut self, indices: &[usize], parent_x: f32, parent_y: f32, parent_width: f32, parent_height: f32, parent_padding: super::styles::Padding) {
+        for &idx in indices {
+            if idx >= self.children.len() {
+                continue;
+            }
+
+            let child = &mut self.children[idx];
+            if !child.absolute {
+                continue; // Skip non-absolute children in absolute layout
+            }
+
+            // Calculate child dimensions first
+            let child_width = if matches!(child.style.width, super::Size::Auto) {
+                // For auto width, use calculated width
+                match child.calculate_width() {
+                    super::Size::Pixels(val) => val,
+                    super::Size::Percent(p) => parent_width * p / 100.0,
+                    _ => parent_width, // fallback
+                }
+            } else {
+                child.style.width.to_pixels(parent_width)
+            };
+
+            let child_height = if matches!(child.style.height, super::Size::Auto) {
+                // For auto height, use calculated height
+                match child.calculate_height() {
+                    super::Size::Pixels(val) => val,
+                    super::Size::Percent(p) => parent_height * p / 100.0,
+                    _ => parent_height, // fallback
+                }
+            } else {
+                child.style.height.to_pixels(parent_height)
+            };
+
+            // Calculate position based on top/left/right/bottom properties
+            let mut x = parent_x;
+            let mut y = parent_y;
+
+            // Handle horizontal positioning
+            if let Some(left) = child.style.left {
+                x += left.to_pixels(parent_width);
+            } else if let Some(right) = child.style.right {
+                x += parent_width - child_width - right.to_pixels(parent_width);
+            } else {
+                // Default to left: 0 if neither left nor right is specified
+                x += 0.0;
+            }
+
+            // Handle vertical positioning
+            if let Some(top) = child.style.top {
+                y += top.to_pixels(parent_height);
+            } else if let Some(bottom) = child.style.bottom {
+                y += parent_height - child_height - bottom.to_pixels(parent_height);
+            } else {
+                // Default to top: 0 if neither top nor bottom is specified
+                y += 0.0;
+            }
+
+            // Apply padding offset
+            x += parent_padding.left;
+            y += parent_padding.top;
+
+            // Set computed layout
+            child.layout.position_x = x - parent_x;
+            child.layout.position_y = y - parent_y;
+            child.layout.computed_width = child_width;
+            child.layout.computed_height = child_height;
+
+            // Recursively update child layout if it's a view
+            if let super::ComponentType::View(ref mut view) = child.component_type {
+                view.update_layout(
+                    x,
+                    y,
+                    child_width,
+                    child_height,
+                    child.style.padding,
+                );
             }
         }
     }

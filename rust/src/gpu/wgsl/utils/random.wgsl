@@ -37,5 +37,5 @@ fn rand_11(seed: f32) -> f32 {
 }
 
 fn rand_vec2(seed: f32) -> vec2<f32> {
-    return vec2<f32>(rand_11(seed), rand_11(seed + 1));
+    return vec2<f32>(rand_11(seed), rand_11(seed + 5.0));
 }
