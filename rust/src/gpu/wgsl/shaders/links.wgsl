@@ -6,9 +6,12 @@
 var<uniform> uniforms: Uniforms;
 
 @group(0) @binding(1)
-var<storage, read> cells: array<Cell>;
+var<storage, read> points: array<VerletPoint>;
 
 @group(0) @binding(2)
+var<storage, read> cells: array<Cell>;
+
+@group(0) @binding(3)
 var<storage, read> links: array<Link>;
 
 struct VertexOutput {
@@ -34,30 +37,37 @@ fn vs_main(
     @builtin(instance_index) instance_index: u32,
     @builtin(vertex_index) vertex_index: u32,
 ) -> VertexOutput {
-    if instance_index >= arrayLength(&links) {
+    var output: VertexOutput;
+    /*if instance_index >= arrayLength(&links) {
         return empty_vertex();
     }
 
     let link = links[instance_index];
-    if (link.flags & LINK_FLAG_ALIVE) == 0u {
+    if (link.flags & LINK_FLAG_ACTIVE) == 0u {
         return empty_vertex();
     }
 
-    if link.a >= arrayLength(&cells) || link.b >= arrayLength(&cells) {
+    if link.a_cell >= arrayLength(&cells) || link.b_cell >= arrayLength(&cells) {
         return empty_vertex();
     }
 
-    let cell_a = cells[link.a];
-    let cell_b = cells[link.b];
-    if cell_a.is_alive == 0u || cell_b.is_alive == 0u {
+    let cell_a = cells[link.a_cell];
+    let cell_b = cells[link.b_cell];
+    if (cell_a.flags & CELL_FLAG_ACTIVE == 0u) || (cell_b.flags & CELL_FLAG_ACTIVE == 0u) {
         return empty_vertex();
     }
 
-    if cell_a.generation != link.generation_a || cell_b.generation != link.generation_b {
+    if cell_a.generation != link.a_generation || cell_b.generation != link.b_generation {
         return empty_vertex();
     }
 
-    let delta = cell_b.pos - cell_a.pos;
+    if cell_a.point_idx >= arrayLength(&points) || cell_b.point_idx >= arrayLength(&points) {
+        return empty_vertex();
+    }
+
+    let pos_a = points[cell_a.point_idx].pos;
+    let pos_b = points[cell_b.point_idx].pos;
+    let delta = pos_b - pos_a;
     let dist = length(delta);
     if dist <= 0.0001 {
         return empty_vertex();
@@ -73,26 +83,25 @@ fn vs_main(
 
     switch vertex_index {
         case 0u: {
-            world_pos = cell_a.pos + offset_a;
+            world_pos = pos_a + offset_a;
             color = cell_a.color;
         }
         case 1u: {
-            world_pos = cell_a.pos - offset_a;
+            world_pos = pos_a - offset_a;
             color = cell_a.color;
         }
         case 2u: {
-            world_pos = cell_b.pos + offset_b;
+            world_pos = pos_b + offset_b;
             color = cell_b.color;
         }
         default: {
-            world_pos = cell_b.pos - offset_b;
+            world_pos = pos_b - offset_b;
             color = cell_b.color;
         }
     }
 
-    var output: VertexOutput;
     output.clip_position = compute_clip_position(world_pos);
-    output.color = color;
+    output.color = color;*/
     return output;
 }
 

@@ -5,7 +5,7 @@ use puffin::profile_scope;
 
 use crate::utils::math::Vec2;
 use crate::utils::gpu::device::GpuDevice;
-use crate::gpu::buffers::GpuBuffers;
+use crate::gpu::buffers::{GpuBuffers, CELL_CAPACITY};
 use crate::gpu::pipelines::RenderPipelines;
 use crate::gpu::bounds_renderer::BoundsRenderer;
 use crate::ui::UiRenderer;
@@ -27,26 +27,10 @@ impl Renderer {
         bounds_corners: [Vec2; 4],
         camera_pos: Vec2,
         zoom: f32,
-        num_points: usize,
-        num_links: usize,
         show_grid: bool,
         encoder: &mut wgpu::CommandEncoder,
     ) -> bool {
         profile_scope!("Render Simulation");
-        
-        // Copy spatial hash bucket heads from writable to readonly buffer
-        // This is needed because fragment shaders can't use atomic buffers
-        let hash_table_size = buffers.cell_hash_table_size();
-        if hash_table_size > 0 {
-            let hash_table_bytes = (hash_table_size * std::mem::size_of::<i32>()) as u64;
-            encoder.copy_buffer_to_buffer(
-                buffers.cell_hash_bucket_heads_buffer(),
-                0,
-                buffers.cell_hash_bucket_heads_readonly_buffer(),
-                0,
-                hash_table_bytes,
-            );
-        }
 
         // Prepare viewport textures (compute layout and create textures)
         let mut viewport_texture_view = None;
@@ -135,11 +119,10 @@ impl Renderer {
             }
         }
         
-        // Render simulation links and cells to viewport texture (on top of planet background)
         {
             profile_scope!("Render Cells");
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Simulation Render Pass"),
+                label: Some("Cell Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: viewport_texture_view,
                     resolve_target: None,
@@ -153,18 +136,10 @@ impl Renderer {
                 timestamp_writes: None,
                 ..Default::default()
             });
-
-            if num_links > 0 {
-                render_pass.set_pipeline(&render_pipelines.links);
-                render_pass.set_bind_group(0, &render_pipelines.link_bind_group, &[]);
-                render_pass.draw(0..4, 0..(num_links as u32));
-            }
-
-            render_pass.set_pipeline(&render_pipelines.points);
+            render_pass.set_pipeline(&render_pipelines.cells);
             render_pass.set_bind_group(0, &render_pipelines.cell_render_bind_group, &[]);
-            render_pass.draw(0..4, 0..(num_points as u32));
+            render_pass.draw(0..6, 0..(CELL_CAPACITY as u32));
         }
-
         true
     }
 }

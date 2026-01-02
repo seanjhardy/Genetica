@@ -14,6 +14,7 @@ winit = "0.30"
 wgpu = "25"
 bytemuck = { version = "1.16", features = ["derive"] }
 pollster = "0.3"
+futures = "0.3"
 cgmath = "0.18"
 env_logger = "0.11"
 puffin = "0.19"

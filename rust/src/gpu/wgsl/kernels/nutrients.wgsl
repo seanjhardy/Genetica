@@ -4,7 +4,7 @@
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
 
-@group(0) @binding(1)
+@group(0) @binding(8)
 var<storage, read_write> nutrient_grid: NutrientGrid;
 
 @compute @workgroup_size(256)

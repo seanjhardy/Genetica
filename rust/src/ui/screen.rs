@@ -71,7 +71,8 @@ impl Screen {
         for element in &mut self.elements {
             element.layout.computed_width = width;
             element.layout.computed_height = height;
-            
+            element.layout.mark_dirty(); // Mark as dirty to trigger layout recalculation
+
             // Layout the element
             Self::layout_element_at_size(element, width, height);
         }
@@ -97,17 +98,25 @@ impl Screen {
         }
     }
 
-    pub fn update(&mut self, _dt: f32, mouse_pos: (f32, f32)) -> bool {
+    pub fn update(&mut self, _dt: f32, mouse_pos: (f32, f32)) -> (bool, Option<&'static str>) {
         let mut hovered = false;
+        let mut cursor_hint = None;
+
         for element in &mut self.elements {
             // Update hover states for all components (including children)
-            element.update_hover(mouse_pos.0, mouse_pos.1);
-            
-            if element.contains(mouse_pos) && element.visible && element.style.background_color.a != 0.0 && element.allow_click {
+            let element_hovered = element.update_hover(mouse_pos.0, mouse_pos.1);
+            if element_hovered {
                 hovered = true;
+
+                // Check if this element or any of its hovered children has cursor-pointer style
+                let element_cursor = element.get_cursor_hint(mouse_pos.0, mouse_pos.1);
+                if let Some(hint) = element_cursor {
+                    cursor_hint = Some(hint);
+                }
             }
         }
-        hovered
+
+        (hovered, cursor_hint)
     }
     
     /// Handle mouse click event - returns the handler name if a handler was triggered
@@ -186,12 +195,13 @@ impl Screen {
         if !component.visible {
             return false;
         }
-        
-        // Check if point is within this component's bounds (deterministic calculation)
-        if component.contains_point(mouse_pos.0, mouse_pos.1, parent_x, parent_y) {
+
+        // Check if point is within this component's bounds AND it has a non-transparent background
+        if component.contains_point(mouse_pos.0, mouse_pos.1, parent_x, parent_y) &&
+           component.style.background_color.a != 0.0 {
             return true;
         }
-        
+
         // Check children recursively
         if let ComponentType::View(view) = &component.component_type {
             let (x, y) = component.calculate_absolute_position(parent_x, parent_y);
@@ -201,14 +211,13 @@ impl Screen {
                 }
             }
         }
-        
+
         false
     }
     
     pub fn get_elements_mut(&mut self) -> &mut [Component] {
         &mut self.elements
     }
-    
 }
 
 impl Default for Screen {

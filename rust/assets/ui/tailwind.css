@@ -13,6 +13,10 @@
 .row-center { align-row: center; }
 .row-end { align-row: flex-end; }
 
+/* Cursor */
+.cursor-pointer { cursor: pointer; }
+.cursor-default { cursor: default; }
+
 /* Sizing */
 .w-full { width: 100%; }
 .h-full { height: 100%; }
@@ -44,6 +48,7 @@
 
 /* Colors - Text */
 .text-white { color: #FFFFFF; }
+.text-teal { color: #05fff0; }
 
 /* Borders */
 .border-none { border: 0px; }

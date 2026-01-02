@@ -8,30 +8,26 @@ const MAX_GRN_STATE_SIZE: u32 = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNI
 const MAX_GENES_PER_GENOME: u32 = 200u;
 const BASE_PAIRS_PER_GENE: u32 = 55u;
 const BASE_PAIRS_PER_GENOME: u32 = MAX_GENES_PER_GENOME * BASE_PAIRS_PER_GENE;
+
 // 55 base pairs = 110 bits, need 4 u32 words per gene (128 bits)
 const WORDS_PER_GENE: u32 = 4u;
 const GENOME_WORD_COUNT: u32 = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
+
 // Genome event queue (division copies) - must match Rust
 const MAX_GENOME_EVENTS: u32 = 65536u;
 const GRN_EVALUATION_FALLBACK: u32 = 8u;
 
-const DIVISION_PROBABILITY: f32 = 0.001;
-const RANDOM_DEATH_PROBABILITY: f32 = 0.0;
-
-// NOTE: These capacities MUST match the values in `rust/src/gpu/buffers.rs`
-// (CELL_CAPACITY and LIFEFORM_CAPACITY) to keep CPU/GPU in sync.
-// If they diverge, index-based checks like `parent_index < CELL_CAPACITY`
-// will behave incorrectly and break division/spawn logic.
 const LIFEFORM_CAPACITY: u32 = 50000u;
-const CELL_CAPACITY: u32 = 100000u;
+const CELL_CAPACITY: u32 = 1000000u;
 const MIN_DIVISION_ENERGY: f32 = 20.0;
 
-const LINK_FLAG_ALIVE: u32 = 1u;
-const LINK_FLAG_ADHESIVE: u32 = 1u << 1u;
-
+const LINK_FLAG_ACTIVE: u32 = 1u;
+const POINT_FLAG_ACTIVE: u32 = 1u;
+const CELL_FLAG_ACTIVE: u32 = 1u;
 const LIFEFORM_FLAG_ACTIVE: u32 = 1u;
-const LIFEFORM_FLAG_PRESERVED: u32 = 1u << 1u;
 const SPECIES_FLAG_ACTIVE: u32 = 1u;
+
+const LIFEFORM_FLAG_PRESERVED: u32 = 1u << 1u;
 
 const MIN_ACTIVE_CELLS: u32 = 20u;
 const MUTATE_BASE_CHANCE: f32 = 0.0005;
@@ -45,8 +41,7 @@ const BASE_DIFFERENCE_SCALAR: f32 = 0.1;
 const COMPATABILITY_DISTANCE_THRESHOLD: f32 = 200.0;
 const MAX_SPECIES_CAPACITY: u32 = 1024u;
 
-const HASH_CELL_SIZE: f32 = 8.0;
-const COLLISION_EPSILON: f32 = 0.0001;
-
 const POSITION_CHANGE_SCALE: f32 = 40000000.0;
 const CELL_WALL_SAMPLES: u32 = 20u;
+
+const MIN_POINTS: u32 = 1000u;

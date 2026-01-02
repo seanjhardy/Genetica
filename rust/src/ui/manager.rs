@@ -59,7 +59,7 @@ impl UIManager {
     pub fn resize(&mut self, width: f32, height: f32) {
         self.window_width = width;
         self.window_height = height;
-        
+
         if let Some(ref screen_name) = self.current_screen {
             if let Some(screen) = self.screens.get_mut(screen_name) {
                 screen.resize(width, height);

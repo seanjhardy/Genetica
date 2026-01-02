@@ -1,7 +1,7 @@
 // Text renderer using glyph_brush directly for simple on-screen text rendering
 
 use wgpu;
-use glyph_brush::{GlyphBrush, GlyphBrushBuilder, Section, Text, OwnedSection, OwnedText, Layout};
+use glyph_brush::{GlyphBrush, GlyphBrushBuilder, OwnedSection, OwnedText, Layout, BrushError};
 use ab_glyph::FontArc;
 use wgpu::util::DeviceExt;
 
@@ -37,6 +37,24 @@ struct TextVertex {
     position: [f32; 2],
     tex_coords: [f32; 2],
     color: [f32; 4],
+}
+
+
+
+/// Calculate text bounds using a fixed character count approach
+/// This provides stable sizing that doesn't change with every character
+pub fn calculate_text_bounds(text: &str, font_size: f32) -> (f32, f32) {
+    if text.is_empty() {
+        return (0.0, font_size);
+    }
+
+    // Conservative character width multiplier for monospace-like behavior
+    const CHAR_WIDTH_FACTOR: f32 = 0.6;
+
+    let width = ((text.chars().count() as f32) * font_size * CHAR_WIDTH_FACTOR).ceil();
+    let height = font_size.ceil();
+
+    (width, height)
 }
 
 impl TextRenderer {
@@ -239,6 +257,7 @@ impl TextRenderer {
     }
 
 
+
     pub fn queue_text_with_size(&mut self, _queue: &wgpu::Queue, text: &str, x: f32, y: f32, color: [f32; 4], font_size: f32) {
         // Round positions to pixel boundaries to prevent sub-pixel jitter
         // This ensures the glyph brush cache works properly
@@ -271,9 +290,6 @@ impl TextRenderer {
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
     ) -> Option<wgpu::CommandBuffer> {
-        // Reset section ID for next frame
-        self.section_id = 0.0;
-        
         // Update uniform buffer
         let uniforms = Uniforms {
             screen_width: self.screen_width as f32,
@@ -283,124 +299,100 @@ impl TextRenderer {
         use glyph_brush::BrushAction;
         use std::cell::RefCell;
         
-        // BUG FIX: Invalidate the glyph brush's internal section hash cache
-        // This forces it to regenerate all vertices every frame, preventing 
-        // sections from disappearing when their text doesn't change
-        // Without this, sections with unchanged text get ReDraw but aren't included
-        // in the vertex output, causing them to flicker/disappear
-        self.glyph_brush.resize_texture(self.texture_size, self.texture_size);
-        
         // Clear previous frame's data (but keep buffers if ReDraw)
         let vertices = RefCell::new(Vec::new());
         let indices = RefCell::new(Vec::new());
         
         // Process queued glyphs
-        match self.glyph_brush.process_queued(
-            |rect, tex_data| {
-                // Update texture with new glyph data
-                // rect coordinates are in pixel coordinates relative to glyph_brush's internal texture
-                // These coordinates are where to write the glyph data in the texture atlas
-                let width = rect.width();
-                let height = rect.height();
-                let x = rect.min[0] as u32;
-                let y = rect.min[1] as u32;
-                
-                // Ensure coordinates are within texture bounds
-                if x + width > self.texture_size || y + height > self.texture_size {
-                    eprintln!("Warning: Texture update out of bounds! x={}, y={}, width={}, height={}, texture_size={}", 
-                        x, y, width, height, self.texture_size);
-                    return;
-                }
-                
-                // wgpu requires bytes_per_row to be aligned to 256 bytes for optimal performance
-                // For R8Unorm (1 byte per pixel), we need to align the row size
-                // But glyph_brush provides data in a packed format, so we use the actual width
-                // Note: wgpu will handle padding internally if needed
-                queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &self.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d {
-                            x,
-                            y,
-                            z: 0,
+        loop {
+            match self.glyph_brush.process_queued(
+                |rect, tex_data| {
+                    let width = rect.width();
+                    let height = rect.height();
+                    let x = rect.min[0] as u32;
+                    let y = rect.min[1] as u32;
+
+                    // Drop writes that exceed the atlas; we will grow on TextureTooSmall.
+                    if x + width > self.texture_size || y + height > self.texture_size {
+                        return;
+                    }
+
+                    queue.write_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &self.texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d { x, y, z: 0 },
+                            aspect: wgpu::TextureAspect::All,
                         },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    tex_data,
-                    wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(width), // R8Unorm = 1 byte per pixel
-                        rows_per_image: Some(height),
-                    },
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                );
-            },
-            |glyph_vertex| {
-                // Convert glyph vertex to our vertex format
-                // glyph_brush calls this callback ONCE per glyph, not per vertex
-                // Each glyph_vertex contains the full rect for that glyph
-                // We need to generate 4 vertices (one per corner) from each glyph
-                let mut verts = vertices.borrow_mut();
-                let mut inds = indices.borrow_mut();
-                
-                let base_idx = verts.len();
-                let color = glyph_vertex.extra.color;
-                
-                // glyph_brush provides texture coordinates already normalized to [0,1] range
-                // These coordinates are relative to glyph_brush's internal texture atlas
-                // We need to ensure our texture writes match where these coordinates point
-                // Generate 4 vertices for this glyph quad (one per corner)
-                // Order: top-left, top-right, bottom-right, bottom-left
-                verts.push(TextVertex {
-                    position: [glyph_vertex.pixel_coords.min.x as f32, glyph_vertex.pixel_coords.min.y as f32],
-                    tex_coords: [glyph_vertex.tex_coords.min.x, glyph_vertex.tex_coords.min.y],
-                    color,
-                });
-                verts.push(TextVertex {
-                    position: [glyph_vertex.pixel_coords.max.x as f32, glyph_vertex.pixel_coords.min.y as f32],
-                    tex_coords: [glyph_vertex.tex_coords.max.x, glyph_vertex.tex_coords.min.y],
-                    color,
-                });
-                verts.push(TextVertex {
-                    position: [glyph_vertex.pixel_coords.max.x as f32, glyph_vertex.pixel_coords.max.y as f32],
-                    tex_coords: [glyph_vertex.tex_coords.max.x, glyph_vertex.tex_coords.max.y],
-                    color,
-                });
-                verts.push(TextVertex {
-                    position: [glyph_vertex.pixel_coords.min.x as f32, glyph_vertex.pixel_coords.max.y as f32],
-                    tex_coords: [glyph_vertex.tex_coords.min.x, glyph_vertex.tex_coords.max.y],
-                    color,
-                });
-                
-                // Generate indices for the quad (2 triangles)
-                let base = base_idx as u16;
-                // First triangle: 0-1-2 (top-left, top-right, bottom-right)
-                inds.push(base);
-                inds.push(base + 1);
-                inds.push(base + 2);
-                // Second triangle: 0-2-3 (top-left, bottom-right, bottom-left)
-                inds.push(base);
-                inds.push(base + 2);
-                inds.push(base + 3);
-            },
-        ) {
-            Ok(BrushAction::Draw(_)) => {
-                self.vertices = vertices.into_inner();
-                self.indices = indices.into_inner();
-            }
-            Ok(BrushAction::ReDraw) => {
-                // BUG FIX: The glyph brush returns ReDraw when the text/position hasn't changed.
-                // In this case, we keep using the cached vertices from the previous Draw.
-                // The glyph brush maintains its internal texture atlas across frames.
-            }
-            Err(e) => {
-                eprintln!("Glyph brush error: {:?}", e);
-                return None;
+                        tex_data,
+                        wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(width),
+                            rows_per_image: Some(height),
+                        },
+                        wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                },
+                |glyph_vertex| {
+                    let mut verts = vertices.borrow_mut();
+                    let mut inds = indices.borrow_mut();
+
+                    let base_idx = verts.len();
+                    let color = glyph_vertex.extra.color;
+
+                    verts.push(TextVertex {
+                        position: [glyph_vertex.pixel_coords.min.x as f32, glyph_vertex.pixel_coords.min.y as f32],
+                        tex_coords: [glyph_vertex.tex_coords.min.x, glyph_vertex.tex_coords.min.y],
+                        color,
+                    });
+                    verts.push(TextVertex {
+                        position: [glyph_vertex.pixel_coords.max.x as f32, glyph_vertex.pixel_coords.min.y as f32],
+                        tex_coords: [glyph_vertex.tex_coords.max.x, glyph_vertex.tex_coords.min.y],
+                        color,
+                    });
+                    verts.push(TextVertex {
+                        position: [glyph_vertex.pixel_coords.max.x as f32, glyph_vertex.pixel_coords.max.y as f32],
+                        tex_coords: [glyph_vertex.tex_coords.max.x, glyph_vertex.tex_coords.max.y],
+                        color,
+                    });
+                    verts.push(TextVertex {
+                        position: [glyph_vertex.pixel_coords.min.x as f32, glyph_vertex.pixel_coords.max.y as f32],
+                        tex_coords: [glyph_vertex.tex_coords.min.x, glyph_vertex.tex_coords.max.y],
+                        color,
+                    });
+
+                    let base = base_idx as u16;
+                    inds.push(base);
+                    inds.push(base + 1);
+                    inds.push(base + 2);
+                    inds.push(base);
+                    inds.push(base + 2);
+                    inds.push(base + 3);
+                },
+            ) {
+                Ok(BrushAction::Draw(_)) => {
+                    self.vertices = vertices.into_inner();
+                    self.indices = indices.into_inner();
+                    break;
+                }
+                Ok(BrushAction::ReDraw) => {
+                    break;
+                }
+                Err(BrushError::TextureTooSmall { suggested }) => {
+                    eprintln!(
+                        "Glyph atlas too small (current: {}), suggested: {} — skipping this frame",
+                        self.texture_size, suggested.0
+                    );
+                    return None;
+                }
+                Err(e) => {
+                    eprintln!("Glyph brush error: {:?}", e);
+                    return None;
+                }
             }
         }
         

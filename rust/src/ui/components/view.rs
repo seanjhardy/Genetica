@@ -60,34 +60,53 @@ impl View {
     }
     
     pub fn calculate_width(&self, padding: super::styles::Padding) -> super::Size {
-        let mut current_width = padding.left + padding.right;
-        for child in &self.children {
-            if !child.visible || child.absolute {
-                continue;
+        if self.flex_direction == FlexDirection::Row {
+            // Main axis: sum + gaps
+            let mut current_width = padding.left + padding.right;
+            for child in &self.children {
+                if !child.visible || child.absolute { continue; }
+                if let super::Size::Pixels(value) = child.calculate_width() {
+                    current_width += value + self.gap;
+                }
             }
-            let child_width = child.calculate_width();
-            if let super::Size::Pixels(value) = child_width {
-                current_width += value + self.gap;
+            let result = (current_width - self.gap).max(padding.left + padding.right);
+            super::Size::Pixels(result)
+        } else {
+            // Cross axis: max
+            let mut max_width = 0.0f32;
+            for child in &self.children {
+                if !child.visible || child.absolute { continue; }
+                if let super::Size::Pixels(value) = child.calculate_width() {
+                    max_width = max_width.max(value);
+                }
             }
+            super::Size::Pixels(max_width + padding.left + padding.right)
         }
-        let result = (current_width - self.gap).max(padding.left + padding.right);
-        super::Size::Pixels(result)
     }
-    
+
     pub fn calculate_height(&self, padding: super::styles::Padding) -> super::Size {
-        // Match C++ exactly: calculateHeight uses child->calculateHeight().getValue()
-        let mut current_height = padding.top + padding.bottom;
-        for child in &self.children {
-            if !child.visible || child.absolute {
-                continue;
+        if self.flex_direction == FlexDirection::Column {
+            // Main axis: sum + gaps  
+            let mut current_height = padding.top + padding.bottom;
+            for child in &self.children {
+                if !child.visible || child.absolute { continue; }
+                if let super::Size::Pixels(value) = child.calculate_height() {
+                    current_height += value + self.gap;
+                }
             }
-            // Match C++: currentHeight += child->calculateHeight().getValue() + gap;
-            if let super::Size::Pixels(value) = child.calculate_height() {
-                current_height += value + self.gap;
+            let result = (current_height - self.gap).max(padding.top + padding.bottom);
+            super::Size::Pixels(result)
+        } else {
+            // Cross axis: max
+            let mut max_height = 0.0f32;
+            for child in &self.children {
+                if !child.visible || child.absolute { continue; }
+                if let super::Size::Pixels(value) = child.calculate_height() {
+                    max_height = max_height.max(value);
+                }
             }
+            super::Size::Pixels(max_height + padding.top + padding.bottom)
         }
-        let result = (current_height - self.gap).max(padding.top + padding.bottom);
-        super::Size::Pixels(result)
     }
     
     pub fn update_layout(&mut self, parent_x: f32, parent_y: f32, parent_width: f32, parent_height: f32, parent_padding: super::styles::Padding) {
@@ -141,14 +160,14 @@ impl View {
                         match child.calculate_width() {
                             super::Size::Pixels(val) => val,
                             super::Size::Percent(percent) => available_main_size * percent / 100.0,
-                            super::Size::Flex(val) => available_main_size * val.max(0.0),
+                            super::Size::Flex(_) => 0.0, // Flex items have no natural size
                             super::Size::Auto => 0.0,
                         }
                     } else {
                         match child.calculate_height() {
                             super::Size::Pixels(val) => val,
                             super::Size::Percent(percent) => available_main_size * percent / 100.0,
-                            super::Size::Flex(val) => available_main_size * val.max(0.0),
+                            super::Size::Flex(_) => 0.0, // Flex items have no natural size
                             super::Size::Auto => 0.0,
                         }
                     };
@@ -170,6 +189,7 @@ impl View {
             total_fixed_main
         };
 
+
         let mut current_main_pos = if is_row {
             parent_x + padding.left
         } else {
@@ -185,7 +205,13 @@ impl View {
                     _ => child.style.width.clone(),
                 }
             } else {
-                child.style.width.clone()
+                // For text components, use calculated width even with explicit CSS width
+                // This allows text to dynamically resize based on content
+                if matches!(child.component_type, super::ComponentType::Text(_)) {
+                    child.calculate_width()
+                } else {
+                    child.style.width.clone()
+                }
             };
 
             let child_height = if matches!(child.style.height, super::Size::Pixels(0.0)) {
@@ -244,7 +270,7 @@ impl View {
             let item_main_size = match &main_size {
                 super::Size::Pixels(value) => *value,
                 super::Size::Percent(value) => available_main_size * value / 100.0,
-                super::Size::Flex(value) => flex_unit * value.max(0.0),
+                super::Size::Flex(value) => (flex_unit * value.max(0.0)).max(natural_main),
                 super::Size::Auto => {
                     if natural_main > 0.0 {
                         natural_main
@@ -255,6 +281,7 @@ impl View {
                     }
                 }
             };
+
 
             let item_cross_size = match &cross_size {
                 super::Size::Pixels(value) => *value,

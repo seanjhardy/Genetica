@@ -30,7 +30,7 @@ fn release_link(index: u32) {
     }
 
     let existing = links[index];
-    if (existing.flags & LINK_FLAG_ALIVE) == 0u {
+    if (existing.flags & LINK_FLAG_ACTIVE) == 0u {
         return;
     }
 

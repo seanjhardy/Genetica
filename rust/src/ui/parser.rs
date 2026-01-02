@@ -344,17 +344,33 @@ impl UiParser {
                 let value = &class_name[dash_pos + 1..];
                 if let Ok(num) = value.parse::<f32>() {
                     let prefix = &class_name[..dash_pos];
-                    let padding_value = match prefix {
-                        "p" => format!("{}px", num),
-                        "pt" => format!("{}px 0px 0px 0px", num),
-                        "pr" => format!("0px {}px 0px 0px", num),
-                        "pb" => format!("0px 0px {}px 0px", num),
-                        "pl" => format!("0px 0px 0px {}px", num),
-                        "px" => format!("0px {}px", num),
-                        "py" => format!("{}px 0px", num),
+                    let padding_props = match prefix {
+                        "p" => {
+                            let val = format!("{}px", num);
+                            vec![
+                                ("padding-top".to_string(), val.clone()),
+                                ("padding-right".to_string(), val.clone()),
+                                ("padding-bottom".to_string(), val.clone()),
+                                ("padding-left".to_string(), val),
+                            ]
+                        }
+                        "pt" => vec![("padding-top".to_string(), format!("{}px", num))],
+                        "pr" => vec![("padding-right".to_string(), format!("{}px", num))],
+                        "pb" => vec![("padding-bottom".to_string(), format!("{}px", num))],
+                        "pl" => vec![("padding-left".to_string(), format!("{}px", num))],
+                        "px" => vec![
+                            ("padding-left".to_string(), format!("{}px", num)),
+                            ("padding-right".to_string(), format!("{}px", num)),
+                        ],
+                        "py" => vec![
+                            ("padding-top".to_string(), format!("{}px", num)),
+                            ("padding-bottom".to_string(), format!("{}px", num)),
+                        ],
                         _ => return None,
                     };
-                    props.insert("padding".to_string(), padding_value);
+                    for (key, value) in padding_props {
+                        props.insert(key, value);
+                    }
                     return Some(props);
                 }
             }
@@ -651,6 +667,7 @@ impl UiParser {
                     match &mut component.component_type {
                         ComponentType::Text(text) => {
                             text.color = parsed_color;
+                            component.base_style.text_color = Some(parsed_color);
                         }
                         _ => {
                             // For View components, just set inherited for children
@@ -663,12 +680,7 @@ impl UiParser {
                     if let Ok(size) = Self::parse_size_value(font_size) {
                         if let Some(size_val) = size {
                             inherited.font_size = Some(size_val); // Set for inheritance
-                            match &mut component.component_type {
-                                ComponentType::Text(text) => {
-                                    text.font_size = size_val;
-                                }
-                                _ => {}
-                            }
+                            component.set_font_size(size_val);
                         }
                     }
                 }
@@ -801,6 +813,11 @@ impl UiParser {
                     for (key, value) in dynamic_props.iter() {
                         if key == "image" || key == "src" {
                             Self::apply_image_hover_property(&mut component, key, value)?;
+                        } else if key == "color" {
+                            // Apply hover text color
+                            if let Ok(color) = Self::parse_color_value(value) {
+                                h_style.text_color = Some(color);
+                            }
                         }
                     }
                 } else if let Some(class_props) = self.css_classes.get(hover_class_name) {
@@ -829,6 +846,11 @@ impl UiParser {
                     for (key, value) in dynamic_props.iter() {
                         if key == "image" || key == "src" {
                             Self::apply_image_group_hover_property(&mut component, key, value)?;
+                        } else if key == "color" {
+                            // Apply group-hover text color
+                            if let Ok(color) = Self::parse_color_value(value) {
+                                gh_style.text_color = Some(color);
+                            }
                         }
                     }
                 } else if let Some(class_props) = self.css_classes.get(group_hover_class_name) {
@@ -869,26 +891,32 @@ impl UiParser {
         }
 
 
+        // Handle font size for text components
+        if let ComponentType::Text(_) = &component.component_type {
+            if let Some(font_size) = attributes.get("font-size") {
+                let size_val = font_size.parse::<f32>()
+                    .map_err(|_| format!("Invalid font-size: {}", font_size))?;
+                component.set_font_size(size_val);
+                inherited.font_size = Some(size_val);
+            } else if let Some(parent_font_size) = inherited.font_size {
+                // Inherit from parent if not explicitly set
+                component.set_font_size(parent_font_size);
+            }
+        }
+
         // Parse component-specific attributes
         match &mut component.component_type {
             ComponentType::Text(text) => {
-                // Apply inherited properties if not explicitly set
-                if let Some(font_size) = attributes.get("font-size") {
-                    let size_val = font_size.parse::<f32>()
-                        .map_err(|_| format!("Invalid font-size: {}", font_size))?;
-                    text.font_size = size_val;
-                    inherited.font_size = Some(size_val);
-                } else if let Some(parent_font_size) = inherited.font_size {
-                    // Inherit from parent if not explicitly set
-                    text.font_size = parent_font_size;
-                }
+                // Font size already handled above
                 if let Some(color) = attributes.get("color") {
                     let parsed_color = Self::parse_color_value(color)?;
                     text.color = parsed_color;
+                    component.base_style.text_color = Some(parsed_color);
                     inherited.text_color = Some(parsed_color);
                 } else if let Some(parent_color) = inherited.text_color {
                     // Inherit from parent if not explicitly set
                     text.color = parent_color;
+                    component.base_style.text_color = Some(parent_color);
                 }
             }
             ComponentType::View(view) => {
@@ -953,7 +981,7 @@ impl UiParser {
                             text.color = parent_color;
                         }
                         if let Some(parent_font_size) = inherited_props.font_size {
-                            text.font_size = parent_font_size;
+                            text_component.set_font_size(parent_font_size);
                         }
                     }
                     children.push(text_component);
@@ -1095,6 +1123,9 @@ impl UiParser {
     ) -> Result<Style, String> {
         for (key, value) in properties {
             match key.as_str() {
+                "color" => {
+                    style.text_color = Some(Self::parse_color_value(value)?);
+                }
                 "background-color" | "background" => {
                     style.background_color = Self::parse_color_value(value)?;
                 }
@@ -1145,6 +1176,18 @@ impl UiParser {
                 "padding" => {
                     style.padding = Self::parse_padding_value(value)?;
                 }
+                "padding-top" => {
+                    style.padding.top = Self::parse_size_value(value)?.unwrap_or(0.0);
+                }
+                "padding-right" => {
+                    style.padding.right = Self::parse_size_value(value)?.unwrap_or(0.0);
+                }
+                "padding-bottom" => {
+                    style.padding.bottom = Self::parse_size_value(value)?.unwrap_or(0.0);
+                }
+                "padding-left" => {
+                    style.padding.left = Self::parse_size_value(value)?.unwrap_or(0.0);
+                }
                 "margin" => {
                     style.margin = Self::parse_margin_value(value)?;
                 }
@@ -1165,6 +1208,13 @@ impl UiParser {
                 "z-index" => {
                     if let Ok(z_index) = value.trim().parse::<i32>() {
                         style.z_index = z_index;
+                    }
+                }
+                "cursor" => {
+                    match value.trim() {
+                        "pointer" => style.cursor = super::styles::Cursor::Pointer,
+                        "default" => style.cursor = super::styles::Cursor::Default,
+                        _ => {} // Ignore unknown cursor values
                     }
                 }
                 _ => {

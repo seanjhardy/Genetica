@@ -35,9 +35,9 @@ impl Camera {
         }
     }
 
-    pub fn update(&mut self, delta_time: f32, key_states: &KeyStates) {
+    pub fn update(&mut self, delta_time: f32, key_states: &KeyStates) -> bool {
         if self.locked {
-            return;
+            return false;
         }
 
         let mut movement = Vec2::zero();
@@ -64,11 +64,13 @@ impl Camera {
             self.position = self.position + movement * (delta_time / self.zoom_level);
             self.constrain_to_bounds();
         }
+
+        did_update
     }
 
-    pub fn zoom(&mut self, delta: f32, mouse_pos: Vec2) {
+    pub fn zoom(&mut self, delta: f32, mouse_pos: Vec2) -> bool {
         if self.locked {
-            return;
+            return false;
         }
 
         // Minimum zoom level
@@ -79,6 +81,10 @@ impl Camera {
         } else {
             0.1
         };
+
+        // Store old values to check if they changed
+        let old_zoom = self.zoom_level;
+        let old_position = self.position;
 
         // Convert mouse position to world coordinates before zoom
         let mouse_world_before = self.screen_to_world(mouse_pos);
@@ -93,6 +99,9 @@ impl Camera {
         // Adjust position to keep mouse position stable
         self.position = self.position + (mouse_world_before - mouse_world_after);
         self.constrain_to_bounds();
+
+        // Return true if zoom or position changed
+        old_zoom != self.zoom_level || old_position != self.position
     }
 
     /// Convert screen pixel coordinates to world coordinates

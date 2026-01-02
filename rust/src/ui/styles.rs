@@ -195,6 +195,7 @@ impl Size {
 #[derive(Debug, Clone)]
 pub struct Style {
     pub background_color: Color,
+    pub text_color: Option<Color>,
     pub border: Border,
     pub shadow: Shadow,
     pub padding: Padding,
@@ -202,12 +203,14 @@ pub struct Style {
     pub width: Size,
     pub height: Size,
     pub z_index: i32,
+    pub cursor: Cursor,
 }
 
 impl Style {
     pub fn new() -> Self {
         Self {
             background_color: Color::transparent(),
+            text_color: None,
             border: Border::none(),
             shadow: Shadow::none(),
             padding: Padding::zero(),
@@ -215,6 +218,7 @@ impl Style {
             width: Size::Auto,
             height: Size::Auto,
             z_index: 0,
+            cursor: Cursor::Default,
         }
     }
 
@@ -229,6 +233,12 @@ impl Default for Style {
     }
 }
 
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Cursor {
+    Default,
+    Pointer,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum TextAlign {

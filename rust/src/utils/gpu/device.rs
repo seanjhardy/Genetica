@@ -58,28 +58,14 @@ impl GpuDevice {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
-        // Choose a present mode that doesn't block on acquire_texture
-        // Prefer Mailbox (triple buffering - non-blocking), then Immediate, then Fifo (vsync - blocks)
+        // Prefer vsync (Fifo) to cap FPS at display refresh and reduce stalls.
         let present_mode = surface_caps
             .present_modes
             .iter()
             .copied()
-            .find(|&mode| mode == wgpu::PresentMode::Mailbox)
-            .or_else(|| {
-                surface_caps
-                    .present_modes
-                    .iter()
-                    .copied()
-                    .find(|&mode| mode == wgpu::PresentMode::Immediate)
-            })
-            .or_else(|| {
-                surface_caps
-                    .present_modes
-                    .iter()
-                    .copied()
-                    .find(|&mode| mode == wgpu::PresentMode::Fifo)
-            })
-            .unwrap_or(surface_caps.present_modes[0]);
+            .find(|&mode| mode == wgpu::PresentMode::Fifo)
+            .or(surface_caps.present_modes.first().copied())
+            .unwrap_or(wgpu::PresentMode::Fifo);
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

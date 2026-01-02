@@ -1,0 +1,7 @@
+
+thread 'main' (5501556) panicked at src/main.rs:12:65:
+called `Result::unwrap()` on an `Err` value: binding server TCP socket
+
+Caused by:
+    Operation not permitted (os error 1)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

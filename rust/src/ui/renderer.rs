@@ -4,6 +4,7 @@ use super::components::{Component, ComponentType, ImageResizeMode};
 use super::styles::{Color, Shadow};
 use crate::gpu::wgsl::{IMAGE_TEXTURE_SHADER, POST_PROCESSING_SHADER, UI_RECT_SHADER};
 use crate::utils::gpu::text_renderer::TextRenderer;
+use puffin::profile_scope;
 use wgpu;
 use wgpu::util::DeviceExt;
 use std::collections::HashMap;
@@ -65,6 +66,12 @@ struct RenderableImage {
     natural_width: f32,
     natural_height: f32,
 }
+
+enum DrawCommand {
+    Rect { start: u32, count: u32 },
+    Image { start: u32, count: u32, bind_group: wgpu::BindGroup },
+    Viewport { start: u32, count: u32, bind_group: wgpu::BindGroup },
+}
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct ImageVertex {
@@ -85,8 +92,12 @@ pub struct UiRenderer {
     screen_height: u32,
     text_renderer: TextRenderer,
     rect_pipeline: wgpu::RenderPipeline,
-    bind_group_layout: wgpu::BindGroupLayout,
+    rect_bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
+    rect_vertex_buffer: wgpu::Buffer,
+    rect_index_buffer: wgpu::Buffer,
+    rect_vertex_capacity: usize,
+    rect_index_capacity: usize,
     vertices: Vec<UiVertex>,
     indices: Vec<u16>,
     surface_format: wgpu::TextureFormat, // Store surface format for viewport textures
@@ -94,12 +105,22 @@ pub struct UiRenderer {
     texture_pipeline: wgpu::RenderPipeline,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_sampler: wgpu::Sampler,
+    texture_vertex_buffer: wgpu::Buffer,
+    texture_index_buffer: wgpu::Buffer,
+    texture_vertex_capacity: usize,
+    texture_index_capacity: usize,
     texture_vertices: Vec<TextureVertex>,
     texture_indices: Vec<u16>,
     image_pipeline: wgpu::RenderPipeline,
+    image_vertex_buffer: wgpu::Buffer,
+    image_index_buffer: wgpu::Buffer,
+    image_vertex_capacity: usize,
+    image_index_capacity: usize,
     image_vertices: Vec<ImageVertex>,
     image_indices: Vec<u16>,
     image_cache: HashMap<String, ImageTexture>,
+    image_bind_groups: HashMap<String, wgpu::BindGroup>,
+    draw_commands: Vec<DrawCommand>,
     // Z-index grouped elements (collected at start of frame)
     z_index_groups: std::collections::BTreeMap<i32, Vec<RenderableElement>>,
     // Time tracking for animated effects
@@ -148,7 +169,31 @@ impl UiRenderer {
             }],
         });
 
-        // Bind group will be created per-frame in render() since uniform buffer is updated each frame
+        // Bind group can be reused; the uniform buffer contents are updated in place
+        let rect_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("UI Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
+        // Preallocate dynamic buffers for textured quads (resized on demand)
+        let texture_vertex_capacity = 512;
+        let texture_index_capacity = 1024;
+        let texture_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Viewport Texture Vertex Buffer"),
+            size: (texture_vertex_capacity * std::mem::size_of::<TextureVertex>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let texture_index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Viewport Texture Index Buffer"),
+            size: (texture_index_capacity * std::mem::size_of::<u16>()) as u64,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         // Create pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -209,6 +254,22 @@ impl UiRenderer {
             },
             cache: None,
             multiview: None,
+        });
+
+        // Preallocate dynamic buffers for rectangles (resized on demand)
+        let rect_vertex_capacity = 4096;
+        let rect_index_capacity = 8192;
+        let rect_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("UI Rectangle Vertex Buffer"),
+            size: (rect_vertex_capacity * std::mem::size_of::<UiVertex>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let rect_index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("UI Rectangle Index Buffer"),
+            size: (rect_index_capacity * std::mem::size_of::<u16>()) as u64,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
 
         // Create texture sprite rendering pipeline
@@ -383,51 +444,170 @@ impl UiRenderer {
             multiview: None,
         });
 
+        let image_vertex_capacity = 512;
+        let image_index_capacity = 1024;
+        let image_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Image Vertex Buffer"),
+            size: (image_vertex_capacity * std::mem::size_of::<ImageVertex>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let image_index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Image Index Buffer"),
+            size: (image_index_capacity * std::mem::size_of::<u16>()) as u64,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             screen_width: surface_config.width,
             screen_height: surface_config.height,
             text_renderer,
             rect_pipeline,
-            bind_group_layout,
+            rect_bind_group,
             uniform_buffer,
+            rect_vertex_buffer,
+            rect_index_buffer,
+            rect_vertex_capacity,
+            rect_index_capacity,
             vertices: Vec::new(),
             indices: Vec::new(),
             surface_format: surface_config.format, // Store format for viewport textures
             texture_pipeline: texture_pipeline.clone(),
             texture_bind_group_layout,
             texture_sampler,
+            texture_vertex_buffer,
+            texture_index_buffer,
+            texture_vertex_capacity,
+            texture_index_capacity,
             texture_vertices: Vec::new(),
             texture_indices: Vec::new(),
             image_pipeline,
+            image_vertex_buffer,
+            image_index_buffer,
+            image_vertex_capacity,
+            image_index_capacity,
             image_vertices: Vec::new(),
             image_indices: Vec::new(),
             image_cache: HashMap::new(),
+            image_bind_groups: HashMap::new(),
+            draw_commands: Vec::new(),
             z_index_groups: std::collections::BTreeMap::new(),
             start_time: std::time::Instant::now(),
         }
     }
 
     pub fn compute_layout(&mut self, component: &mut Component) {
-        // Ensure root component has proper size (100% width/height from CSS)
-        // If the root component doesn't have explicit size, default to full screen
-        if matches!(component.style.width, super::styles::Size::Auto) && 
-           matches!(component.style.height, super::styles::Size::Auto) {
-            component.style.width = super::styles::Size::Percent(100.0);
-            component.style.height = super::styles::Size::Percent(100.0);
+        // For views, recursively compute children first, then calculate own size
+        if let ComponentType::View(ref mut view) = component.component_type {
+            // Recursively compute layout for children first
+            for child in &mut view.children {
+                if child.visible {
+                    self.compute_layout(child);
+                }
+            }
+
+            // Now calculate this view's size based on its children
+            let calculated_width = view.calculate_width(component.style.padding);
+
+            component.layout.computed_width = match calculated_width {
+                super::styles::Size::Pixels(content_width) => {
+                    // Use content width, but respect minimum constraints from styles
+                    match component.style.width {
+                        super::styles::Size::Pixels(min_width) => content_width.max(min_width),
+                        super::styles::Size::Percent(percent) => {
+                            // For absolute positioned elements, allow content to exceed percent bounds
+                            if component.absolute {
+                                content_width
+                            } else {
+                                // For normal elements, use percent as minimum
+                                let percent_width = self.screen_width as f32 * percent / 100.0;
+                                content_width.max(percent_width)
+                            }
+                        },
+                        _ => content_width,
+                    }
+                },
+                _ => {
+                    // Fallback to style-based sizing
+                    match component.style.width {
+                        super::styles::Size::Pixels(value) => value,
+                        super::styles::Size::Percent(value) => self.screen_width as f32 * value / 100.0,
+                        super::styles::Size::Flex(_) | super::styles::Size::Auto => self.screen_width as f32,
+                    }
+                },
+            };
+
+            component.layout.computed_height = match view.calculate_height(component.style.padding) {
+                super::styles::Size::Pixels(content_height) => {
+                    // Use content height, but respect minimum constraints from styles
+                    match component.style.height {
+                        super::styles::Size::Pixels(min_height) => content_height.max(min_height),
+                        super::styles::Size::Percent(percent) => {
+                            // For absolute positioned elements, allow content to exceed percent bounds
+                            if component.absolute {
+                                content_height
+                            } else {
+                                // For normal elements, use percent as minimum
+                                let percent_height = self.screen_height as f32 * percent / 100.0;
+                                content_height.max(percent_height)
+                            }
+                        },
+                        _ => content_height,
+                    }
+                },
+                _ => {
+                    // Fallback to style-based sizing
+                    match component.style.height {
+                        super::styles::Size::Pixels(value) => value,
+                        super::styles::Size::Percent(value) => self.screen_height as f32 * value / 100.0,
+                        super::styles::Size::Flex(_) | super::styles::Size::Auto => self.screen_height as f32,
+                    }
+                },
+            };
+
+            // Only debug TopLeftHUD and its children
+            if let Some(id) = &component.id {
+                if id == "TopLeftHUD" {
+                }
+            }
+        } else {
+            // For non-view components, use content-based sizing where appropriate
+            if let ComponentType::Text(ref text) = component.component_type {
+                // For text components, computed size should be based on content
+                component.layout.computed_width = match component.style.width {
+                    super::styles::Size::Pixels(value) => value,
+                    super::styles::Size::Percent(value) => self.screen_width as f32 * value / 100.0,
+                    super::styles::Size::Flex(_) | super::styles::Size::Auto => {
+                        // Use text content width plus padding
+                        text.cached_width() + component.style.padding.left + component.style.padding.right
+                    },
+                };
+
+                component.layout.computed_height = match component.style.height {
+                    super::styles::Size::Pixels(value) => value,
+                    super::styles::Size::Percent(value) => self.screen_height as f32 * value / 100.0,
+                    super::styles::Size::Flex(_) | super::styles::Size::Auto => {
+                        // Use text content height plus padding
+                        text.cached_height() + component.style.padding.top + component.style.padding.bottom
+                    },
+                };
+            } else {
+                // For other non-view components, use style-based sizing
+                component.layout.computed_width = match component.style.width {
+                    super::styles::Size::Pixels(value) => value,
+                    super::styles::Size::Percent(value) => self.screen_width as f32 * value / 100.0,
+                    super::styles::Size::Flex(_) | super::styles::Size::Auto => self.screen_width as f32,
+                };
+
+                component.layout.computed_height = match component.style.height {
+                    super::styles::Size::Pixels(value) => value,
+                    super::styles::Size::Percent(value) => self.screen_height as f32 * value / 100.0,
+                    super::styles::Size::Flex(_) | super::styles::Size::Auto => self.screen_height as f32,
+                };
+            }
+
         }
-        
-        // Compute root component size based on screen dimensions
-        component.layout.computed_width = match component.style.width {
-            super::styles::Size::Pixels(value) => value,
-            super::styles::Size::Percent(value) => self.screen_width as f32 * value / 100.0,
-            super::styles::Size::Flex(_) | super::styles::Size::Auto => self.screen_width as f32,
-        };
-        
-        component.layout.computed_height = match component.style.height {
-            super::styles::Size::Pixels(value) => value,
-            super::styles::Size::Percent(value) => self.screen_height as f32 * value / 100.0,
-            super::styles::Size::Flex(_) | super::styles::Size::Auto => self.screen_height as f32,
-        };
     }
 
     /// Collect all elements grouped by z-index at the start of frame
@@ -484,8 +664,9 @@ impl UiRenderer {
                 // Always set text content, even if empty - this ensures it's rendered when updated
                 let content_width = (width - component.style.padding.left - component.style.padding.right).max(0.0);
                 let content_height = (height - component.style.padding.top - component.style.padding.bottom).max(0.0);
-                let text_width = text.font_size * text.content.len() as f32 * 0.6;
-                let text_height = text.font_size;
+                // Use cached text bounds - same as layout system
+                let text_width = text.cached_width();
+                let text_height = text.cached_height();
                 
                 let text_x = if content_width > 0.0 && content_width > text_width {
                     match text.text_align {
@@ -635,59 +816,90 @@ impl UiRenderer {
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
     ) {
-        // Update uniform buffer
-        let elapsed_time = self.start_time.elapsed().as_secs_f32();
-        let uniforms = UiUniforms {
-            screen_width: self.screen_width as f32,
-            screen_height: self.screen_height as f32,
-            time: elapsed_time,
-            _padding: 0.0,
-        };
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+        profile_scope!("UI Render");
 
-        // Compute layout (sizes) - this recursively computes sizes for all components
-        self.compute_layout(component);
-        
-        // Update layout (positions relative to parents) for View components
-        // This must be called after compute_layout so children have their sizes
-        if let ComponentType::View(ref mut view) = component.component_type {
-            // Rebuild layers before updating layout (ensures children are organized correctly)
-            view.rebuild_layers();
-            
-            // Update layout for root component (positions children)
-            view.update_layout(
-                0.0,
-                0.0,
-                component.layout.computed_width,
-                component.layout.computed_height,
-                component.style.padding
-            );
+        // Update uniform buffer
+        {
+            profile_scope!("UI Uniforms");
+            let elapsed_time = self.start_time.elapsed().as_secs_f32();
+            let uniforms = UiUniforms {
+                screen_width: self.screen_width as f32,
+                screen_height: self.screen_height as f32,
+                time: elapsed_time,
+                _padding: 0.0,
+            };
+            queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+        }
+
+        // Use conservative selective layout - only skip when completely safe
+        let needs_full_layout = self.needs_layout_update(component);
+        let needs_selective_layout = self.needs_selective_layout_update(component);
+
+        if needs_full_layout {
+            // Full layout recalculation for any dirty components
+            {
+                profile_scope!("UI Compute Layout");
+                self.compute_layout(component);
+            }
+
+            // Update layout (positions relative to parents) for View components
+            // This must be called after compute_layout so children have their sizes
+            if let ComponentType::View(ref mut view) = component.component_type {
+                // Rebuild layers before updating layout (ensures children are organized correctly)
+                profile_scope!("UI Update Layout");
+                view.rebuild_layers();
+
+                // Update layout for root component (positions children)
+                view.update_layout(
+                    0.0,
+                    0.0,
+                    component.layout.computed_width,
+                    component.layout.computed_height,
+                    component.style.padding
+                );
+            }
+
+            // Clear dirty flags after layout update
+            self.clear_layout_dirty_flags(component);
+        } else if needs_selective_layout {
+            // Selective layout for size changes only
+            {
+                profile_scope!("UI Selective Layout");
+                self.compute_selective_layout(component);
+            }
+
+            // Update layout (positions relative to parents) for View components
+            // This must be called after compute_layout so children have their sizes
+            if let ComponentType::View(ref mut view) = component.component_type {
+                // Rebuild layers before updating layout (ensures children are organized correctly)
+                profile_scope!("UI Update Layout");
+                view.rebuild_layers();
+
+                // Update layout for root component (positions children)
+                view.update_layout(
+                    0.0,
+                    0.0,
+                    component.layout.computed_width,
+                    component.layout.computed_height,
+                    component.style.padding
+                );
+            }
+
+            // Clear dirty flags after layout update
+            self.clear_layout_dirty_flags(component);
         }
 
         // Clear z-index groups
-        self.z_index_groups.clear();
+        {
+            profile_scope!("UI Clear Z-Index Groups");
+            self.z_index_groups.clear();
+        }
 
         // Collect all elements grouped by z-index
         // Root element starts with z-index 0
-        self.collect_elements_by_z_index(component, 0.0, 0.0, 0);
-
-        // Clear surface once at the start
         {
-            let _clear_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Clear Surface Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                ..Default::default()
-            });
+            profile_scope!("UI Collect Elements");
+            self.collect_elements_by_z_index(component, 0.0, 0.0, 0);
         }
 
         // Render in z-index order (lowest to highest)
@@ -700,80 +912,62 @@ impl UiRenderer {
             // If no elements, render nothing (surface was already cleared to transparent)
             return;
         }
-        
+
+        // Accumulate geometry and draw commands in-order, then render in a single pass
+        {
+            profile_scope!("UI Clear Draw Commands");
+            self.draw_commands.clear();
+            self.vertices.clear();
+            self.indices.clear();
+            self.image_vertices.clear();
+            self.image_indices.clear();
+            self.texture_vertices.clear();
+            self.texture_indices.clear();
+        }
+
         for (_z_index, elements) in z_index_groups {
+            profile_scope!("UI Z-Layer");
+            let rect_start = self.indices.len();
+
             // Batch render shadows for this z-layer
-            self.vertices.clear();
-            self.indices.clear();
-            for element in &elements {
-                if element.width > 0.0
-                    && element.height > 0.0
-                    && (element.shadow.blur > 0.0 || element.shadow.spread > 0.0)
-                {
-                    self.add_shadow_rect(
-                        element.x,
-                        element.y,
-                        element.width,
-                        element.height,
-                        &element.shadow,
-                        element.border_radius_tl,
-                        element.border_radius_tr,
-                        element.border_radius_br,
-                        element.border_radius_bl,
-                    );
-                }
-            }
-            if !self.vertices.is_empty() && !self.indices.is_empty() {
-                self.render_rectangles(device, encoder, view);
-            }
-
-            // Batch render backgrounds for this z-layer
-            self.vertices.clear();
-            self.indices.clear();
-            for element in &elements {
-                if element.width <= 0.0
-                    || element.height <= 0.0
-                    || element.background_color.a <= 0.001
-                {
-                    continue;
-                }
-
-                let has_uniform_radius = element.border_radius_tl == element.border_radius_tr
-                    && element.border_radius_tr == element.border_radius_br
-                    && element.border_radius_br == element.border_radius_bl;
-
-                if has_uniform_radius {
-                    self.add_rounded_rect(
-                        element.x,
-                        element.y,
-                        element.width,
-                        element.height,
-                        element.border_radius_tl,
-                        element.border_radius_tr,
-                        element.border_radius_br,
-                        element.border_radius_bl,
-                        element.background_color,
-                    );
-                } else {
-                    let max_dim = element.width.min(element.height) / 2.0;
-                    let clamped_radius_tl = element.border_radius_tl.min(max_dim);
-                    let clamped_radius_tr = element.border_radius_tr.min(max_dim);
-                    let clamped_radius_br = element.border_radius_br.min(max_dim);
-                    let clamped_radius_bl = element.border_radius_bl.min(max_dim);
-
-                    if clamped_radius_tl <= 1.0
-                        && clamped_radius_tr <= 1.0
-                        && clamped_radius_br <= 1.0
-                        && clamped_radius_bl <= 1.0
+            {
+                profile_scope!("UI Shadows");
+                for element in &elements {
+                    if element.width > 0.0
+                        && element.height > 0.0
+                        && (element.shadow.blur > 0.0 || element.shadow.spread > 0.0)
                     {
-                        self.add_simple_rect(
+                        self.add_shadow_rect(
                             element.x,
                             element.y,
                             element.width,
                             element.height,
-                            element.background_color,
+                            &element.shadow,
+                            element.border_radius_tl,
+                            element.border_radius_tr,
+                            element.border_radius_br,
+                            element.border_radius_bl,
                         );
-                    } else {
+                    }
+                }
+            }
+
+            // Batch render backgrounds for this z-layer
+            {
+                profile_scope!("UI Backgrounds");
+                for element in &elements {
+                    if element.width <= 0.0
+                        || element.height <= 0.0
+                        || element.background_color.a <= 0.001
+                    {
+                        continue;
+                    }
+
+                    let has_uniform_radius = element.border_radius_tl == element.border_radius_tr
+                        && element.border_radius_tr == element.border_radius_br
+                        && element.border_radius_br == element.border_radius_bl;
+
+                    if has_uniform_radius {
                         self.add_rounded_rect(
                             element.x,
                             element.y,
@@ -785,171 +979,316 @@ impl UiRenderer {
                             element.border_radius_bl,
                             element.background_color,
                         );
+                    } else {
+                        let max_dim = element.width.min(element.height) / 2.0;
+                        let clamped_radius_tl = element.border_radius_tl.min(max_dim);
+                        let clamped_radius_tr = element.border_radius_tr.min(max_dim);
+                        let clamped_radius_br = element.border_radius_br.min(max_dim);
+                        let clamped_radius_bl = element.border_radius_bl.min(max_dim);
+
+                        if clamped_radius_tl <= 1.0
+                            && clamped_radius_tr <= 1.0
+                            && clamped_radius_br <= 1.0
+                            && clamped_radius_bl <= 1.0
+                        {
+                            self.add_simple_rect(
+                                element.x,
+                                element.y,
+                                element.width,
+                                element.height,
+                                element.background_color,
+                            );
+                        } else {
+                            self.add_rounded_rect(
+                                element.x,
+                                element.y,
+                                element.width,
+                                element.height,
+                                element.border_radius_tl,
+                                element.border_radius_tr,
+                                element.border_radius_br,
+                                element.border_radius_bl,
+                                element.background_color,
+                            );
+                        }
                     }
                 }
             }
-            if !self.vertices.is_empty() && !self.indices.is_empty() {
-                self.render_rectangles(device, encoder, view);
+            {
+                profile_scope!("UI Borders");
+                for element in &elements {
+                    if element.width <= 0.0 || element.height <= 0.0 {
+                        continue;
+                    }
+                    if element.border.width <= 0.0 {
+                        continue;
+                    }
+
+                    self.add_border_rect(
+                        element.x,
+                        element.y,
+                        element.width,
+                        element.height,
+                        element.border_radius_tl,
+                        element.border_radius_tr,
+                        element.border_radius_br,
+                        element.border_radius_bl,
+                        element.border.width,
+                        element.border.color,
+                    );
+                }
             }
 
-            // Render images for this z-layer (per element due to texture bindings)
-            for element in &elements {
-                if let Some(ref image_data) = element.image {
-                    if image_data.dest_width > 0.0 && image_data.dest_height > 0.0 {
-                        if !self.image_cache.contains_key(&image_data.source) {
-                            self.load_image_texture(device, queue, &image_data.source);
-                        }
+            let rect_count = self.indices.len().saturating_sub(rect_start);
+            if rect_count > 0 {
+                profile_scope!("UI Rect Draw Command");
+                self.draw_commands.push(DrawCommand::Rect {
+                    start: rect_start as u32,
+                    count: rect_count as u32,
+                });
+            }
 
-                        if self.image_cache.contains_key(&image_data.source) {
-                            self.render_image(
-                                device,
-                                encoder,
-                                view,
-                                image_data.dest_x,
-                                image_data.dest_y,
-                                image_data.dest_width,
-                                image_data.dest_height,
-                                image_data.tint,
-                                &image_data.source,
-                            );
+            // Collect images for this z-layer (bind groups reused)
+            {
+                profile_scope!("UI Images");
+                for element in &elements {
+                    if let Some(ref image_data) = element.image {
+                        if image_data.dest_width > 0.0 && image_data.dest_height > 0.0 {
+                            if !self.image_cache.contains_key(&image_data.source) {
+                                self.load_image_texture(device, queue, &image_data.source);
+                            }
+
+                            if self.image_cache.contains_key(&image_data.source) {
+                                if let Some(bind_group) =
+                                    self.get_or_create_image_bind_group(device, &image_data.source)
+                                {
+                                    let image_start = self.image_indices.len();
+                                    self.add_image_quad(
+                                        image_data.dest_x,
+                                        image_data.dest_y,
+                                        image_data.dest_width,
+                                        image_data.dest_height,
+                                        image_data.tint,
+                                    );
+                                    let image_count =
+                                        self.image_indices.len().saturating_sub(image_start);
+                                    if image_count > 0 {
+                                        self.draw_commands.push(DrawCommand::Image {
+                                            start: image_start as u32,
+                                            count: image_count as u32,
+                                            bind_group,
+                                        });
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
 
             // Render viewport textures (per element due to unique textures)
-            for element in &elements {
-                if !element.is_viewport {
-                    continue;
-                }
+            {
+                profile_scope!("UI Viewports");
+                for element in &elements {
+                    if !element.is_viewport {
+                        continue;
+                    }
 
-                let Some(viewport_id) = &element.viewport_id else {
-                    continue;
-                };
-
-                if element.width <= 0.0 || element.height <= 0.0 {
-                    continue;
-                }
-
-                if let Some(texture_view) = self.get_viewport_texture_view(component, viewport_id) {
-                    self.texture_vertices.clear();
-                    self.texture_indices.clear();
-                    self.add_texture_quad(element.x, element.y, element.width, element.height);
-
-                    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some(&format!("Viewport Texture Bind Group: {}", viewport_id)),
-                        layout: &self.texture_bind_group_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::TextureView(texture_view),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::Sampler(&self.texture_sampler),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: self.uniform_buffer.as_entire_binding(),
-                            },
-                        ],
-                    });
-
-                    let texture_vertex_buffer =
-                        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Viewport Texture Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&self.texture_vertices),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        });
-
-                    let texture_index_buffer =
-                        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Viewport Texture Index Buffer"),
-                            contents: bytemuck::cast_slice(&self.texture_indices),
-                            usage: wgpu::BufferUsages::INDEX,
-                        });
-
-                    let mut render_pass =
-                        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                            label: Some("Viewport Texture Render Pass"),
-                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                view,
-                                resolve_target: None,
-                                ops: wgpu::Operations {
-                                    load: wgpu::LoadOp::Load,
-                                    store: wgpu::StoreOp::Store,
-                                },
-                            })],
-                            depth_stencil_attachment: None,
-                            occlusion_query_set: None,
-                            timestamp_writes: None,
-                            ..Default::default()
-                        });
-
-                    render_pass.set_pipeline(&self.texture_pipeline);
-                    render_pass.set_bind_group(0, &bind_group, &[]);
-                    render_pass.set_vertex_buffer(0, texture_vertex_buffer.slice(..));
-                    render_pass
-                        .set_index_buffer(texture_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                    render_pass.draw_indexed(0..(self.texture_indices.len() as u32), 0, 0..1);
-                }
-            }
-
-            // Batch render borders for this z-layer
-            self.vertices.clear();
-            self.indices.clear();
-            for element in &elements {
-                if element.width <= 0.0 || element.height <= 0.0 {
-                    continue;
-                }
-                if element.border.width <= 0.0 {
-                    continue;
-                }
-
-                self.add_border_rect(
-                    element.x,
-                    element.y,
-                    element.width,
-                    element.height,
-                    element.border_radius_tl,
-                    element.border_radius_tr,
-                    element.border_radius_br,
-                    element.border_radius_bl,
-                    element.border.width,
-                    element.border.color,
-                );
-            }
-            if !self.vertices.is_empty() && !self.indices.is_empty() {
-                self.render_rectangles(device, encoder, view);
-            }
-
-            // Queue text for this z-layer
-            for element in &elements {
-                if let Some((content, font_size, color)) = &element.text_content {
-                    let color_arr = if color.a < 0.01 {
-                        [1.0, 1.0, 1.0, 1.0]
-                    } else if color.r < 0.1 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9 {
-                        [1.0, 1.0, 1.0, color.a]
-                    } else {
-                        color.to_array()
+                    let Some(viewport_id) = &element.viewport_id else {
+                        continue;
                     };
 
-                    if !content.is_empty() && color_arr[3] > 0.01 {
-                        self.text_renderer.queue_text_with_size(
-                            queue,
-                            content,
-                            element.text_x,
-                            element.text_y,
-                            color_arr,
-                            *font_size,
-                        );
+                    if element.width <= 0.0 || element.height <= 0.0 {
+                        continue;
+                    }
+
+                    if let Some(texture_view) = self.get_viewport_texture_view(component, viewport_id) {
+                        let texture_start = self.texture_indices.len();
+                        self.add_texture_quad(element.x, element.y, element.width, element.height);
+
+                        let texture_count = self.texture_indices.len().saturating_sub(texture_start);
+                        if texture_count > 0 {
+                            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                label: Some(&format!("Viewport Texture Bind Group: {}", viewport_id)),
+                                layout: &self.texture_bind_group_layout,
+                                entries: &[
+                                    wgpu::BindGroupEntry {
+                                        binding: 0,
+                                        resource: wgpu::BindingResource::TextureView(texture_view),
+                                    },
+                                    wgpu::BindGroupEntry {
+                                        binding: 1,
+                                        resource: wgpu::BindingResource::Sampler(&self.texture_sampler),
+                                    },
+                                    wgpu::BindGroupEntry {
+                                        binding: 2,
+                                        resource: self.uniform_buffer.as_entire_binding(),
+                                    },
+                                ],
+                            });
+
+                            self.draw_commands.push(DrawCommand::Viewport {
+                                start: texture_start as u32,
+                                count: texture_count as u32,
+                                bind_group,
+                            });
+                        }
+                    }
+                }
+            }
+            // Queue text for this z-layer
+            {
+                profile_scope!("UI Text Queue");
+                for element in &elements {
+                    if let Some((content, font_size, color)) = &element.text_content {
+                        let color_arr = if color.a < 0.01 {
+                            [1.0, 1.0, 1.0, 1.0]
+                        } else if color.r < 0.1 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9 {
+                            [1.0, 1.0, 1.0, color.a]
+                        } else {
+                            color.to_array()
+                        };
+
+                        if !content.is_empty() && color_arr[3] > 0.01 {
+                            self.text_renderer.queue_text_with_size(
+                                queue,
+                                content,
+                                element.text_x,
+                                element.text_y,
+                                color_arr,
+                                *font_size,
+                            );
+                        }
                     }
                 }
             }
         }
 
-        // DON'T render text here - it should be rendered once after all elements are processed
-        // self.text_renderer.draw(device, queue, encoder, view);
+        // Upload geometry once per frame
+        if !self.vertices.is_empty() && !self.indices.is_empty() {
+            profile_scope!("UI Rect Buffer Capacity");
+            self.ensure_rect_buffer_capacity(device, self.vertices.len(), self.indices.len());
+            queue.write_buffer(
+                &self.rect_vertex_buffer,
+                0,
+                bytemuck::cast_slice(&self.vertices),
+            );
+            queue.write_buffer(
+                &self.rect_index_buffer,
+                0,
+                bytemuck::cast_slice(&self.indices),
+            );
+        }
+
+        if !self.image_vertices.is_empty() && !self.image_indices.is_empty() {
+            profile_scope!("UI Image Buffer Capacity");
+            self.ensure_image_buffer_capacity(device, self.image_vertices.len(), self.image_indices.len());
+            queue.write_buffer(
+                &self.image_vertex_buffer,
+                0,
+                bytemuck::cast_slice(&self.image_vertices),
+            );
+            queue.write_buffer(
+                &self.image_index_buffer,
+                0,
+                bytemuck::cast_slice(&self.image_indices),
+            );
+        }
+
+        if !self.texture_vertices.is_empty() && !self.texture_indices.is_empty() {
+            profile_scope!("UI Texture Buffer Capacity");
+            self.ensure_texture_buffer_capacity(
+                device,
+                self.texture_vertices.len(),
+                self.texture_indices.len(),
+            );
+            queue.write_buffer(
+                &self.texture_vertex_buffer,
+                0,
+                bytemuck::cast_slice(&self.texture_vertices),
+            );
+            queue.write_buffer(
+                &self.texture_index_buffer,
+                0,
+                bytemuck::cast_slice(&self.texture_indices),
+            );
+        }
+
+        if self.draw_commands.is_empty() {
+            return;
+        }
+
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("UI Batched Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+            ..Default::default()
+        });
+
+        let rect_vertex_size = (self.vertices.len() * std::mem::size_of::<UiVertex>()) as u64;
+        let image_vertex_size = (self.image_vertices.len() * std::mem::size_of::<ImageVertex>()) as u64;
+        let texture_vertex_size =
+            (self.texture_vertices.len() * std::mem::size_of::<TextureVertex>()) as u64;
+
+        for cmd in &self.draw_commands {
+            profile_scope!("UI Draw Command");
+            match cmd {
+                DrawCommand::Rect { start, count } => {
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.rect_bind_group, &[]);
+                    render_pass.set_vertex_buffer(
+                        0,
+                        self.rect_vertex_buffer.slice(0..rect_vertex_size),
+                    );
+                    let start_byte = (*start as usize * std::mem::size_of::<u16>()) as u64;
+                    let end_byte = ((*start + *count) as usize * std::mem::size_of::<u16>()) as u64;
+                    render_pass.set_index_buffer(
+                        self.rect_index_buffer.slice(start_byte..end_byte),
+                        wgpu::IndexFormat::Uint16,
+                    );
+                    render_pass.draw_indexed(0..*count, 0, 0..1);
+                }
+                DrawCommand::Image { start, count, bind_group } => {
+                    render_pass.set_pipeline(&self.image_pipeline);
+                    render_pass.set_bind_group(0, bind_group, &[]);
+                    render_pass.set_vertex_buffer(
+                        0,
+                        self.image_vertex_buffer.slice(0..image_vertex_size),
+                    );
+                    let start_byte = (*start as usize * std::mem::size_of::<u16>()) as u64;
+                    let end_byte = ((*start + *count) as usize * std::mem::size_of::<u16>()) as u64;
+                    render_pass.set_index_buffer(
+                        self.image_index_buffer.slice(start_byte..end_byte),
+                        wgpu::IndexFormat::Uint16,
+                    );
+                    render_pass.draw_indexed(0..*count, 0, 0..1);
+                }
+                DrawCommand::Viewport { start, count, bind_group } => {
+                    render_pass.set_pipeline(&self.texture_pipeline);
+                    render_pass.set_bind_group(0, bind_group, &[]);
+                    render_pass.set_vertex_buffer(
+                        0,
+                        self.texture_vertex_buffer.slice(0..texture_vertex_size),
+                    );
+                    let start_byte = (*start as usize * std::mem::size_of::<u16>()) as u64;
+                    let end_byte = ((*start + *count) as usize * std::mem::size_of::<u16>()) as u64;
+                    render_pass.set_index_buffer(
+                        self.texture_index_buffer.slice(start_byte..end_byte),
+                        wgpu::IndexFormat::Uint16,
+                    );
+                    render_pass.draw_indexed(0..*count, 0, 0..1);
+                }
+            }
+        }
     }
     
     /// Render all queued text - should be called once after all UI elements have been rendered
@@ -963,59 +1302,86 @@ impl UiRenderer {
         self.text_renderer.draw(device, queue, encoder, view);
     }
 
-    pub fn render_rectangles(
+    fn ensure_rect_buffer_capacity(
         &mut self,
         device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
+        vertex_count: usize,
+        index_count: usize,
     ) {
-        if !self.vertices.is_empty() && !self.indices.is_empty() {
-            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        if vertex_count > self.rect_vertex_capacity {
+            self.rect_vertex_capacity = vertex_count.next_power_of_two().max(4);
+            self.rect_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("UI Rectangle Vertex Buffer"),
-                contents: bytemuck::cast_slice(&self.vertices),
-                usage: wgpu::BufferUsages::VERTEX,
+                size: (self.rect_vertex_capacity * std::mem::size_of::<UiVertex>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
             });
+        }
 
-            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        if index_count > self.rect_index_capacity {
+            self.rect_index_capacity = index_count.next_power_of_two().max(6);
+            self.rect_index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("UI Rectangle Index Buffer"),
-                contents: bytemuck::cast_slice(&self.indices),
-                usage: wgpu::BufferUsages::INDEX,
+                size: (self.rect_index_capacity * std::mem::size_of::<u16>()) as u64,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
             });
-
-            // Create bind group (needed for uniform buffer)
-            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("UI Bind Group"),
-                layout: &self.bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.uniform_buffer.as_entire_binding(),
-                }],
-            });
-
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("UI Rectangle Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,  // Load existing content
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                ..Default::default()
-            });
-
-            render_pass.set_pipeline(&self.rect_pipeline);
-            render_pass.set_bind_group(0, &bind_group, &[]);
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..(self.indices.len() as u32), 0, 0..1);
         }
     }
 
+    fn ensure_texture_buffer_capacity(
+        &mut self,
+        device: &wgpu::Device,
+        vertex_count: usize,
+        index_count: usize,
+    ) {
+        if vertex_count > self.texture_vertex_capacity {
+            self.texture_vertex_capacity = vertex_count.next_power_of_two().max(4);
+            self.texture_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Viewport Texture Vertex Buffer"),
+                size: (self.texture_vertex_capacity * std::mem::size_of::<TextureVertex>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+
+        if index_count > self.texture_index_capacity {
+            self.texture_index_capacity = index_count.next_power_of_two().max(6);
+            self.texture_index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Viewport Texture Index Buffer"),
+                size: (self.texture_index_capacity * std::mem::size_of::<u16>()) as u64,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+    }
+
+    fn ensure_image_buffer_capacity(
+        &mut self,
+        device: &wgpu::Device,
+        vertex_count: usize,
+        index_count: usize,
+    ) {
+        if vertex_count > self.image_vertex_capacity {
+            self.image_vertex_capacity = vertex_count.next_power_of_two().max(4);
+            self.image_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Image Vertex Buffer"),
+                size: (self.image_vertex_capacity * std::mem::size_of::<ImageVertex>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+
+        if index_count > self.image_index_capacity {
+            self.image_index_capacity = index_count.next_power_of_two().max(6);
+            self.image_index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Image Index Buffer"),
+                size: (self.image_index_capacity * std::mem::size_of::<u16>()) as u64,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+    }
 
     /// Find viewport components and ensure their textures are created
     pub fn ensure_viewport_textures(
@@ -1624,8 +1990,44 @@ impl UiRenderer {
                 height: dimensions.1,
             },
         );
+        // Any existing bind group for this image should be recreated to match the new view
+        self.image_bind_groups.remove(source);
         
         Some(())
+    }
+
+    fn get_or_create_image_bind_group(
+        &mut self,
+        device: &wgpu::Device,
+        source: &str,
+    ) -> Option<wgpu::BindGroup> {
+        if let Some(bg) = self.image_bind_groups.get(source) {
+            return Some(bg.clone());
+        }
+
+        let texture_view = self.image_cache.get(source)?.view.clone();
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("Image Bind Group: {}", source)),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.texture_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: self.uniform_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        self.image_bind_groups
+            .insert(source.to_string(), bind_group.clone());
+        Some(bind_group)
     }
     
     /// Add an image quad to the vertex buffer with proper UVs and tint
@@ -1670,90 +2072,157 @@ impl UiRenderer {
         self.image_indices.push(base_idx + 3);
     }
 
-    /// Render an image texture with tint support
-    fn render_image(
-        &mut self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        tint: Color,
-        source: &str,
-    ) {
-        // Get texture view from cache (clone to avoid borrow conflicts)
-        let texture_view = if let Some(image_texture) = self.image_cache.get(source) {
-            image_texture.view.clone()
-        } else {
-            return; // Texture not available
-        };
-        
-        self.image_vertices.clear();
-        self.image_indices.clear();
-        
-        // Add quad for the image
-        self.add_image_quad(x, y, width, height, tint);
-        
-        if self.image_vertices.is_empty() || self.image_indices.is_empty() {
+    fn needs_layout_update(&self, component: &Component) -> bool {
+        if component.layout.is_dirty() {
+            return true;
+        }
+
+        // Check children recursively
+        if let ComponentType::View(view) = &component.component_type {
+            for child in &view.children {
+                if self.needs_layout_update(child) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if component needs selective layout update (only when sizes changed)
+    fn needs_selective_layout_update(&self, component: &Component) -> bool {
+        if component.layout.has_size_changed() {
+            return true;
+        }
+
+        // Check children recursively for size changes
+        if let ComponentType::View(view) = &component.component_type {
+            for child in &view.children {
+                if self.needs_selective_layout_update(child) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Compute layout selectively - only for components that have size changes
+    /// Falls back to full layout if any uncertainty exists
+    fn compute_selective_layout(&mut self, component: &mut Component) {
+        // For safety, if this component is marked as dirty (not just size changed),
+        // fall back to full layout
+        if component.layout.is_dirty() && !component.layout.has_size_changed() {
+            self.compute_layout(component);
             return;
         }
-        
-        // Create vertex buffer
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Image Vertex Buffer"),
-            contents: bytemuck::cast_slice(&self.image_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        
-        // Create index buffer
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Image Index Buffer"),
-            contents: bytemuck::cast_slice(&self.image_indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-        
-        // Create bind group for this image texture
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Image Bind Group"),
-            layout: &self.texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.texture_sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: self.uniform_buffer.as_entire_binding(),
-                },
-            ],
-        });
-        
-        // Render pass
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Image Render Pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-        
-        render_pass.set_pipeline(&self.image_pipeline);
-        render_pass.set_bind_group(0, &bind_group, &[]);
-        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-        render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        render_pass.draw_indexed(0..self.image_indices.len() as u32, 0, 0..1);
+
+        // If this component has size changes, recompute it fully
+        if component.layout.has_size_changed() {
+            self.compute_layout(component);
+            return;
+        }
+
+        // For views, check if any children need updates
+        if let ComponentType::View(ref mut view) = component.component_type {
+            let mut needs_full_recalc = false;
+
+            // Check each child first
+            for child in &mut view.children {
+                if child.visible {
+                    // If any child needs full layout, we need full layout for this component too
+                    if child.layout.is_dirty() {
+                        needs_full_recalc = true;
+                        break;
+                    }
+                }
+            }
+
+            if needs_full_recalc {
+                // Fall back to full layout
+                self.compute_layout(component);
+                return;
+            }
+
+            // Selective update for children with size changes
+            let mut needs_parent_recalc = false;
+
+            for child in &mut view.children {
+                if child.visible {
+                    let had_size_change = child.layout.has_size_changed();
+
+                    // Recursively compute selective layout for child
+                    self.compute_selective_layout(child);
+
+                    // If child's size changed during computation, parent needs recalc
+                    if child.layout.has_size_changed() && !had_size_change {
+                        needs_parent_recalc = true;
+                    }
+                }
+            }
+
+            // If any child had size changes, recompute this view's size
+            if needs_parent_recalc {
+                let old_width = component.layout.computed_width;
+                let old_height = component.layout.computed_height;
+
+                // Recompute this view's size based on children
+                let calculated_width = view.calculate_width(component.style.padding);
+                component.layout.computed_width = match calculated_width {
+                    super::styles::Size::Pixels(content_width) => {
+                        match component.style.width {
+                            super::styles::Size::Pixels(min_width) => content_width.max(min_width),
+                            super::styles::Size::Percent(percent) => {
+                                if component.absolute {
+                                    content_width
+                                } else {
+                                    let percent_width = self.screen_width as f32 * percent / 100.0;
+                                    content_width.max(percent_width)
+                                }
+                            },
+                            _ => content_width,
+                        }
+                    },
+                    _ => component.layout.computed_width, // Keep existing if calculation failed
+                };
+
+                component.layout.computed_height = match view.calculate_height(component.style.padding) {
+                    super::styles::Size::Pixels(content_height) => {
+                        match component.style.height {
+                            super::styles::Size::Pixels(min_height) => content_height.max(min_height),
+                            super::styles::Size::Percent(percent) => {
+                                if component.absolute {
+                                    content_height
+                                } else {
+                                    let percent_height = self.screen_height as f32 * percent / 100.0;
+                                    content_height.max(percent_height)
+                                }
+                            },
+                            _ => content_height,
+                        }
+                    },
+                    _ => component.layout.computed_height, // Keep existing if calculation failed
+                };
+
+                // Mark this component as having size changes if its size actually changed
+                if (component.layout.computed_width - old_width).abs() > 0.1 ||
+                   (component.layout.computed_height - old_height).abs() > 0.1 {
+                    component.layout.mark_size_changed();
+                }
+            }
+        }
     }
+
+    fn clear_layout_dirty_flags(&self, component: &mut Component) {
+        component.layout.clear_dirty();
+
+        // Clear flags in children recursively
+        if let ComponentType::View(ref mut view) = component.component_type {
+            for child in &mut view.children {
+                self.clear_layout_dirty_flags(child);
+            }
+        }
+    }
+
 }
+

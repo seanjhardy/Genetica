@@ -2,9 +2,7 @@
 
 use wgpu;
 use wgpu::util::DeviceExt;
-use parking_lot::{Mutex, RwLock};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::mpsc;
 use std::sync::Arc;
 use bytemuck::Zeroable;
 
@@ -18,55 +16,57 @@ use crate::gpu::structures::{
     Link,
     PositionChangeEntry,
     SpeciesEntry,
+    SpawnRequest,
+    VerletPoint,
     MAX_GRN_REGULATORY_UNITS,
     MAX_GENOME_EVENTS,
     MAX_SPECIES_CAPACITY,
 };
+use crate::simulator::state::Counter;
 use crate::utils::math::Rect;
 use crate::utils::gpu::gpu_vector::GpuVector;
 
-const CELL_CAPACITY: usize = 100_000;
-const CELL_HASH_TABLE_SIZE: usize = 1 << 16; // 65_536 buckets
+pub const CELL_CAPACITY: usize = 1_000_000;
 const MAX_SPAWN_REQUESTS: usize = 512;
+pub const POINT_CAPACITY: usize = 1_000_000;
 const LIFEFORM_CAPACITY: usize = 50_000;
-const LINK_CAPACITY: usize = 30_000;
+pub const LINK_CAPACITY: usize = 30_000;
 const LINK_FREE_LIST_CAPACITY: usize = LINK_CAPACITY;
 const NUTRIENT_CELL_SIZE: u32 = 20;
 const NUTRIENT_UNIT_SCALE: u32 = 4_000_000_000; // annoyingly we can't do atomicSubCompareExchangeWeak with f32 :sadge:
+
+/// Types of counters that can be read back from the GPU
+#[derive(Debug, Clone, Copy)]
+pub enum CounterType {
+    Points,
+    Cells,
+}
+
 pub struct GpuBuffers {
-    pub cell_vector: GpuVector<Cell>,
+    pub points: GpuVector<VerletPoint>,
+    pub cells: GpuVector<Cell>,
     pub uniform_buffer: wgpu::Buffer,
-    cell_counter: wgpu::Buffer,
-    cell_counter_staging: wgpu::Buffer,
-    cell_counter_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
-    lifeform_counter: wgpu::Buffer,
-    lifeform_counter_staging: wgpu::Buffer,
-    lifeform_counter_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
-    species_counter: wgpu::Buffer,
-    species_counter_staging: wgpu::Buffer,
-    species_counter_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
-    spawn_buffer: wgpu::Buffer,
-    genome_event_buffer: wgpu::Buffer,
-    link_buffer: wgpu::Buffer,
-    link_free_list: wgpu::Buffer,
-    link_capacity: usize,
-    nutrient_grid: RwLock<Arc<wgpu::Buffer>>,
-    nutrient_grid_width: AtomicU32,
-    nutrient_grid_height: AtomicU32,
-    spatial_hash_bucket_heads: wgpu::Buffer,
-    spatial_hash_bucket_heads_readonly: wgpu::Buffer,
-    spatial_hash_next_indices: wgpu::Buffer,
-    grn_descriptors: wgpu::Buffer,
-    grn_units: wgpu::Buffer,
-    lifeforms: wgpu::Buffer,
-    lifeform_free_list: wgpu::Buffer,
-    next_lifeform_id: wgpu::Buffer,
-    genome_buffer: wgpu::Buffer,
-    species_entries: wgpu::Buffer,
-    species_free_list: wgpu::Buffer,
-    next_species_id: wgpu::Buffer,
-    next_gene_id: wgpu::Buffer,
-    position_changes: wgpu::Buffer,
+    pub spawn_buffer: wgpu::Buffer,
+    pub genome_event_buffer: wgpu::Buffer,
+    pub link_buffer: wgpu::Buffer,
+    pub link_free_list: wgpu::Buffer,
+    pub link_capacity: usize,
+    pub nutrient_grid: wgpu::Buffer,
+    pub nutrient_grid_width: AtomicU32,
+    pub nutrient_grid_height: AtomicU32,
+    pub grn_descriptors: wgpu::Buffer,
+    pub grn_units: wgpu::Buffer,
+    pub lifeforms: wgpu::Buffer,
+    pub lifeform_free_list: wgpu::Buffer,
+    pub next_lifeform_id: wgpu::Buffer,
+    pub genome_buffer: wgpu::Buffer,
+    pub species_entries: wgpu::Buffer,
+    pub species_free_list: wgpu::Buffer,
+    pub next_species_id: wgpu::Buffer,
+    pub next_gene_id: wgpu::Buffer,
+    pub position_changes: wgpu::Buffer,
+    pub points_counter: Counter,
+    pub cells_counter: Counter,
 }
 
 impl GpuBuffers {
@@ -80,7 +80,18 @@ impl GpuBuffers {
         let initial_cells: Vec<Cell> = Vec::new();
         let initial_count = 0u32;
 
-        let cell_vector = GpuVector::<Cell>::new(
+        let points = GpuVector::<VerletPoint>::new(
+            device,
+            POINT_CAPACITY,
+            &Vec::new(),
+            wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            Some("Physics Buffer"),
+        );
+        points.initialize_free_list(queue, initial_count);
+
+        let cells = GpuVector::<Cell>::new(
             device,
             CELL_CAPACITY,
             &initial_cells,
@@ -90,7 +101,7 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::VERTEX,
             Some("Cell Buffer"),
         );
-        cell_vector.initialize_free_list(queue, initial_count);
+        cells.initialize_free_list(queue, initial_count);
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
@@ -98,58 +109,15 @@ impl GpuBuffers {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let cell_counter = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Alive Counter"),
-            contents: bytemuck::cast_slice(&[initial_count]),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let cell_counter_staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Alive Counter Staging"),
-            size: std::mem::size_of::<u32>() as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let lifeform_counter = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Lifeform Counter"),
-            contents: bytemuck::cast_slice(&[0u32]),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let lifeform_counter_staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Lifeform Counter Staging"),
-            size: std::mem::size_of::<u32>() as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let species_counter = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Species Counter"),
-            contents: bytemuck::cast_slice(&[0u32]),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let species_counter_staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Species Counter Staging"),
-            size: std::mem::size_of::<u32>() as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
         let spawn_header_size = (std::mem::size_of::<u32>() * 2) as u64;
         let spawn_buffer_size = spawn_header_size
-            + (MAX_SPAWN_REQUESTS * std::mem::size_of::<Cell>()) as u64;
-        let spawn_zero = vec![0u8; spawn_buffer_size as usize];
+            + (MAX_SPAWN_REQUESTS * std::mem::size_of::<SpawnRequest>()) as u64;
+        let spawn_init: Vec<u8> = vec![0u8; spawn_buffer_size as usize];
+        
+        // leave spawn buffer empty; GPU ensure_min_population will enqueue
         let spawn_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Spawn Buffer"),
-            contents: &spawn_zero,
+            contents: &spawn_init,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
@@ -189,26 +157,6 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_SRC,
         });
 
-        let spatial_hash_init = vec![-1i32; CELL_HASH_TABLE_SIZE];
-        let spatial_hash_bucket_heads = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Cell Spatial Hash Bucket Heads"),
-            contents: bytemuck::cast_slice(&spatial_hash_init),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-        });
-
-        // Readonly copy for fragment shader access (can't use atomic buffers in fragment shaders)
-        let spatial_hash_bucket_heads_readonly = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Cell Spatial Hash Bucket Heads Readonly"),
-            contents: bytemuck::cast_slice(&spatial_hash_init),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-        });
-
-        let spatial_hash_next_indices_init = vec![-1i32; CELL_CAPACITY];
-        let spatial_hash_next_indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Cell Spatial Hash Next Indices"),
-            contents: bytemuck::cast_slice(&spatial_hash_next_indices_init),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
 
         let grn_descriptor_init = vec![GrnDescriptor::zeroed(); LIFEFORM_CAPACITY];
         let grn_descriptors = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -326,31 +274,22 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
         });
-        let nutrient_grid = Arc::new(nutrient_grid);
+
+        let points_counter = Counter::new(device, "Points", initial_count);
+        let cells_counter = Counter::new(device, "Cells", initial_count);
 
         Self {
-            cell_vector,
+            points,
+            cells,
             uniform_buffer,
-            cell_counter,
-            cell_counter_staging,
-            cell_counter_readback: Mutex::new(None),
-            lifeform_counter,
-            lifeform_counter_staging,
-            lifeform_counter_readback: Mutex::new(None),
-            species_counter,
-            species_counter_staging,
-            species_counter_readback: Mutex::new(None),
-            spawn_buffer,
+           spawn_buffer,
             genome_event_buffer,
             link_buffer,
             link_free_list,
             link_capacity: LINK_CAPACITY,
-            nutrient_grid: RwLock::new(Arc::clone(&nutrient_grid)),
+            nutrient_grid,
             nutrient_grid_width: AtomicU32::new(grid_width),
             nutrient_grid_height: AtomicU32::new(grid_height),
-            spatial_hash_bucket_heads,
-            spatial_hash_bucket_heads_readonly,
-            spatial_hash_next_indices,
             grn_descriptors,
             grn_units,
             lifeforms,
@@ -362,231 +301,39 @@ impl GpuBuffers {
             species_free_list,
             next_species_id,
             position_changes,
+            points_counter,
+            cells_counter,
         }
     }
     
-    pub fn cell_buffer(&self) -> &wgpu::Buffer {
-        self.cell_vector.buffer()
-    }
-    
-    pub fn cell_free_list_buffer(&self) -> &wgpu::Buffer {
-        self.cell_vector.free_list_buffer()
-    }
 
-    pub fn cell_counter_buffer(&self) -> &wgpu::Buffer {
-        &self.cell_counter
-    }
-
-    pub fn lifeform_counter_buffer(&self) -> &wgpu::Buffer {
-        &self.lifeform_counter
-    }
-
-    pub fn species_counter_buffer(&self) -> &wgpu::Buffer {
-        &self.species_counter
-    }
-
-    pub fn schedule_cell_counter_copy(&self, encoder: &mut wgpu::CommandEncoder) {
-        {
-            let mut guard = self.cell_counter_readback.lock();
-            if guard.take().is_some() {
-                self.cell_counter_staging.unmap();
-            }
-        }
-        encoder.copy_buffer_to_buffer(
-            &self.cell_counter,
-            0,
-            &self.cell_counter_staging,
-            0,
-            std::mem::size_of::<u32>() as u64,
-        );
-    }
-
-    pub fn begin_cell_counter_map(&self) {
-        let mut guard = self.cell_counter_readback.lock();
-        if guard.is_some() {
-            return;
-        }
-        let slice = self.cell_counter_staging.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
-        });
-        *guard = Some(receiver);
-    }
-
-    pub fn try_consume_cell_counter(&self) -> Option<u32> {
-        let mut receiver_guard = self.cell_counter_readback.lock();
-        let receiver = match receiver_guard.as_ref() {
-            Some(r) => r,
-            None => return None,
-        };
-
-        match receiver.try_recv() {
-            Ok(Ok(_)) => {
-                let mapped = self.cell_counter_staging.slice(..).get_mapped_range();
-                let value = bytemuck::cast_slice::<u8, u32>(&mapped)[0];
-                drop(mapped);
-                self.cell_counter_staging.unmap();
-                *receiver_guard = None;
-                Some(value)
-            }
-            Ok(Err(e)) => {
-                eprintln!("Alive counter read failed: {:?}", e);
-                self.cell_counter_staging.unmap();
-                *receiver_guard = None;
-                None
-            }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                eprintln!("Alive counter readback channel disconnected");
-                *receiver_guard = None;
-                None
-            }
+    /// Consolidated counter readback methods
+    pub fn has_counter_pending_readback(&self, counter_type: CounterType) -> bool {
+        match counter_type {
+            CounterType::Points => self.points_counter.has_pending_readback(),
+            CounterType::Cells => self.cells_counter.has_pending_readback(),
         }
     }
 
-    pub fn schedule_lifeform_counter_copy(&self, encoder: &mut wgpu::CommandEncoder) {
-        {
-            let mut guard = self.lifeform_counter_readback.lock();
-            if guard.take().is_some() {
-                self.lifeform_counter_staging.unmap();
-            }
-        }
-        encoder.copy_buffer_to_buffer(
-            &self.lifeform_counter,
-            0,
-            &self.lifeform_counter_staging,
-            0,
-            std::mem::size_of::<u32>() as u64,
-        );
-    }
-
-    pub fn begin_lifeform_counter_map(&self) {
-        let mut guard = self.lifeform_counter_readback.lock();
-        if guard.is_some() {
-            return;
-        }
-        let slice = self.lifeform_counter_staging.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
-        });
-        *guard = Some(receiver);
-    }
-
-    pub fn try_consume_lifeform_counter(&self) -> Option<u32> {
-        let mut receiver_guard = self.lifeform_counter_readback.lock();
-        let receiver = match receiver_guard.as_ref() {
-            Some(r) => r,
-            None => return None,
-        };
-
-        match receiver.try_recv() {
-            Ok(Ok(_)) => {
-                let mapped = self.lifeform_counter_staging.slice(..).get_mapped_range();
-                let value = bytemuck::cast_slice::<u8, u32>(&mapped)[0];
-                drop(mapped);
-                self.lifeform_counter_staging.unmap();
-                *receiver_guard = None;
-                Some(value)
-            }
-            Ok(Err(e)) => {
-                eprintln!("Lifeform counter read failed: {:?}", e);
-                self.lifeform_counter_staging.unmap();
-                *receiver_guard = None;
-                None
-            }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                eprintln!("Lifeform counter readback channel disconnected");
-                *receiver_guard = None;
-                None
-            }
+    pub fn schedule_counter_copy(&self, counter_type: CounterType, encoder: &mut wgpu::CommandEncoder) {
+        match counter_type {
+            CounterType::Points => self.points_counter.schedule_copy(encoder),
+            CounterType::Cells => self.cells_counter.schedule_copy(encoder),
         }
     }
 
-    pub fn schedule_species_counter_copy(&self, encoder: &mut wgpu::CommandEncoder) {
-        {
-            let mut guard = self.species_counter_readback.lock();
-            if guard.take().is_some() {
-                self.species_counter_staging.unmap();
-            }
-        }
-        encoder.copy_buffer_to_buffer(
-            &self.species_counter,
-            0,
-            &self.species_counter_staging,
-            0,
-            std::mem::size_of::<u32>() as u64,
-        );
-    }
-
-    pub fn begin_species_counter_map(&self) {
-        let mut guard = self.species_counter_readback.lock();
-        if guard.is_some() {
-            return;
-        }
-        let slice = self.species_counter_staging.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
-        });
-        *guard = Some(receiver);
-    }
-
-    pub fn try_consume_species_counter(&self) -> Option<u32> {
-        let mut receiver_guard = self.species_counter_readback.lock();
-        let receiver = match receiver_guard.as_ref() {
-            Some(r) => r,
-            None => return None,
-        };
-
-        match receiver.try_recv() {
-            Ok(Ok(_)) => {
-                let mapped = self.species_counter_staging.slice(..).get_mapped_range();
-                let value = bytemuck::cast_slice::<u8, u32>(&mapped)[0];
-                drop(mapped);
-                self.species_counter_staging.unmap();
-                *receiver_guard = None;
-                Some(value)
-            }
-            Ok(Err(e)) => {
-                eprintln!("Species counter read failed: {:?}", e);
-                self.species_counter_staging.unmap();
-                *receiver_guard = None;
-                None
-            }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                eprintln!("Species counter readback channel disconnected");
-                *receiver_guard = None;
-                None
-            }
+    pub fn begin_counter_map(&self, counter_type: CounterType) {
+        match counter_type {
+            CounterType::Points => self.points_counter.begin_map(),
+            CounterType::Cells => self.cells_counter.begin_map(),
         }
     }
 
-    pub fn spawn_buffer(&self) -> &wgpu::Buffer {
-        &self.spawn_buffer
-    }
-    
-    pub fn genome_event_buffer(&self) -> &wgpu::Buffer {
-        &self.genome_event_buffer
-    }
-
-    pub fn link_buffer(&self) -> &wgpu::Buffer {
-        &self.link_buffer
-    }
-
-    pub fn link_free_list_buffer(&self) -> &wgpu::Buffer {
-        &self.link_free_list
-    }
-
-    pub fn link_capacity(&self) -> usize {
-        self.link_capacity
-    }
-
-    pub fn cell_capacity(&self) -> usize {
-        self.cell_vector.capacity()
+    pub fn try_consume_counter(&self, counter_type: CounterType) -> Option<u32> {
+        match counter_type {
+            CounterType::Points => self.points_counter.try_consume(),
+            CounterType::Cells => self.cells_counter.try_consume(),
+        }
     }
 
     /// Update uniform buffer
@@ -594,82 +341,11 @@ impl GpuBuffers {
         queue.write_buffer(&self.uniform_buffer, 0, uniforms);
     }
 
-    pub fn nutrient_grid_buffer(&self) -> Arc<wgpu::Buffer> {
-        self.nutrient_grid.read().clone()
-    }
-
     pub fn nutrient_grid_dimensions(&self) -> (u32, u32) {
         (
             self.nutrient_grid_width.load(Ordering::Relaxed),
             self.nutrient_grid_height.load(Ordering::Relaxed),
         )
-    }
-
-    pub fn nutrient_cell_size(&self) -> u32 {
-        NUTRIENT_CELL_SIZE
-    }
-    pub fn nutrient_scale(&self) -> u32 {
-        NUTRIENT_UNIT_SCALE
-    }
-
-    pub fn cell_hash_bucket_heads_buffer(&self) -> &wgpu::Buffer {
-        &self.spatial_hash_bucket_heads
-    }
-
-    pub fn cell_hash_bucket_heads_readonly_buffer(&self) -> &wgpu::Buffer {
-        &self.spatial_hash_bucket_heads_readonly
-    }
-
-    pub fn cell_hash_next_indices_buffer(&self) -> &wgpu::Buffer {
-        &self.spatial_hash_next_indices
-    }
-
-    pub fn cell_hash_table_size(&self) -> usize {
-        CELL_HASH_TABLE_SIZE
-    }
-
-    pub fn grn_descriptor_buffer(&self) -> &wgpu::Buffer {
-        &self.grn_descriptors
-    }
-
-    pub fn grn_units_buffer(&self) -> &wgpu::Buffer {
-        &self.grn_units
-    }
-
-    pub fn lifeforms_buffer(&self) -> &wgpu::Buffer {
-        &self.lifeforms
-    }
-
-    pub fn lifeform_free_buffer(&self) -> &wgpu::Buffer {
-        &self.lifeform_free_list
-    }
-
-    pub fn next_lifeform_id_buffer(&self) -> &wgpu::Buffer {
-        &self.next_lifeform_id
-    }
-
-    pub fn genome_buffer(&self) -> &wgpu::Buffer {
-        &self.genome_buffer
-    }
-
-    pub fn species_entries_buffer(&self) -> &wgpu::Buffer {
-        &self.species_entries
-    }
-
-    pub fn species_free_buffer(&self) -> &wgpu::Buffer {
-        &self.species_free_list
-    }
-
-    pub fn next_species_id_buffer(&self) -> &wgpu::Buffer {
-        &self.next_species_id
-    }
-
-    pub fn next_gene_id_buffer(&self) -> &wgpu::Buffer {
-        &self.next_gene_id
-    }
-
-    pub fn position_changes_buffer(&self) -> &wgpu::Buffer {
-        &self.position_changes
     }
 
     pub fn resize_nutrient_grid(
@@ -691,11 +367,6 @@ impl GpuBuffers {
         });
         let buffer = Arc::new(buffer);
 
-        {
-            let mut guard = self.nutrient_grid.write();
-            *guard = buffer.clone();
-        }
-
         self.nutrient_grid_width
             .store(grid_width.max(1), Ordering::Relaxed);
         self.nutrient_grid_height
@@ -709,21 +380,25 @@ impl GpuBuffers {
         use crate::gpu::structures::{Cell, CompiledRegulatoryUnit, GrnDescriptor, GenomeEntry, Lifeform, Link, PositionChangeEntry, SpeciesEntry};
         
         let initial_count = 0u32;
-        let cell_capacity = self.cell_capacity();
+        let cell_capacity = self.cells.capacity();
+        let points_zero = vec![VerletPoint::zeroed(); POINT_CAPACITY];
+        queue.write_buffer(self.points.buffer(), 0, bytemuck::cast_slice(&points_zero));
+        self.points.initialize_free_list(queue, initial_count);
+        queue.write_buffer(&self.points_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));
         let cell_zero_data = vec![Cell::zeroed(); cell_capacity];
-        queue.write_buffer(self.cell_vector.buffer(), 0, bytemuck::cast_slice(&cell_zero_data));
-        self.cell_vector.initialize_free_list(queue, initial_count);
-        
-        // Reset counters
-        queue.write_buffer(&self.cell_counter, 0, bytemuck::cast_slice(&[initial_count]));
-        queue.write_buffer(&self.lifeform_counter, 0, bytemuck::cast_slice(&[0u32]));
-        queue.write_buffer(&self.species_counter, 0, bytemuck::cast_slice(&[0u32]));
+        queue.write_buffer(self.cells.buffer(), 0, bytemuck::cast_slice(&cell_zero_data));
+        self.cells.initialize_free_list(queue, initial_count);
+
+        // Reset counterss
+        queue.write_buffer(&self.cells_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));
+        queue.write_buffer(&self.points_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));
         
         // Reset spawn buffer
         let spawn_header_size = (std::mem::size_of::<u32>() * 2) as u64;
-        let spawn_buffer_size = spawn_header_size + (MAX_SPAWN_REQUESTS * std::mem::size_of::<Cell>()) as u64;
-        let spawn_zero = vec![0u8; spawn_buffer_size as usize];
-        queue.write_buffer(&self.spawn_buffer, 0, &spawn_zero);
+        let spawn_buffer_size = spawn_header_size + (MAX_SPAWN_REQUESTS * std::mem::size_of::<SpawnRequest>()) as u64;
+        let spawn_init: Vec<u8> = vec![0u8; spawn_buffer_size as usize];
+        // keep spawn buffer empty on reset; GPU will repopulate as needed
+        queue.write_buffer(&self.spawn_buffer, 0, &spawn_init);
 
         // Reset genome event buffer
         let genome_event_header = (std::mem::size_of::<u32>() * 2) as u64;
@@ -742,13 +417,6 @@ impl GpuBuffers {
         link_free_list_init.push(0u32);
         link_free_list_init.extend((0..self.link_capacity as u32).rev());
         queue.write_buffer(&self.link_free_list, 0, bytemuck::cast_slice(&link_free_list_init));
-        
-        // Reset spatial hash
-        let spatial_hash_init = vec![-1i32; CELL_HASH_TABLE_SIZE];
-        queue.write_buffer(&self.spatial_hash_bucket_heads, 0, bytemuck::cast_slice(&spatial_hash_init));
-        queue.write_buffer(&self.spatial_hash_bucket_heads_readonly, 0, bytemuck::cast_slice(&spatial_hash_init));
-        let spatial_hash_next_indices_init = vec![-1i32; cell_capacity];
-        queue.write_buffer(&self.spatial_hash_next_indices, 0, bytemuck::cast_slice(&spatial_hash_next_indices_init));
         
         // Reset GRN descriptors
         let grn_descriptor_init = vec![GrnDescriptor::zeroed(); LIFEFORM_CAPACITY];

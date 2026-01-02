@@ -1,106 +1,119 @@
 @include src/gpu/wgsl/constants.wgsl;
 @include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/utils/events.wgsl;
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
 
 @group(0) @binding(1)
-var<storage, read_write> cells: array<Cell>;
+var<storage, read_write> points: array<VerletPoint>;
 
 @group(0) @binding(2)
-var<storage, read_write> cell_free_list: CellFreeList;
+var<storage, read_write> physics_free_list: FreeList;
 
 @group(0) @binding(3)
-var<storage, read_write> cell_counter: Counter;
+var<storage, read_write> physics_counter: atomic<u32>;
 
 @group(0) @binding(4)
-var<storage, read_write> spawn_buffer: SpawnBuffer;
+var<storage, read_write> cells: array<Cell>;
 
 @group(0) @binding(5)
-var<storage, read_write> nutrient_grid: NutrientGrid;
+var<storage, read_write> cell_free_list: FreeList;
 
 @group(0) @binding(6)
-var<storage, read_write> links: array<Link>;
+var<storage, read_write> cell_counter: atomic<u32>;
 
 @group(0) @binding(7)
-var<storage, read_write> link_free_list: FreeList;
+var<storage, read_write> spawn_buffer: SpawnBuffer;
 
 @group(0) @binding(8)
-var<storage, read_write> cell_bucket_heads: array<atomic<i32>>;
+var<storage, read_write> nutrient_grid: NutrientGrid;
 
 @group(0) @binding(9)
-var<storage, read_write> cell_hash_next: array<i32>;
+var<storage, read_write> links: array<Link>;
 
-@group(0) @binding(12)
-var<storage, read_write> grn_descriptors: array<GrnDescriptor>;
+@group(0) @binding(10)
+var<storage, read_write> link_free_list: FreeList;
 
-@group(0) @binding(13)
-var<storage, read> grn_units: array<CompiledRegulatoryUnit>;
-
-@group(0) @binding(14)
+@group(0) @binding(11)
 var<storage, read_write> lifeforms: array<Lifeform>;
 
-@group(0) @binding(15)
+@group(0) @binding(12)
 var<storage, read_write> lifeform_free: FreeList;
 
-@group(0) @binding(16)
-var<storage, read_write> next_lifeform_id: Counter;
+@group(0) @binding(13)
+var<storage, read_write> lifeform_counter: atomic<u32>;
 
-@group(0) @binding(17)
-var<storage, read_write> genomes: array<GenomeEntry>;
+@group(0) @binding(14)
+var<storage, read_write> species_entries: array<Species>;
 
-@group(0) @binding(18)
-var<storage, read_write> species_entries: array<SpeciesEntry>;
-
-@group(0) @binding(19)
+@group(0) @binding(15)
 var<storage, read_write> species_free: FreeList;
 
-@group(0) @binding(20)
-var<storage, read_write> next_species_id: Counter;
+@group(0) @binding(16)
+var<storage, read_write> species_counter: atomic<u32>;
 
-@group(0) @binding(24)
+@group(0) @binding(17)
 var<storage, read_write> position_changes: array<PositionChangeEntry>;
+/*se_link(idx: u32) {
+    if idx >= arrayLength(&links) {
+        return;
+    }
+    links[idx].flags = 0u;
+    let slot = atomicAdd(&link_free_list.count, 1u);
+    if slot < arrayLength(&link_free_list.indices) {
+        link_free_list.indices[slot] = idx;
+    } else {
+        atomicSub(&link_free_list.count, 1u);
+    }
+}*/
 
 @compute @workgroup_size(128)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let index = global_id.x;
+    /*let index = global_id.x;
     if index >= arrayLength(&links) {
         return;
     }
 
     let link = links[index];
-    if (link.flags & LINK_FLAG_ALIVE) == 0u {
+    if (link.flags & LINK_FLAG_ACTIVE) == 0u {
         return;
     }
 
-    if link.a >= arrayLength(&cells) || link.b >= arrayLength(&cells) {
+    if link.a_cell >= arrayLength(&cells) || link.b_cell >= arrayLength(&cells) {
         release_link(index);
         return;
     }
 
-    if link.a == link.b {
+    if link.a_cell == link.b_cell {
         release_link(index);
         return;
     }
 
-    var cell_a = cells[link.a];
-    var cell_b = cells[link.b];
+    var cell_a = cells[link.a_cell];
+    var cell_b = cells[link.b_cell];
 
-    if link.generation_a != cell_a.generation || link.generation_b != cell_b.generation {
+    if link.a_generation != cell_a.generation || link.b_generation != cell_b.generation {
         release_link(index);
         return;
     }
 
-    if cell_a.is_alive == 0u || cell_b.is_alive == 0u {
+    if (cell_a.flags & CELL_FLAG_ACTIVE == 0u) || (cell_b.flags & CELL_FLAG_ACTIVE == 0u) {
         release_link(index);
         return;
     }
 
-    let delta = cell_b.pos - cell_a.pos;
+    if cell_a.point_idx >= arrayLength(&points) || cell_b.point_idx >= arrayLength(&points) {
+        release_link(index);
+        return;
+    }
+
+    let pa = points[cell_a.point_idx];
+    let pb = points[cell_b.point_idx];
+
+    let delta = pb.pos - pa.pos;
     var dist_sq = dot(delta, delta);
-    if dist_sq <= 0.001 {
-        dist_sq = 0.001;
+    if dist_sq <= 0.0001 {
+        dist_sq = 0.0001;
     }
 
     let dist = sqrt(dist_sq);
@@ -110,7 +123,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
-    let rest_length = (cell_a.radius + cell_b.radius) * 0.7;
+    let rest_length = link.rest_length;
     if rest_length == 0.0 {
         return;
     }
@@ -120,7 +133,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Use stiffness to control how much of the correction is applied per frame
     // This prevents overshooting and oscillation
-    let stiffness = clamp(0.0, 1.0, link.stiffness);
+    let stiffness = clamp(link.stiffness, 0.0, 1.0);
     let correction = diff * stiffness;
 
     let a_weight = cell_a.radius * cell_a.radius;
@@ -139,19 +152,19 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     // Accumulate position changes in the buffer instead of modifying cells directly
     // This allows averaging multiple link forces and prevents race conditions
-    if link.a < arrayLength(&position_changes) && link.a < arrayLength(&cells) {
+    if link.a_cell < arrayLength(&position_changes) && link.a_cell < arrayLength(&cells) {
         let adjustment_a: vec2<i32> = vec2<i32>(delta_normalized * adjustment_a_magnitude * POSITION_CHANGE_SCALE);
-        atomicAdd(&position_changes[link.a].delta_x, adjustment_a.x);
-        atomicAdd(&position_changes[link.a].delta_y, adjustment_a.y);
-        atomicAdd(&position_changes[link.a].num_changes, 1u);
+        atomicAdd(&position_changes[link.a_cell].delta_x, adjustment_a.x);
+        atomicAdd(&position_changes[link.a_cell].delta_y, adjustment_a.y);
+        atomicAdd(&position_changes[link.a_cell].num_changes, 1u);
     }
 
-    if link.b < arrayLength(&position_changes) && link.b < arrayLength(&cells) {
+    if link.b_cell < arrayLength(&position_changes) && link.b_cell < arrayLength(&cells) {
         let adjustment_b: vec2<i32> = vec2<i32>(-delta_normalized * adjustment_b_magnitude * POSITION_CHANGE_SCALE);
-        atomicAdd(&position_changes[link.b].delta_x, adjustment_b.x);
-        atomicAdd(&position_changes[link.b].delta_y, adjustment_b.y);
-        atomicAdd(&position_changes[link.b].num_changes, 1u);
-    }
+        atomicAdd(&position_changes[link.b_cell].delta_x, adjustment_b.x);
+        atomicAdd(&position_changes[link.b_cell].delta_y, adjustment_b.y);
+        atomicAdd(&position_changes[link.b_cell].num_changes, 1u);
+    }*/
 
     /*let energy_transfer_rate = link.energy_transfer_rate;
     let energy_difference = cell_a.energy - cell_b.energy;

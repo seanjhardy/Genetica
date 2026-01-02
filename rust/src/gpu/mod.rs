@@ -5,4 +5,3 @@ pub mod uniforms;
 pub mod bounds_renderer;
 pub mod structures;
 pub mod wgsl;
-
