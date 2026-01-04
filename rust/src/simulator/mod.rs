@@ -1,7 +1,6 @@
 pub mod simulator;
 pub mod application;
 pub mod environment;
-pub mod events;
 pub mod renderer;
 pub mod planet;
 pub mod state;

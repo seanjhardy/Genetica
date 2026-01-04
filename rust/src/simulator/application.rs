@@ -240,16 +240,30 @@ impl Application {
         }
 
 
-        let (points_count, cells_count) = {
-            profile_scope!("Read Counters");
+        let (points_count, cells_count, lifeform_count, species_count) = if self.last_render_step_count % 100 == 0 {
+                profile_scope!("Read Counters");
+                let render_slot_idx = self.simulation.render_slot;
+                let slot = &mut self.simulation.slots[render_slot_idx];
+                let buffers = &slot.buffers;
+                buffers.points_counter.begin_map_if_ready();
+                buffers.points_counter.schedule_copy_if_idle(&mut encoder);
+                buffers.cells_counter.begin_map_if_ready();
+                buffers.cells_counter.schedule_copy_if_idle(&mut encoder);
+                
+                (buffers.points_counter.try_read(), 
+                buffers.cells_counter.try_read(),
+                self.simulation.genetic_algorithm.num_lifeforms(),
+                self.simulation.genetic_algorithm.num_species())
+        } else {
             let render_slot_idx = self.simulation.render_slot;
             let slot = &mut self.simulation.slots[render_slot_idx];
             let buffers = &slot.buffers;
-            buffers.points_counter.begin_map_if_ready();
-            buffers.points_counter.schedule_copy_if_idle(&mut encoder);
-            buffers.cells_counter.begin_map_if_ready();
-            buffers.cells_counter.schedule_copy_if_idle(&mut encoder);
-            (buffers.points_counter.try_read(), buffers.cells_counter.try_read())
+            (
+                buffers.points_counter.get_last(),
+                buffers.cells_counter.get_last(),
+                self.simulation.genetic_algorithm.num_lifeforms(),
+                self.simulation.genetic_algorithm.num_species()
+            )
         };
 
         let camera_pos = self.camera.get_position();
@@ -298,12 +312,12 @@ impl Application {
                 if let Some(time_component) = screen.find_element_by_id("time") {
                     time_component.update_text(&time_string);
                 }
-                /*if let Some(species_component) = screen.find_element_by_id("species") {
-                    species_component.update_text(&format_number(format!("{}", population.species)));
+                if let Some(species_component) = screen.find_element_by_id("species") {
+                    species_component.update_text(&format_number(format!("{}", species_count)));
                 }
                 if let Some(lifeforms_component) = screen.find_element_by_id("lifeforms") {
-                    life_component.update_text(&format_number(format!("{}", population.lifeforms)));
-                }*/
+                    lifeforms_component.update_text(&format_number(format!("{}", lifeform_count)));
+                }
                 if let Some(cells_component) = screen.find_element_by_id("cells") {
                     cells_component.update_text(&format_number(format!("{}", cells_count)));
                 }
@@ -319,9 +333,6 @@ impl Application {
             Vec2::new(self.bounds.right(), self.bounds.bottom()),
             Vec2::new(self.bounds.left, self.bounds.bottom()),
         ];
-
-        //let num_cells_to_render = buffers.cell_capacity();
-        //let num_links_to_render = buffers.link_capacity();
 
         let output = {
             profile_scope!("get_current_texture");

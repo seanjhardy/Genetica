@@ -84,6 +84,11 @@ impl Counter {
         }
     }
 
+    pub fn get_last(&self) -> u32 {
+        let last = *self.last_value.lock();
+        last
+    }
+
     /// Call while encoding commands for frame N
     pub fn schedule_copy_if_idle(&self, encoder: &mut wgpu::CommandEncoder) {
         let mut st = self.state.lock();

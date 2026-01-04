@@ -92,19 +92,6 @@ struct GrnDescriptor {
     _pad3: u32,
 }
 
-struct GenomeEvent {
-    dst_genome_slot: u32,
-    src_genome_slot: u32,
-    seed: u32,
-    lifeform_slot: u32,
-}
-
-struct GenomeEventBuffer {
-    counter: atomic<u32>,
-    _pad: u32,
-    events: array<GenomeEvent, MAX_GENOME_EVENTS>,
-}
-
 struct FreeList {
     count: atomic<u32>,
     indices: array<u32>,
@@ -127,4 +114,10 @@ struct Uniforms {
     camera: vec4<f32>,     // x: cam_x, y: cam_y
     bounds: vec4<f32>,     // (left, top, right, bottom)
     nutrient: vec4<u32>,   // (Cell size, scale, reserved, reserved)
+}
+
+struct Event {
+    event_type: u32,
+    parent_lifeform_id: u32,
+    lifeform_id: u32,
 }

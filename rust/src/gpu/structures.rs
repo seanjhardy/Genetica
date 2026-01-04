@@ -1,7 +1,4 @@
 // GPU structures for lifeforms and cells - optimized for parallel processing
-
-use std::sync::atomic::{AtomicU32, Ordering};
-
 use bytemuck::{self, Pod, Zeroable};
 
 pub const CELL_WALL_SAMPLES: usize = 20;
@@ -14,9 +11,13 @@ pub const MAX_GRN_STATE_SIZE: usize = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATO
 pub const MAX_GENES_PER_GENOME: usize = 200;
 pub const WORDS_PER_GENE: usize = 4;
 pub const GENOME_WORD_COUNT: usize = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
-pub const MAX_GENOME_EVENTS: usize = 65_536;
+pub const EVENT_CAPACITY: usize = 1000;
 
 pub const MAX_SPECIES_CAPACITY: usize = 1024;
+
+pub const CREATE_LIFEFORM_FLAG: u32 = 1;
+pub const ADD_CELL_TO_LIFEFORM_FLAG: u32 = 2;
+pub const REMOVE_CELL_FROM_LIFEFORM_FLAG: u32 = 3;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -110,7 +111,7 @@ pub struct GenomeEvent {
 pub struct GenomeEventBuffer {
     pub counter: u32,
     pub _pad: u32,
-    pub events: [GenomeEvent; MAX_GENOME_EVENTS],
+    pub events: [GenomeEvent; EVENT_CAPACITY],
 }
 
 #[repr(C)]
@@ -168,3 +169,12 @@ pub struct GrnDescriptor {
 
 pub type CompiledGrn = Vec<CompiledRegulatoryUnit>;
 
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Event {
+  pub event_type: u32,
+  pub parent_lifeform_id: u32,
+  pub lifeform_id: u32,
+  _pad: u32,
+}

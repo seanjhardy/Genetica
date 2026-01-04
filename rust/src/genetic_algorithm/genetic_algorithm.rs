@@ -6,14 +6,11 @@ use rand::Rng;
 
 // Genetic algorithm module - manages genomes, lifeforms, and gene regulatory networks
 use crate::genetic_algorithm::sequence_grn;
-use crate::genetic_algorithm::systems::GeneRegulatoryNetwork;
 use crate::genetic_algorithm::systems::morphology::compile_grn::compile_grn;
 use crate::genetic_algorithm::Lifeform;
-use crate::simulator::events::{Event, EventQueue};
 use crate::genetic_algorithm::{Genome, Species};
 
 static GENE_ID: AtomicUsize = AtomicUsize::new(0);
-static LIFEFORM_ID: AtomicUsize = AtomicUsize::new(0);
 static SPECIES_ID: AtomicUsize = AtomicUsize::new(0);
 
 pub struct GeneticAlgorithm {
@@ -57,38 +54,39 @@ impl GeneticAlgorithm {
         GENE_ID.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub fn next_lifeform_id() -> usize {
-        LIFEFORM_ID.fetch_add(1, Ordering::Relaxed)
-    }
 
     pub fn next_species_id() -> usize {
         SPECIES_ID.fetch_add(1, Ordering::Relaxed)
+    }
+
+    pub fn num_lifeforms(&self) -> usize {
+        self.lifeforms.len()
     }
 
     pub fn num_species(&self) -> usize {
         self.living_species.len()
     }
 
-    pub fn process_events(&mut self, step: usize, event_queue: &EventQueue) {
+    pub fn process_events(&mut self, step: usize ) {
         profile_scope!("Process Genetic Events");
-
+/* 
         while let Ok(event) = event_queue.try_recv() {
-            match event {
-                Event::CreateLifeform { lifeform_id } => {
-                    self.create_lifeform(step, lifeform_id);
+            match event.event_type {
+                CREATE_LIFEFORM_FLAG => {
+                    self.create_lifeform(step, event.parent_lifeform_id, event.lifeform_id);
                 }
-                Event::AddCellToLifeform { lifeform_id } => {
-                    self.add_cell_to_lifeform(lifeform_id);
+                ADD_CELL_TO_LIFEFORM_FLAG => {
+                    self.add_cell_to_lifeform(event.lifeform_id);
                 }
-                Event::RemoveCellFromLifeform { lifeform_id } => {
-                    self.remove_cell_from_lifeform(step, lifeform_id);
+                REMOVE_CELL_FROM_LIFEFORM_FLAG => {
+                    self.remove_cell_from_lifeform(step, event.lifeform_id);
                 }
+                _ => {}
             }
-        }
+        }*/
     }
 
-    fn create_lifeform(&mut self, step: usize, parent_lifeform_id: Option<usize>) {
-        let lifeform_id = GeneticAlgorithm::next_lifeform_id();
+    fn create_lifeform(&mut self, step: usize, parent_lifeform_id: Option<usize>, lifeform_id: usize) {
         let alive_parent = parent_lifeform_id
         .and_then(|id| self.lifeforms.get(&id))
         .filter(|p| p.is_alive());
@@ -137,13 +135,6 @@ impl GeneticAlgorithm {
                 }
             }
         }
-    }
-
-    pub fn list_active_lifeforms(&self) -> Vec<(usize, usize)> {
-        self.lifeforms
-            .iter()
-            .map(|(&id, lf)| (id, lf.species_id))
-            .collect()
     }
 
     fn generate_random_genome<R: Rng>(rng: &mut R) -> Genome {

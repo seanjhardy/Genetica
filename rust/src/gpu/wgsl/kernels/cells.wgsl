@@ -3,38 +3,17 @@
 @include src/gpu/wgsl/utils/color.wgsl;
 @include src/gpu/wgsl/utils/random.wgsl;
 
-@group(0) @binding(0)
-var<uniform> uniforms: Uniforms;
-
-@group(0) @binding(1)
-var<storage, read_write> points: array<VerletPoint>;
-
-@group(0) @binding(2)
-var<storage, read_write> physics_free_list: FreeList;
-
-@group(0) @binding(3)
-var<storage, read_write> physics_counter: atomic<u32>;
-
-@group(0) @binding(4)
-var<storage, read_write> cells: array<Cell>;
-
-@group(0) @binding(5)
-var<storage, read_write> cell_free_list: FreeList;
-
-@group(0) @binding(6)
-var<storage, read_write> cell_counter: atomic<u32>;
-
-@group(0) @binding(7)
-var<storage, read_write> nutrient_grid: NutrientGrid;
-
-@group(0) @binding(8)
-var<storage, read_write> links: array<Link>;
-
-@group(0) @binding(9)
-var<storage, read_write> link_free_list: FreeList;
-
-@group(0) @binding(10)
-var<storage, read_write> lifeform_counter: atomic<u32>;
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read_write> points: array<VerletPoint>;
+@group(0) @binding(2) var<storage, read_write> physics_free_list: FreeList;
+@group(0) @binding(3) var<storage, read_write> physics_counter: atomic<u32>;
+@group(0) @binding(4) var<storage, read_write> cells: array<Cell>;
+@group(0) @binding(5) var<storage, read_write> cell_free_list: FreeList;
+@group(0) @binding(6) var<storage, read_write> cell_counter: atomic<u32>;
+@group(0) @binding(7) var<storage, read_write> nutrient_grid: NutrientGrid;
+@group(0) @binding(8) var<storage, read_write> links: array<Link>;
+@group(0) @binding(9) var<storage, read_write> link_free_list: FreeList;
+@group(0) @binding(10) var<storage, read_write> lifeform_counter: atomic<u32>;
 
 
 fn compute_cell_color(radius: f32, energy: f32) -> vec4<f32> {

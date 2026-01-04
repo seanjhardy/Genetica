@@ -9,7 +9,7 @@
 @group(0) @binding(4) var<storage, read_write> cells: array<Cell>;
 @group(0) @binding(5) var<storage, read_write> cells_counter: atomic<u32>;
 @group(0) @binding(6) var<storage, read_write> cells_free_list: array<atomic<u32>>;
-@group(0) @binding(7) var<storage, read_write> event_buffer: array<u32>;
+@group(0) @binding(7) var<storage, read_write> event_buffer: array<Event>;
 @group(0) @binding(8) var<storage, read_write> event_counter: atomic<u32>;
 @group(0) @binding(9) var<storage, read_write> lifeform_id: atomic<u32>;
 
@@ -127,7 +127,10 @@ fn spawn_cell(seed: f32) {
 
     // Send a simple event notification for the new lifeform
     let event_idx = atomicAdd(&event_counter, 1u);
-    event_buffer[event_idx] = new_lifeform_id;
+    var event: Event;
+    event.event_type = 1u;
+    event.lifeform_id = new_lifeform_id;
+    event_buffer[event_idx] = event;
 }
 
 @compute @workgroup_size(1)

@@ -7,15 +7,7 @@ use std::sync::Arc;
 use bytemuck::Zeroable;
 
 use crate::gpu::structures::{
-    Cell,
-    CompiledRegulatoryUnit,
-    GrnDescriptor,
-    GenomeEvent,
-    Link,
-    PositionChangeEntry,
-    VerletPoint,
-    MAX_GRN_REGULATORY_UNITS,
-    MAX_GENOME_EVENTS,
+    Cell, CompiledRegulatoryUnit, Event, GrnDescriptor, Link, EVENT_CAPACITY, MAX_GRN_REGULATORY_UNITS, PositionChangeEntry, VerletPoint
 };
 use crate::simulator::state::Counter;
 use crate::utils::math::Rect;
@@ -59,7 +51,6 @@ impl GpuBuffers {
         bounds: Rect,
     ) -> Self {
         let initial_cells: Vec<Cell> = Vec::new();
-        let initial_count = 0u32;
 
         let points = GpuVector::<VerletPoint>::new(
             device,
@@ -70,7 +61,7 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_SRC,
             Some("Physics Buffer"),
         );
-        points.initialize_free_list(queue, initial_count);
+        points.initialize_free_list(queue, 0);
 
         let cells = GpuVector::<Cell>::new(
             device,
@@ -82,7 +73,7 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::VERTEX,
             Some("Cell Buffer"),
         );
-        cells.initialize_free_list(queue, initial_count);
+        cells.initialize_free_list(queue, 0);
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
@@ -90,14 +81,18 @@ impl GpuBuffers {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Genome event buffer (division copy/mutate queue)
-        let genome_event_header = (std::mem::size_of::<u32>() * 2) as u64;
-        let genome_event_size = (MAX_GENOME_EVENTS * std::mem::size_of::<GenomeEvent>()) as u64;
-        let event_buffer_size = genome_event_header + genome_event_size;
-        let genome_event_zero = vec![0u8; event_buffer_size as usize];
+        // event buffer
+        let event_init = vec![Event::zeroed(); EVENT_CAPACITY];
         let event_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Genome Event Buffer"),
-            contents: &genome_event_zero,
+            contents: bytemuck::cast_slice(&event_init),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+        let event_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Genome Event Buffer"),
+            contents: bytemuck::cast_slice(&[0u32]),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
@@ -166,8 +161,8 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_SRC,
         });
 
-        let points_counter = Counter::new(device, "Points", initial_count);
-        let cells_counter = Counter::new(device, "Cells", initial_count);
+        let points_counter = Counter::new(device, "Points", 0);
+        let cells_counter = Counter::new(device, "Cells", 0);
         let event_counter = Counter::new(device, "Genome Events", 0);
 
         let lifeform_id = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -242,15 +237,15 @@ impl GpuBuffers {
     pub fn reset(&self, device: &wgpu::Device, queue: &wgpu::Queue, bounds: Rect) {
         use crate::gpu::structures::{Cell, CompiledRegulatoryUnit, GrnDescriptor, Link, PositionChangeEntry};
         
-        let initial_count = 0u32;
+        let initial_count = 0usize;
         let cell_capacity = self.cells.capacity();
         let points_zero = vec![VerletPoint::zeroed(); POINT_CAPACITY];
         queue.write_buffer(self.points.buffer(), 0, bytemuck::cast_slice(&points_zero));
-        self.points.initialize_free_list(queue, initial_count);
+        self.points.initialize_free_list(queue, 0);
         queue.write_buffer(&self.points_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));
         let cell_zero_data = vec![Cell::zeroed(); cell_capacity];
         queue.write_buffer(self.cells.buffer(), 0, bytemuck::cast_slice(&cell_zero_data));
-        self.cells.initialize_free_list(queue, initial_count);
+        self.cells.initialize_free_list(queue, 0);
 
         // Reset counters
         queue.write_buffer(&self.cells_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));
@@ -258,11 +253,8 @@ impl GpuBuffers {
         queue.write_buffer(&self.event_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));
 
         // Reset genome event buffer
-        let genome_event_header = (std::mem::size_of::<u32>() * 2) as u64;
-        let genome_event_size = (MAX_GENOME_EVENTS * std::mem::size_of::<GenomeEvent>()) as u64;
-        let event_buffer_size = genome_event_header + genome_event_size;
-        let genome_event_zero = vec![0u8; event_buffer_size as usize];
-        queue.write_buffer(&self.event_buffer, 0, &genome_event_zero);
+        let event_init = vec![Event::zeroed(); EVENT_CAPACITY];
+        queue.write_buffer(&self.event_buffer, 0, bytemuck::cast_slice(&event_init));
         
         // Reset link buffer
         let link_zero = vec![Link::zeroed(); self.link_capacity];
