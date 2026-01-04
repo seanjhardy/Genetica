@@ -111,8 +111,8 @@ fn fs_main(input: FragmentInput) -> @location(0) vec4<f32> {
 
     // === VIGNETTE ===
     // Darken edges like looking through microscope lens
-    let vignette_strength = 0.6;
-    let vignette_size = 0.7;
+    let vignette_strength = 0.8;
+    let vignette_size = 0.5;
     let vignette = smoothstep(vignette_size, vignette_size * 0.3, dist_from_center);
     let vignette_factor = mix(1.0 - vignette_strength, 1.0, vignette);
 

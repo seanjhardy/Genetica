@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use puffin::profile_scope;
 use crate::genetic_algorithm::systems::{PromoterType, };
 use crate::genetic_algorithm::systems::morphology::gene_regulatory_network::{BINDING_DISTANCE_THRESHOLD, Embedded};
 use crate::genetic_algorithm::systems::morphology::gene_regulatory_network::GeneRegulatoryNetwork;
@@ -50,28 +51,38 @@ impl Default for CompiledRegulatoryUnit {
 }
 
 pub fn compile_grn(id: u32, grn: GeneRegulatoryNetwork) -> Vec<CompiledRegulatoryUnit> {
+  puffin::profile_scope!("Compile GRN");
   let mut regulatory_units = Vec::new();
 
   for unit in grn.regulatory_units.iter() {
+    profile_scope!("Compile GRN Unit");
     // Compoute strongest inputs for this regulatory unit
     let mut inputs: Vec<(u16, f32, bool)> = Vec::new();
 
     for promoter in unit.promoters.iter() {
-      for (i, receptor) in grn.receptors.iter().enumerate() {
-        let affinity = calculate_affinity(receptor, promoter);
-        inputs.push((i as u16, affinity, promoter.promoter_type == PromoterType::Additive));
+      profile_scope!("Compile GRN Promoter");
+      {
+        profile_scope!("Calculate Receptor Affinities");
+        for (i, receptor) in grn.receptors.iter().enumerate() {
+          let affinity = calculate_affinity(receptor, promoter);
+          inputs.push((i as u16, affinity, promoter.promoter_type == PromoterType::Additive));
+        }
       }
 
-      for (i, other_reg_unit) in grn.regulatory_units.iter().enumerate() {
-        for factor in other_reg_unit.factors.iter() {
-          let affinity = calculate_affinity(factor, promoter);
-          inputs.push(((grn.receptors.len() + i) as u16, affinity, promoter.promoter_type == PromoterType::Additive));
+      {
+        profile_scope!("Calculate Factor Affinities");
+        for (i, other_reg_unit) in grn.regulatory_units.iter().enumerate() {
+          for factor in other_reg_unit.factors.iter() {
+            let affinity = calculate_affinity(factor, promoter);
+            inputs.push(((grn.receptors.len() + i) as u16, affinity, promoter.promoter_type == PromoterType::Additive));
+          }
         }
       }
     }
 
     let mut outputs: Vec<(u16, f32)> = Vec::new();
     for (i, effector) in grn.effectors.iter().enumerate() {
+      profile_scope!("Calculate Effector Affinity");
       let mut affinity = 0.0;
       for factor in unit.factors.iter() {
         affinity += calculate_affinity(factor, effector);
@@ -117,6 +128,7 @@ pub fn compile_grn(id: u32, grn: GeneRegulatoryNetwork) -> Vec<CompiledRegulator
 }
 
 fn calculate_affinity(gene1: &impl Embedded, gene2: &impl Embedded) -> f32 {
+  puffin::profile_scope!("Calculate Affinity");
   let distance = length(&gene1.embedding(), &gene2.embedding());
   if distance > BINDING_DISTANCE_THRESHOLD {
     return 0.0;

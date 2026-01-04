@@ -8,7 +8,7 @@
 const FRICTION: f32 = 0.99;
 const VELOCITY_EPSILON: f32 = 0.001;
 
-@compute @workgroup_size(128)
+@compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx = global_id.x;
     let dt = uniforms.sim_params.x;

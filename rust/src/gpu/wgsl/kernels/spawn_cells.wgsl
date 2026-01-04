@@ -9,13 +9,11 @@
 @group(0) @binding(4) var<storage, read_write> cells: array<Cell>;
 @group(0) @binding(5) var<storage, read_write> cells_counter: atomic<u32>;
 @group(0) @binding(6) var<storage, read_write> cells_free_list: array<atomic<u32>>;
-@group(0) @binding(7) var<storage, read_write> event_buffer: array<Event>;
-@group(0) @binding(8) var<storage, read_write> event_counter: atomic<u32>;
-@group(0) @binding(9) var<storage, read_write> lifeform_id: atomic<u32>;
+@group(0) @binding(7) var<storage, read_write> lifeform_id: atomic<u32>;
 
 // Check if we should spawn more cells (below capacity limit)
 fn should_spawn_more(current_count: u32) -> bool {
-    return current_count < 100000u;
+    return current_count < 10000u;
 }
 
 // Attempt to acquire both physics and cell slots atomically
@@ -89,6 +87,7 @@ fn create_cell(point_idx: u32, seed: f32) -> Cell {
     cell.flags = 1u;
     cell.energy = 100.0; // Starting energy
     cell.cell_wall_thickness = 0.1;
+    cell.color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
 
     return cell;
 }
@@ -124,18 +123,10 @@ fn spawn_cell(seed: f32) {
     // Increment counters
     atomicAdd(&points_counter, 1u);
     atomicAdd(&cells_counter, 1u);
-
-    // Send a simple event notification for the new lifeform
-    let event_idx = atomicAdd(&event_counter, 1u);
-    var event: Event;
-    event.event_type = 1u;
-    event.lifeform_id = new_lifeform_id;
-    event_buffer[event_idx] = event;
 }
 
 @compute @workgroup_size(1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    // This kernel runs with only 1 thread
     let current_count = atomicLoad(&points_counter);
 
     // Early return if we've reached capacity

@@ -14,7 +14,6 @@ const WORDS_PER_GENE: u32 = 4u;
 const GENOME_WORD_COUNT: u32 = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
 
 // Genome event queue (division copies) - must match Rust
-const MAX_GENOME_EVENTS: u32 = 65536u;
 const GRN_EVALUATION_FALLBACK: u32 = 8u;
 
 const LIFEFORM_CAPACITY: u32 = 50000u;

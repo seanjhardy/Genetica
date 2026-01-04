@@ -14,10 +14,6 @@ pub static LINKS_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/links.wgsl").to_string()));
 pub static NUTRIENTS_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/nutrients.wgsl").to_string()));
-pub static SEQUENCE_GRN_KERNEL: Lazy<ShaderSource<'static>> =
-    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/sequence_grn.wgsl").to_string()));
-pub static GENOME_EVENTS_KERNEL: Lazy<ShaderSource<'static>> =
-    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/genome_events.wgsl").to_string()));
 pub static SPAWN_CELLS_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/spawn_cells.wgsl").to_string()));
 pub static VERLET_KERNEL: Lazy<ShaderSource<'static>> =

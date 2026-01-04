@@ -191,10 +191,18 @@ impl Application {
             self.uniforms_need_update = true;
         }
 
+        // Swap event buffers at the start of each frame
+        let slot = &mut self.simulation.slots[self.simulation.render_slot];
+        slot.buffers.event_system.swap_buffers();
+
         if !self.simulation.is_paused() {
             puffin::profile_scope!("Compute Pass");
             let speed = *self.speed.lock();
             self.real_time += delta_time * speed;
+
+            // Reset event counter before simulation
+            let slot = &mut self.simulation.slots[self.simulation.render_slot];
+            slot.buffers.event_system.reset_write_counter(&self.gpu.queue);
 
             // Time the compute operations
             let compute_start = Instant::now();
@@ -211,10 +219,20 @@ impl Application {
             }
 
             let compute_duration = compute_start.elapsed();
-
             // Update profiling data
             self.compute_time_accum += compute_duration;
             self.compute_iterations += iterations as u32;
+        }
+
+        // Schedule event buffer reading if simulation ran
+        //let slot = &self.simulation.slots[self.simulation.render_slot];
+        //slot.buffers.event_system.schedule_read_copy(&mut encoder);
+
+
+        // Skip rendering if UI is hidden, but still submit GPU work for simulation
+        if !self.rendering_enabled {
+            self.submit_gpu_work(encoder);
+            return Ok(());
         }
 
         // Check if render slot changed and update render pipelines if needed
@@ -231,12 +249,6 @@ impl Application {
             self.last_render_slot = current_render_slot;
             // Mark uniforms for update since we're now using a different buffer
             self.uniforms_need_update = true;
-        }
-
-        // Skip rendering if UI is hidden, but still submit GPU work for simulation
-        if !self.rendering_enabled {
-            self.submit_gpu_work(encoder);
-            return Ok(());
         }
 
 
@@ -551,11 +563,34 @@ impl Application {
     }
 
         /// Submits GPU work to the queue and polls the device for async operations
-    fn submit_gpu_work(&self, encoder: wgpu::CommandEncoder) {
+    fn submit_gpu_work(&mut self, encoder: wgpu::CommandEncoder) {
         profile_scope!("Submit GPU Work");
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
-        // Poll device to process async operations like buffer mapping
-        let _ = self.gpu.device.poll(wgpu::MaintainBase::Poll);
+
+        // Check if we scheduled event reading this frame
+        let slot = &self.simulation.slots[self.simulation.render_slot];
+        // Start async mapping of the staging buffers
+        //let mapping = slot.buffers.event_system.begin_async_mapping();
+
+        // Wait for mapping to complete (required to avoid buffer mapping issues)
+        let _ = self.gpu.device.poll(wgpu::MaintainBase::Wait);
+
+        // Always try to read events to unmap the buffers, but only process them when not paused
+        /*let events = slot.buffers.event_system.try_read_events(&mapping);
+        if !self.simulation.is_paused() && !events.is_empty() {
+            puffin::profile_scope!("Process GPU Events");
+            for event in events {
+                puffin::profile_scope!("Process Single Event");
+                self.simulation.genetic_algorithm.process_event(
+                    self.simulation.get_step(),
+                    event
+                );
+            }
+        }*/
+
+        // The swap already happened at the start of the frame,
+        // so just ensure the counter is reset for next frame if needed
+        // But since we reset before simulation, it should be fine
     }
 
 }

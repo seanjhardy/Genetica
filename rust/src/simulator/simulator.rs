@@ -10,7 +10,7 @@ use crate::simulator::environment::Environment;
 use crate::simulator::state::{PauseState, SimSlot, SlotState};
 use crate::genetic_algorithm::GeneticAlgorithm;
 
-const WORKGROUP_SIZE: u32 = 512;
+const WORKGROUP_SIZE: u32 = 1024;
 const SIM_STATE_RING_SIZE: usize = 1;
 const CELL_UPDATE_INTERVAL: usize = 10;
 
@@ -99,6 +99,7 @@ impl Simulation {
         self.step.fetch_add(1, Ordering::Relaxed);
 
         let slot = &mut self.slots[self.render_slot];
+
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("Simulation Pass"),
             timestamp_writes: None,
@@ -110,23 +111,20 @@ impl Simulation {
         let dispatch = ((POINT_CAPACITY as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
         pass.dispatch_workgroups(dispatch, 1, 1);
 
-        if self.step.load(Ordering::Relaxed) % CELL_UPDATE_INTERVAL == 0 {
+        /*if self.step.load(Ordering::Relaxed) % CELL_UPDATE_INTERVAL == 0 {
             pass.set_pipeline(&slot.compute_pipelines.update_cells);
             pass.set_bind_group(0, &slot.compute_pipelines.update_cells_bind_group, &[]);
             let dispatch = ((CELL_CAPACITY as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
             pass.dispatch_workgroups(dispatch, 1, 1);
-        }
+        }*/
 
         // Spawn new points each simulation step
         pass.set_pipeline(&slot.compute_pipelines.spawn_cells);
         pass.set_bind_group(0, &slot.compute_pipelines.spawn_cells_bind_group, &[]);
-        pass.dispatch_workgroups(1, 1, 1); // Single thread execution
+        pass.dispatch_workgroups(1, 1, 1);
 
         // Rotate buffers: scratch becomes current, current becomes previous, previous becomes scratch.
         //self.slots.rotate_left(1);
-
-        // Process pending events
-        //self.genetic_algorithm.process_events(self.step.load(Ordering::Relaxed), slot.buffers.event_buffer);
     }
 
     pub fn reset(&mut self) {
@@ -149,6 +147,8 @@ impl Simulation {
             env.set_bounds(self.initial_bounds);
         }
 
+        self.genetic_algorithm.reset();
+
         self.step.store(0, Ordering::Relaxed);
         self.current_bounds = self.initial_bounds;
     }
@@ -156,5 +156,6 @@ impl Simulation {
     pub fn get_step(&self) -> usize {
         self.step.load(Ordering::Relaxed)
     }
+
 
 }

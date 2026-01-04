@@ -39,20 +39,127 @@ struct TextVertex {
     color: [f32; 4],
 }
 
+/// Very rough glyph width estimator (in "em" units).
+/// Multiply the returned value by font_size to get pixel-ish width.
+/// Tuned for variable-width display fonts; adjust constants to taste.
+fn char_em_width(c: char) -> f32 {
+    match c {
+        // Whitespace
+        ' ' => 0.33,
+        '\t' => 1.20, // treat as ~4 spaces-ish in this rough model
+        '\n' | '\r' => 0.0, // handled by line splitting elsewhere
+
+        // Extremely narrow punctuation / marks
+        '.' | ',' => 0.28,
+        ':' | ';' => 0.32,
+        '\'' | '’' | '`' => 0.22,
+        '!' | '|' => 0.30,
+
+        // Slightly narrow punctuation
+        '"' | '“' | '”' => 0.40,
+        '(' | ')' | '[' | ']' | '{' | '}' => 0.40,
+
+        // Dashes/underscores
+        '-' | '–' | '—' => 0.55,
+        '_' => 0.60,
+
+        // Slashes / separators
+        '/' | '\\' => 0.55,
+
+        // Math-ish / operators
+        '+' | '=' | '<' | '>' => 0.60,
+        '*' => 0.55,
+
+        // Hashy / at / amp / percent are usually wide-ish
+        '#' => 0.70,
+        '@' => 0.90,
+        '&' => 0.75,
+        '%' => 0.85,
+
+        // Currency
+        '$' | '€' | '£' | '¥' => 0.65,
+
+        // Digits: mostly consistent medium width in many fonts
+        '1' => 0.50,
+        '0'..='9' => 0.60,
 
 
-/// Calculate text bounds using a fixed character count approach
-/// This provides stable sizing that doesn't change with every character
+        // Very narrow lowercase
+        'i' | 'l' | 'j' => 0.30,
+
+        // Narrow uppercase (often tighter than other caps)
+        'I' => 0.35,
+
+        // Wider lowercase
+        'm' | 'w' => 0.85,
+
+        // Widest uppercase
+        'M' | 'W' => 0.98,
+
+        // Other uppercase: generally a bit wider than lowercase
+        'A'..='Z' => 0.72,
+
+        // Other lowercase: default body width
+        'a'..='z' => 0.58,
+
+        // Some common “wide” symbols
+        '…' => 0.85,
+
+        // Fallback: treat most other Unicode as medium-wide
+        // (covers accented letters, emoji, CJK, etc. very roughly)
+        _ => {
+            // If you want a slightly smarter fallback:
+            // - basic Latin-1 supplement letters often resemble a-z/A-Z widths
+            // - emoji/CJK are usually ~1.0em or more
+            if c.is_ascii() {
+                0.60
+            } else if ('\u{4E00}'..='\u{9FFF}').contains(&c) {
+                // CJK Unified Ideographs (very rough)
+                1.00
+            } else {
+                0.70
+            }
+        }
+    }
+}
+
+/// Estimate text bounds by summing per-character widths.
+/// Supports multi-line strings by taking the max line width and counting lines.
 pub fn calculate_text_bounds(text: &str, font_size: f32) -> (f32, f32) {
     if text.is_empty() {
-        return (0.0, font_size);
+        return (0.0, font_size.ceil());
     }
 
-    // Conservative character width multiplier for monospace-like behavior
-    const CHAR_WIDTH_FACTOR: f32 = 0.6;
+    let mut max_line_em = 0.0f32;
+    let mut current_line_em = 0.0f32;
+    let mut lines = 1u32;
 
-    let width = ((text.chars().count() as f32) * font_size * CHAR_WIDTH_FACTOR).ceil();
-    let height = font_size.ceil();
+    for c in text.chars() {
+        match c {
+            '\n' => {
+                if current_line_em > max_line_em {
+                    max_line_em = current_line_em;
+                }
+                current_line_em = 0.0;
+                lines += 1;
+            }
+            '\r' => { /* ignore */ }
+            _ => {
+                current_line_em += char_em_width(c);
+            }
+        }
+    }
+
+    if current_line_em > max_line_em {
+        max_line_em = current_line_em;
+    }
+
+    // A tiny padding helps avoid clipping from rounding + font quirks.
+    let padding_em = 0.10;
+
+    let width = ((max_line_em + padding_em) * font_size).ceil();
+    let line_height = (font_size).ceil(); // rough line height for display fonts
+    let height = (line_height * lines as f32).ceil();
 
     (width, height)
 }

@@ -244,7 +244,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Use non-rotated angle for noise sampling (cell wall doesn't rotate)
     let angle = atan2(uv_offset.y, uv_offset.x);
     let noise_value = cell_noise(cell.noise_permutations, angle);
-    let perturbation_amount = in.radius * 0.1; // 10% of radius
+    let perturbation_amount = in.radius * 0.3; // 10% of radius
     adjusted_radius = in.radius + noise_value * perturbation_amount;
     
     // SECOND: Clamp to midpoint boundary if near neighbors

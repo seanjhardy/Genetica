@@ -7,9 +7,9 @@ use std::sync::Arc;
 use bytemuck::Zeroable;
 
 use crate::gpu::structures::{
-    Cell, CompiledRegulatoryUnit, Event, GrnDescriptor, Link, EVENT_CAPACITY, MAX_GRN_REGULATORY_UNITS, PositionChangeEntry, VerletPoint
+    Cell, CompiledRegulatoryUnit, GrnDescriptor, Link, MAX_GRN_REGULATORY_UNITS, PositionChangeEntry, VerletPoint
 };
-use crate::simulator::state::Counter;
+use crate::simulator::state::{Counter, EventSystem};
 use crate::utils::math::Rect;
 use crate::utils::gpu::gpu_vector::GpuVector;
 
@@ -27,7 +27,7 @@ pub struct GpuBuffers {
     pub cells: GpuVector<Cell>,
     pub lifeform_id: wgpu::Buffer,
     pub uniform_buffer: wgpu::Buffer,
-    pub event_buffer: wgpu::Buffer,
+    pub event_system: EventSystem,
     pub link_buffer: wgpu::Buffer,
     pub link_free_list: wgpu::Buffer,
     pub link_capacity: usize,
@@ -39,7 +39,6 @@ pub struct GpuBuffers {
     pub position_changes: wgpu::Buffer,
     pub points_counter: Counter,
     pub cells_counter: Counter,
-    pub event_counter: Counter,
 }
 
 impl GpuBuffers {
@@ -81,22 +80,8 @@ impl GpuBuffers {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // event buffer
-        let event_init = vec![Event::zeroed(); EVENT_CAPACITY];
-        let event_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Genome Event Buffer"),
-            contents: bytemuck::cast_slice(&event_init),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-        });
-        let event_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Genome Event Buffer"),
-            contents: bytemuck::cast_slice(&[0u32]),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-        });
+        // event system
+        let event_system = EventSystem::new(device);
 
         let link_init = vec![Link::zeroed(); LINK_CAPACITY];
         let link_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -163,11 +148,10 @@ impl GpuBuffers {
 
         let points_counter = Counter::new(device, "Points", 0);
         let cells_counter = Counter::new(device, "Cells", 0);
-        let event_counter = Counter::new(device, "Genome Events", 0);
 
         let lifeform_id = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Lifeform ID Buffer"),
-            contents: bytemuck::cast_slice(&[0usize]),
+            contents: bytemuck::cast_slice(&[1u32]),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
@@ -177,7 +161,7 @@ impl GpuBuffers {
             points,
             cells,
             uniform_buffer,
-            event_buffer,
+            event_system,
             link_buffer,
             link_free_list,
             link_capacity: LINK_CAPACITY,
@@ -190,7 +174,6 @@ impl GpuBuffers {
             position_changes,
             points_counter,
             cells_counter,
-            event_counter,
         }
     }
 
@@ -236,8 +219,8 @@ impl GpuBuffers {
     /// Reset all GPU buffers to their initial empty state
     pub fn reset(&self, device: &wgpu::Device, queue: &wgpu::Queue, bounds: Rect) {
         use crate::gpu::structures::{Cell, CompiledRegulatoryUnit, GrnDescriptor, Link, PositionChangeEntry};
-        
-        let initial_count = 0usize;
+
+        let initial_count = 0u32;
         let cell_capacity = self.cells.capacity();
         let points_zero = vec![VerletPoint::zeroed(); POINT_CAPACITY];
         queue.write_buffer(self.points.buffer(), 0, bytemuck::cast_slice(&points_zero));
@@ -250,11 +233,12 @@ impl GpuBuffers {
         // Reset counters
         queue.write_buffer(&self.cells_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));
         queue.write_buffer(&self.points_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));
-        queue.write_buffer(&self.event_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));
 
-        // Reset genome event buffer
-        let event_init = vec![Event::zeroed(); EVENT_CAPACITY];
-        queue.write_buffer(&self.event_buffer, 0, bytemuck::cast_slice(&event_init));
+        // Reset lifeform ID counter to 1 (same as initialization)
+        queue.write_buffer(&self.lifeform_id, 0, bytemuck::cast_slice(&[1u32]));
+
+        // Reset event system - reset both buffers to be safe
+        self.event_system.reset_both_counters(queue);
         
         // Reset link buffer
         let link_zero = vec![Link::zeroed(); self.link_capacity];

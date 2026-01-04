@@ -11,9 +11,7 @@ pub const MAX_GRN_STATE_SIZE: usize = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATO
 pub const MAX_GENES_PER_GENOME: usize = 200;
 pub const WORDS_PER_GENE: usize = 4;
 pub const GENOME_WORD_COUNT: usize = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
-pub const EVENT_CAPACITY: usize = 1000;
-
-pub const MAX_SPECIES_CAPACITY: usize = 1024;
+pub const EVENT_CAPACITY: usize = 10;
 
 pub const CREATE_LIFEFORM_FLAG: u32 = 1;
 pub const ADD_CELL_TO_LIFEFORM_FLAG: u32 = 2;

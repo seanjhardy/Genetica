@@ -116,8 +116,10 @@ struct Uniforms {
     nutrient: vec4<u32>,   // (Cell size, scale, reserved, reserved)
 }
 
+
 struct Event {
     event_type: u32,
     parent_lifeform_id: u32,
     lifeform_id: u32,
+    _pad: u32,
 }
