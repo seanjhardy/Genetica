@@ -1,4 +1,4 @@
-use itertools::Itertools;
+use std::cmp::Ordering;
 use puffin::profile_scope;
 use crate::genetic_algorithm::systems::{PromoterType, };
 use crate::genetic_algorithm::systems::morphology::gene_regulatory_network::{BINDING_DISTANCE_THRESHOLD, Embedded};
@@ -50,14 +50,23 @@ impl Default for CompiledRegulatoryUnit {
   }
 }
 
-pub fn compile_grn(id: u32, grn: GeneRegulatoryNetwork) -> Vec<CompiledRegulatoryUnit> {
+pub fn compile_grn(id: u32, grn: &GeneRegulatoryNetwork) -> Vec<CompiledRegulatoryUnit> {
   puffin::profile_scope!("Compile GRN");
-  let mut regulatory_units = Vec::new();
+  let mut regulatory_units = Vec::with_capacity(grn.regulatory_units.len());
+  let receptors_len = grn.receptors.len();
+  let total_factors: usize = grn
+    .regulatory_units
+    .iter()
+    .map(|unit| unit.factors.len())
+    .sum();
+  let effector_count = grn.effectors.len();
 
   for unit in grn.regulatory_units.iter() {
     profile_scope!("Compile GRN Unit");
     // Compoute strongest inputs for this regulatory unit
-    let mut inputs: Vec<(u16, f32, bool)> = Vec::new();
+    let mut inputs: Vec<(u16, f32, bool)> = Vec::with_capacity(
+      unit.promoters.len().saturating_mul(receptors_len + total_factors),
+    );
 
     for promoter in unit.promoters.iter() {
       profile_scope!("Compile GRN Promoter");
@@ -80,7 +89,7 @@ pub fn compile_grn(id: u32, grn: GeneRegulatoryNetwork) -> Vec<CompiledRegulator
       }
     }
 
-    let mut outputs: Vec<(u16, f32)> = Vec::new();
+    let mut outputs: Vec<(u16, f32)> = Vec::with_capacity(effector_count);
     for (i, effector) in grn.effectors.iter().enumerate() {
       profile_scope!("Calculate Effector Affinity");
       let mut affinity = 0.0;
@@ -90,33 +99,41 @@ pub fn compile_grn(id: u32, grn: GeneRegulatoryNetwork) -> Vec<CompiledRegulator
       outputs.push((i as u16, affinity));
     }
   
-    // Get top-k (MAX_CONNECTIONS) inputs with the highest affinity
-    let top_inputs: Vec<(u16, f32, bool)> = inputs
-                    .iter()
-                    .cloned()
-                    .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
-                    .take(MAX_CONNECTIONS)
-                    .collect();
-    let top_inputs: Vec<Input> = top_inputs.iter().map(|(index, weight, promoter_type)| Input {
-      weight: *weight,
-      index: *index,
-      promoter_type: if *promoter_type { 1 } else { 0 },
-    }).collect();
-    let num_inputs = top_inputs.len() as u32;
+    let by_affinity = |a: &(u16, f32, bool), b: &(u16, f32, bool)| {
+      b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal)
+    };
+    if inputs.len() > MAX_CONNECTIONS {
+      inputs.select_nth_unstable_by(MAX_CONNECTIONS - 1, by_affinity);
+      inputs.truncate(MAX_CONNECTIONS);
+    }
+    inputs.sort_unstable_by(by_affinity);
+    let num_inputs = inputs.len().min(MAX_CONNECTIONS) as u32;
+    let mut input_array = [Input::default(); MAX_CONNECTIONS];
+    for (slot, (index, weight, promoter_type)) in inputs.iter().take(MAX_CONNECTIONS).enumerate() {
+      input_array[slot] = Input {
+        weight: *weight,
+        index: *index,
+        promoter_type: if *promoter_type { 1 } else { 0 },
+      };
+    }
 
-    let top_outputs: Vec<(u16, f32)> = outputs
-                    .iter()
-                    .cloned()
-                    .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
-                    .take(MAX_CONNECTIONS)
-                    .collect();
-    let effector_indices: [u16; MAX_CONNECTIONS] = top_outputs.iter().map(|(index, _)| *index).collect::<Vec<u16>>().try_into().unwrap();
-    let effector_weights: [f32; MAX_CONNECTIONS] = top_outputs.iter().map(|(_, weight)| *weight).collect::<Vec<f32>>().try_into().unwrap();
-    let num_outputs = top_outputs.len() as u32;
+    let by_weight = |a: &(u16, f32), b: &(u16, f32)| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal);
+    if outputs.len() > MAX_CONNECTIONS {
+      outputs.select_nth_unstable_by(MAX_CONNECTIONS - 1, by_weight);
+      outputs.truncate(MAX_CONNECTIONS);
+    }
+    outputs.sort_unstable_by(by_weight);
+    let num_outputs = outputs.len().min(MAX_CONNECTIONS) as u32;
+    let mut effector_indices = [0u16; MAX_CONNECTIONS];
+    let mut effector_weights = [0.0f32; MAX_CONNECTIONS];
+    for (slot, (index, weight)) in outputs.iter().take(MAX_CONNECTIONS).enumerate() {
+      effector_indices[slot] = *index;
+      effector_weights[slot] = *weight;
+    }
 
     let compiled_regulatory_unit = CompiledRegulatoryUnit {
       grn_id: id,
-      inputs: top_inputs.try_into().unwrap(),
+      inputs: input_array,
       effector_indices,
       effector_weights,
       num_inputs,

@@ -9,11 +9,13 @@
 @group(0) @binding(4) var<storage, read_write> cells: array<Cell>;
 @group(0) @binding(5) var<storage, read_write> cells_counter: atomic<u32>;
 @group(0) @binding(6) var<storage, read_write> cells_free_list: array<atomic<u32>>;
-@group(0) @binding(7) var<storage, read_write> lifeform_id: atomic<u32>;
+@group(0) @binding(7) var<storage, read_write> event_buffer: array<Event>;
+@group(0) @binding(8) var<storage, read_write> event_counter: atomic<u32>;
+@group(0) @binding(9) var<storage, read_write> lifeform_id: atomic<u32>;
 
 // Check if we should spawn more cells (below capacity limit)
 fn should_spawn_more(current_count: u32) -> bool {
-    return current_count < 10000u;
+    return current_count < 1000u;
 }
 
 // Attempt to acquire both physics and cell slots atomically
@@ -68,12 +70,12 @@ fn generate_random_position(seed: f32) -> vec2<f32> {
 // Generate initial random velocity
 
 // Create a VerletPoint with the given position and velocity
-fn create_point(position: vec2<f32>, velocity: vec2<f32>) -> VerletPoint {
+fn create_point(position: vec2<f32>, velocity: vec2<f32>, radius: f32) -> VerletPoint {
     var point: VerletPoint;
     point.pos = position;
     point.prev_pos = position - velocity * uniforms.sim_params.x; // Set prev_pos to create initial velocity
     point.accel = vec2<f32>(0.0, 0.0);
-    point.radius = 1.0;
+    point.radius = radius;
     point.flags = POINT_FLAG_ACTIVE;
     return point;
 }
@@ -87,13 +89,16 @@ fn create_cell(point_idx: u32, seed: f32) -> Cell {
     cell.flags = 1u;
     cell.energy = 100.0; // Starting energy
     cell.cell_wall_thickness = 0.1;
-    cell.color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
 
     return cell;
 }
 
 // Create a new cell directly in the simulation
 fn spawn_cell(seed: f32) {
+    let event_idx = atomicAdd(&event_counter, 1u);
+    if (event_idx >= 2000u) {
+        return;
+    }
     // Try to acquire slots for both physics point and cell
     let slots = try_acquire_slots();
     if slots.x < 0 || slots.y < 0 {
@@ -107,7 +112,8 @@ fn spawn_cell(seed: f32) {
     // Generate position and create physics point
     let position = generate_random_position(seed);
     let velocity = vec2<f32>(0.0, 0.0); // Start with no velocity
-    let point = create_point(position, velocity);
+    let radius = rand_01(seed + position.x * 1000.0 + position.y * 10.0) * 1.0 + 0.1;
+    let point = create_point(position, velocity, radius);
 
     // Increment the lifeform ID counter
     let new_lifeform_id = atomicAdd(&lifeform_id, 1u);
@@ -123,6 +129,14 @@ fn spawn_cell(seed: f32) {
     // Increment counters
     atomicAdd(&points_counter, 1u);
     atomicAdd(&cells_counter, 1u);
+
+    // Send a simple event notification for the new lifeform
+    var event: Event;
+    event.event_type = 1u;
+    event.parent_lifeform_id = 4294967295u;  // No parent for new lifeforms
+    event.lifeform_id = new_lifeform_id;
+    event._pad = 0u;
+    event_buffer[event_idx] = event;
 }
 
 @compute @workgroup_size(1)

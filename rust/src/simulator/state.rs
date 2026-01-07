@@ -1,10 +1,11 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use futures::channel::oneshot;
 use wgpu;
 use wgpu::util::DeviceExt;
 use parking_lot::{Mutex};
 use std::sync::mpsc;
+use bytemuck::Zeroable;
 
 use crate::gpu::structures::Event;
 
@@ -172,6 +173,8 @@ pub struct EventSystem {
     staging_counter: wgpu::Buffer,
     /// Mutable state protected by mutex
     state: Mutex<EventSystemState>,
+    /// Prevent overlapping readbacks into shared staging buffers
+    readback_in_flight: AtomicBool,
 }
 
 /// Mutable state of the EventSystem
@@ -190,12 +193,16 @@ struct EventSystemState {
 pub struct BufferMapping {
     /// Channel receiver for mapping completion
     receiver: mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,
+    /// Number of mapping completions received
+    completed: AtomicUsize,
+    /// Whether any mapping failed
+    failed: AtomicBool,
 }
 
 impl EventSystem {
     /// Create a new double-buffered event system
     pub fn new(device: &wgpu::Device) -> Self {
-        let max_events = 1; // Much smaller buffer - most frames have few or no events
+        let max_events = 2000; // Much smaller buffer - most frames have few or no events
 
         // Create double-buffered event buffers (initialized with zeros)
         let event_buffer_size = (max_events * std::mem::size_of::<Event>()) as u64;
@@ -204,12 +211,12 @@ impl EventSystem {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Event Buffer 0"),
                 contents: &zeros,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
             }),
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Event Buffer 1"),
                 contents: &zeros,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
             }),
         ];
 
@@ -255,27 +262,48 @@ impl EventSystem {
             staging_events,
             staging_counter,
             state: Mutex::new(state),
+            readback_in_flight: AtomicBool::new(false),
         }
     }
 
+    /// Schedule copying the current read buffer to staging for CPU access.
+    /// Returns false if a readback is already in flight.
+    pub fn try_schedule_readback(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        queue: &wgpu::Queue,
+    ) -> bool {
+        if self.readback_in_flight.load(Ordering::Acquire) {
+            return false;
+        }
 
-    /// Schedule copying the current read buffer to staging for CPU access
-    pub fn schedule_read_copy(&self, encoder: &mut wgpu::CommandEncoder) {
-        let state = self.state.lock();
-        // Copy counter from current read buffer
+        let (cpu_read_index, gpu_write_index, max_events) = {
+            let mut state = self.state.lock();
+            let temp = state.gpu_write_index;
+            state.gpu_write_index = state.cpu_read_index;
+            state.cpu_read_index = temp;
+            state.events_read = 0;
+            (state.cpu_read_index, state.gpu_write_index, state.max_events)
+        };
+
+        queue.write_buffer(&self.counter_buffers[gpu_write_index], 0, bytemuck::cast_slice(&[0u32]));
+        let zeros = vec![Event::zeroed(); max_events];
+        queue.write_buffer(&self.event_buffers[gpu_write_index], 0, bytemuck::cast_slice(&zeros));
+
         encoder.copy_buffer_to_buffer(
-            &self.counter_buffers[state.cpu_read_index], 0,
+            &self.counter_buffers[cpu_read_index], 0,
             &self.staging_counter, 0,
             std::mem::size_of::<u32>() as u64
         );
 
-        // Copy all events from current read buffer
-        let copy_size = (state.max_events * std::mem::size_of::<Event>()) as u64;
+        let copy_size = (max_events * std::mem::size_of::<Event>()) as u64;
         encoder.copy_buffer_to_buffer(
-            &self.event_buffers[state.cpu_read_index], 0,
+            &self.event_buffers[cpu_read_index], 0,
             &self.staging_events, 0,
             copy_size
         );
+
+        true
     }
 
     /// Start async mapping of the staging buffers after command submission
@@ -294,23 +322,41 @@ impl EventSystem {
             let _ = sender.send(res);
         });
 
-        BufferMapping { receiver }
+        BufferMapping {
+            receiver,
+            completed: AtomicUsize::new(0),
+            failed: AtomicBool::new(false),
+        }
     }
 
     /// Try to read events from the staging buffers if mapping is complete
-    pub fn try_read_events(&self, mapping: &BufferMapping) -> Vec<Event> {
-        // Check if both mappings completed successfully (2 messages expected)
-        let mut success_count = 0;
-        for _ in 0..2 {
+    pub fn try_read_events(&self, mapping: &BufferMapping) -> Option<Vec<Event>> {
+        loop {
             match mapping.receiver.try_recv() {
-                Ok(Ok(())) => success_count += 1,
-                Ok(Err(_)) => return Vec::new(), // Mapping failed
-                Err(_) => return Vec::new(), // Not ready yet
+                Ok(result) => match result {
+                    Ok(()) => {
+                        mapping.completed.fetch_add(1, Ordering::AcqRel);
+                    }
+                    Err(_) => {
+                        mapping.failed.store(true, Ordering::Release);
+                    }
+                },
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    mapping.failed.store(true, Ordering::Release);
+                    break;
+                }
             }
         }
 
-        if success_count != 2 {
-            return Vec::new(); // Both mappings didn't complete successfully
+        if mapping.failed.load(Ordering::Acquire) {
+            self.staging_counter.unmap();
+            self.staging_events.unmap();
+            return Some(Vec::new());
+        }
+
+        if mapping.completed.load(Ordering::Acquire) < 2 {
+            return None;
         }
 
         // Both mappings completed, read the data
@@ -320,41 +366,117 @@ impl EventSystem {
             *bytemuck::from_bytes::<u32>(&counter_data)
         };
 
-        // Early return if no events - avoid expensive event buffer processing
-        if event_count == 0 {
-            // Clean up mappings - no slices are held at this point
-            self.staging_counter.unmap();
-            self.staging_events.unmap();
-            return Vec::new();
-        }
-
-        // Read events only if there are events to process
         let processed_events = {
             let event_slice = self.staging_events.slice(..);
             let event_data = event_slice.get_mapped_range();
             let events = bytemuck::cast_slice::<u8, Event>(&event_data);
 
             let mut state = self.state.lock();
-            // Read all events that haven't been read yet
             let mut processed_events = Vec::new();
             let start_idx = state.events_read;
-            let end_idx = (start_idx + event_count as usize).min(state.max_events);
+            let mut end_idx = start_idx;
 
-            for i in start_idx..end_idx {
-                let event = events[i];
-                if event.event_type != 0 {
-                    processed_events.push(event);
+            if event_count > 0 {
+                end_idx = (start_idx + event_count as usize).min(state.max_events);
+                for i in start_idx..end_idx {
+                    let event = events[i];
+                    if event.event_type != 0 {
+                        processed_events.push(event);
+                    }
+                }
+            } else {
+                // Fallback: scan for any non-zero events if counter appears stale.
+                for (idx, event) in events.iter().enumerate().take(state.max_events) {
+                    if event.event_type != 0 {
+                        processed_events.push(*event);
+                        end_idx = idx + 1;
+                    }
                 }
             }
 
-            // Update how many we've read
             state.events_read = end_idx;
-
             processed_events
         };
 
         // Clean up mappings - all slices have been dropped by now
         self.staging_counter.unmap();
+        self.staging_events.unmap();
+
+        Some(processed_events)
+    }
+
+    pub fn read_events_blocking(&self, device: &wgpu::Device) -> Vec<Event> {
+        let wait_for_map = |device: &wgpu::Device, receiver: &mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>| {
+            loop {
+                device.poll(wgpu::MaintainBase::Wait);
+                match receiver.try_recv() {
+                    Ok(Ok(())) => return true,
+                    Ok(Err(_)) => return false,
+                    Err(mpsc::TryRecvError::Empty) => {}
+                    Err(mpsc::TryRecvError::Disconnected) => return false,
+                }
+            }
+        };
+
+        let event_count = {
+            let (sender, receiver) = mpsc::channel();
+            let counter_slice = self.staging_counter.slice(..);
+            counter_slice.map_async(wgpu::MapMode::Read, move |res| {
+                let _ = sender.send(res);
+            });
+
+            if !wait_for_map(device, &receiver) {
+                return Vec::new();
+            }
+
+            let counter_data = counter_slice.get_mapped_range();
+            let count = *bytemuck::from_bytes::<u32>(&counter_data);
+            drop(counter_data);
+            self.staging_counter.unmap();
+            count
+        };
+
+        let (sender, receiver) = mpsc::channel();
+        let event_slice = self.staging_events.slice(..);
+        event_slice.map_async(wgpu::MapMode::Read, move |res| {
+            let _ = sender.send(res);
+        });
+
+        if !wait_for_map(device, &receiver) {
+            return Vec::new();
+        }
+
+        let processed_events = {
+            let event_data = event_slice.get_mapped_range();
+            let events = bytemuck::cast_slice::<u8, Event>(&event_data);
+
+            let mut state = self.state.lock();
+            let mut processed_events = Vec::new();
+            let start_idx = state.events_read;
+            let mut end_idx = start_idx;
+
+            if event_count > 0 {
+                end_idx = (start_idx + event_count as usize).min(state.max_events);
+                for i in start_idx..end_idx {
+                    let event = events[i];
+                    if event.event_type != 0 {
+                        processed_events.push(event);
+                    }
+                }
+            } else {
+                for (idx, event) in events.iter().enumerate().take(state.max_events) {
+                    if event.event_type != 0 {
+                        processed_events.push(*event);
+                        end_idx = idx + 1;
+                    }
+                }
+            }
+
+            state.events_read = end_idx;
+            drop(event_data);
+            processed_events
+        };
+
         self.staging_events.unmap();
 
         processed_events
@@ -366,18 +488,26 @@ impl EventSystem {
         (&self.event_buffers[state.gpu_write_index], &self.counter_buffers[state.gpu_write_index])
     }
 
-    /// Reset the current write buffer's counter
-    pub fn swap_buffers(&self) {
-        let mut state = self.state.lock();
-        let temp = state.gpu_write_index;
-        state.gpu_write_index = state.cpu_read_index;
-        state.cpu_read_index = temp;
-        state.events_read = 0;
+    /// Get the GPU buffers for a specific index (event_buffer, counter_buffer)
+    pub fn gpu_buffers_for_index(&self, index: usize) -> (&wgpu::Buffer, &wgpu::Buffer) {
+        (&self.event_buffers[index], &self.counter_buffers[index])
     }
 
-    pub fn reset_write_counter(&self, queue: &wgpu::Queue) {
+    pub fn gpu_write_index(&self) -> usize {
         let state = self.state.lock();
-        queue.write_buffer(&self.counter_buffers[state.gpu_write_index], 0, bytemuck::cast_slice(&[0u32]));
+        state.gpu_write_index
+    }
+
+    pub fn is_readback_in_flight(&self) -> bool {
+        self.readback_in_flight.load(Ordering::Acquire)
+    }
+
+    pub fn start_readback(&self) {
+        self.readback_in_flight.store(true, Ordering::Release);
+    }
+
+    pub fn finish_readback(&self) {
+        self.readback_in_flight.store(false, Ordering::Release);
     }
 
     pub fn reset_both_counters(&self, queue: &wgpu::Queue) {
@@ -385,5 +515,8 @@ impl EventSystem {
         for i in 0..2 {
             queue.write_buffer(&self.counter_buffers[i], 0, bytemuck::cast_slice(&[0u32]));
         }
+        let mut state = self.state.lock();
+        state.events_read = 0;
+        self.readback_in_flight.store(false, Ordering::Release);
     }
 }

@@ -8,7 +8,7 @@
 const FRICTION: f32 = 0.99;
 const VELOCITY_EPSILON: f32 = 0.001;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(128)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx = global_id.x;
     let dt = uniforms.sim_params.x;
@@ -16,41 +16,38 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if idx >= arrayLength(&points) {
         return;
     }
-    
+
     var point: VerletPoint = points[idx];
-    let pos: vec2<f32> = point.pos;
+    
+    if (point.flags & POINT_FLAG_ACTIVE) == 0u {
+        return;
+    }
+    
     let radius: f32 = point.radius;
-    var vel: vec2<f32> = point.pos - point.prev_pos;
-    
-    // Apply friction
-    vel = vel * FRICTION;
-    
-    var next_pos: vec2<f32> = point.pos + vel * dt + point.accel * (dt * dt);
-    
+
+    // Clamp to exact bounds from uniforms (accounting for radius)
     let min_bound = uniforms.bounds.xy + vec2<f32>(radius, radius);
     let max_bound = uniforms.bounds.zw - vec2<f32>(radius, radius);
-    
-    if (next_pos.x < min_bound.x) {
-        vel.x = abs(vel.x);
-        next_pos.x = min_bound.x + vel.x;
-    } else if (next_pos.x > max_bound.x) {
-        next_pos.x = max_bound.x;
-        vel.x = -abs(vel.x);
-        next_pos.x = max_bound.x + vel.x;
-    }
-    
-    if (next_pos.y < min_bound.y) {
-        vel.y = abs(vel.y);
-        next_pos.y = min_bound.y + vel.y;
-    } else if (next_pos.y > max_bound.y) {
-        next_pos.y = max_bound.y;
-        vel.y = -abs(vel.y);
-        next_pos.y = max_bound.y + vel.y;
-    }
-    
+
+    // Clamp position to bounds - this should keep ALL points within bounds at all times
+    point.pos.x = clamp(point.pos.x, min_bound.x, max_bound.x);
+    point.pos.y = clamp(point.pos.y, min_bound.y, max_bound.y);
+
+    let pos: vec2<f32> = point.pos;
+    var vel: vec2<f32> = point.pos - point.prev_pos;
+
+    // Apply friction
+    vel = vel * FRICTION;
+
+    var next_pos: vec2<f32> = point.pos + vel * dt + point.accel * (dt * dt);
+
+    // Clamp the calculated next position to bounds (using same uniform bounds)
+    next_pos.x = clamp(next_pos.x, min_bound.x, max_bound.x);
+    next_pos.y = clamp(next_pos.y, min_bound.y, max_bound.y);
+
     point.prev_pos = point.pos;
     point.pos = next_pos;
-    point.accel = vec2<f32>(0.0, 0.0);
+    point.accel = vec2<f32>(0.0, 0.0); // No acceleration
     
     points[idx] = point; 
 }

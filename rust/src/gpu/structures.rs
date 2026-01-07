@@ -11,7 +11,6 @@ pub const MAX_GRN_STATE_SIZE: usize = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATO
 pub const MAX_GENES_PER_GENOME: usize = 200;
 pub const WORDS_PER_GENE: usize = 4;
 pub const GENOME_WORD_COUNT: usize = MAX_GENES_PER_GENOME * WORDS_PER_GENE;
-pub const EVENT_CAPACITY: usize = 10;
 
 pub const CREATE_LIFEFORM_FLAG: u32 = 1;
 pub const ADD_CELL_TO_LIFEFORM_FLAG: u32 = 2;
@@ -67,49 +66,11 @@ pub struct Species {
     pub mascot_genome: Genome,
 }
 
-impl Species {
-    pub fn inactive() -> Self {
-        Self {
-            species_id: 0,
-            ancestor_species_id: 0,
-            member_count: 0,
-            flags: 0,
-            mascot_genome: Genome::inactive(),
-        }
-    }
-}
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Genome {
     pub gene_ids: [u32; MAX_GENES_PER_GENOME],
     pub gene_sequences: [u32; GENOME_WORD_COUNT],
-}
-
-impl Genome {
-    pub fn inactive() -> Self {
-        Self {
-            gene_ids: [0; MAX_GENES_PER_GENOME],
-            gene_sequences: [0; GENOME_WORD_COUNT],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct GenomeEvent {
-    pub dst_genome_slot: u32,
-    pub src_genome_slot: u32,
-    pub seed: u32,
-    pub lifeform_slot: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct GenomeEventBuffer {
-    pub counter: u32,
-    pub _pad: u32,
-    pub events: [GenomeEvent; EVENT_CAPACITY],
 }
 
 #[repr(C)]

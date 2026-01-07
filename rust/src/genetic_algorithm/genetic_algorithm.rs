@@ -3,6 +3,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use puffin::profile_scope;
 use rand::Rng;
+use rand::SeedableRng;
+use rand::rngs::SmallRng;
 
 // Genetic algorithm module - manages genomes, lifeforms, and gene regulatory networks
 use crate::genetic_algorithm::sequence_grn;
@@ -55,6 +57,10 @@ impl GeneticAlgorithm {
         GENE_ID.fetch_add(1, Ordering::Relaxed)
     }
 
+    pub fn next_gene_id_range(count: usize) -> std::ops::Range<usize> {
+        let start = GENE_ID.fetch_add(count, Ordering::Relaxed);
+        start..start.saturating_add(count)
+    }
 
     pub fn next_species_id() -> usize {
         SPECIES_ID.fetch_add(1, Ordering::Relaxed)
@@ -116,9 +122,9 @@ impl GeneticAlgorithm {
         let grn = sequence_grn(&genome);
 
         profile_scope!("GA Compile GRN");
-        let compiled = compile_grn(lifeform_id as u32, grn.clone());
+        let compiled = compile_grn(lifeform_id as u32, &grn);
 
-        let lifeform = Lifeform::new(step, lifeform_id, species_id, genome.clone(), grn, compiled);
+        let lifeform = Lifeform::new(step, lifeform_id, species_id, genome, grn, compiled);
         lifeform.cell_count.store(1, Ordering::Relaxed);
         self.lifeforms.insert(lifeform_id, lifeform);
     }
@@ -153,7 +159,8 @@ impl GeneticAlgorithm {
         profile_scope!("GA Generate Random Genome");
         let num_genes = rng.gen_range(2..20);
         let gene_length = 30;
-        Genome::init_random(rng, num_genes, gene_length)
+        let mut fast_rng = SmallRng::from_rng(rng).unwrap_or_else(|_| SmallRng::from_entropy());
+        Genome::init_random(&mut fast_rng, num_genes, gene_length)
     }
 
     fn create_species(&mut self, mascot_lifeform_id: usize, mascot_genome: &Genome, origin_time: usize) -> usize {

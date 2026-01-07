@@ -27,34 +27,44 @@ struct VertexOutput {
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
-    
+
+    let line_thickness_world = uniform_data.camera_pos_zoom_thickness.w;
+
     // Generate quad corners in world space based on simulation bounds
+    // Expand the quad to include border area
+    let expanded_left = uniform_data.bounds.x - line_thickness_world;
+    let expanded_right = uniform_data.bounds.z + line_thickness_world;
+    let expanded_top = uniform_data.bounds.y - line_thickness_world;
+    let expanded_bottom = uniform_data.bounds.w + line_thickness_world;
+
     var world_pos: vec2<f32>;
-    var uv: vec2<f32>;
-    
+
     switch vertex_index {
         case 0u: {  // Bottom-left
-            world_pos = vec2<f32>(uniform_data.bounds.x, uniform_data.bounds.w);
-            uv = vec2<f32>(0.0, 1.0);
+            world_pos = vec2<f32>(expanded_left, expanded_bottom);
         }
         case 1u: {  // Bottom-right
-            world_pos = vec2<f32>(uniform_data.bounds.z, uniform_data.bounds.w);
-            uv = vec2<f32>(1.0, 1.0);
+            world_pos = vec2<f32>(expanded_right, expanded_bottom);
         }
         case 2u: {  // Top-left
-            world_pos = vec2<f32>(uniform_data.bounds.x, uniform_data.bounds.y);
-            uv = vec2<f32>(0.0, 0.0);
+            world_pos = vec2<f32>(expanded_left, expanded_top);
         }
         default: {  // Top-right
-            world_pos = vec2<f32>(uniform_data.bounds.z, uniform_data.bounds.y);
-            uv = vec2<f32>(1.0, 0.0);
+            world_pos = vec2<f32>(expanded_right, expanded_top);
         }
     }
+
+    // Calculate UV coordinates for texture sampling
+    // Map the original bounds area to (0,0)-(1,1), with expanded areas sampling outside this range
+    let bounds_width = uniform_data.bounds.z - uniform_data.bounds.x;
+    let bounds_height = uniform_data.bounds.w - uniform_data.bounds.y;
+    let uv_x = (world_pos.x - uniform_data.bounds.x) / bounds_width;
+    let uv_y = (world_pos.y - uniform_data.bounds.y) / bounds_height;
+    let uv = vec2<f32>(uv_x, uv_y);
     
     // Transform from world space to clip space (same as bounds renderer)
     let camera_pos = uniform_data.camera_pos_zoom_thickness.xy;
     let zoom = uniform_data.camera_pos_zoom_thickness.z;
-    let line_thickness_world = uniform_data.camera_pos_zoom_thickness.w;
     let view_size = uniform_data.view_size_grid.xy;
     let grid_spacing_world = uniform_data.view_size_grid.z;
     let grid_opacity = uniform_data.view_size_grid.w;
@@ -107,20 +117,34 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Border overlay (world thickness derived from pixel thickness)
-    let left_edge = abs(in.world_pos.x - uniform_data.bounds.x) <= thickness_world;
-    let right_edge = abs(uniform_data.bounds.z - in.world_pos.x) <= thickness_world;
-    let top_edge = abs(in.world_pos.y - uniform_data.bounds.y) <= thickness_world;
-    let bottom_edge = abs(uniform_data.bounds.w - in.world_pos.y) <= thickness_world;
+    // Offset bounds inward by typical cell radius (~0.5) to align visual boundaries with collision boundaries
+    let collision_offset = 0.5;
+    let collision_bounds = vec4<f32>(
+        uniform_data.bounds.x + collision_offset,
+        uniform_data.bounds.y + collision_offset,
+        uniform_data.bounds.z - collision_offset,
+        uniform_data.bounds.w - collision_offset
+    );
+
+    let left_edge = in.world_pos.x >= collision_bounds.x - thickness_world && in.world_pos.x <= collision_bounds.x;
+    let right_edge = in.world_pos.x >= collision_bounds.z && in.world_pos.x <= collision_bounds.z + thickness_world;
+    let top_edge = in.world_pos.y >= collision_bounds.y - thickness_world && in.world_pos.y <= collision_bounds.y;
+    let bottom_edge = in.world_pos.y >= collision_bounds.w && in.world_pos.y <= collision_bounds.w + thickness_world;
 
     if left_edge || right_edge || top_edge || bottom_edge {
         color = uniform_data.border_color.rgba;
     }
 
-    // Clamp to viewport rectangle to avoid sampling outside due to precision
-    if in.world_pos.x < uniform_data.bounds.x
-        || in.world_pos.x > uniform_data.bounds.z
-        || in.world_pos.y < uniform_data.bounds.y
-        || in.world_pos.y > uniform_data.bounds.w {
+    // Clamp to expanded area to avoid sampling too far outside due to precision
+    let expanded_left = uniform_data.bounds.x - line_thickness_world * 2.0;
+    let expanded_right = uniform_data.bounds.z + line_thickness_world * 2.0;
+    let expanded_top = uniform_data.bounds.y - line_thickness_world * 2.0;
+    let expanded_bottom = uniform_data.bounds.w + line_thickness_world * 2.0;
+
+    if in.world_pos.x < expanded_left
+        || in.world_pos.x > expanded_right
+        || in.world_pos.y < expanded_top
+        || in.world_pos.y > expanded_bottom {
         discard;
     }
 

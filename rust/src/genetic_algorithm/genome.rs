@@ -44,10 +44,10 @@ impl Genome {
         let mut genome = Self::new();
         genome.hox_genes.reserve(num_genes);
         genome.hox_gene_order.reserve(num_genes);
-        
-        for _ in 0..num_genes {
+
+        let gene_ids = GeneticAlgorithm::next_gene_id_range(num_genes);
+        for gene_id in gene_ids {
             let gene = Self::generate_random_gene(rng, gene_length);
-            let gene_id = GeneticAlgorithm::next_gene_id();
             genome.hox_genes.insert(gene_id, gene);
             genome.hox_gene_order.push(gene_id);
         }
@@ -292,15 +292,10 @@ impl Genome {
             return gene;
         }
 
-        if length <= INLINE_GENE_CAPACITY {
-            let mut buffer = SmallVec::<[u8; INLINE_GENE_CAPACITY]>::with_capacity(length);
-            buffer.resize(length, 0);
-            rng.fill_bytes(&mut buffer);
-            gene.extend(buffer.into_iter().map(|byte| byte & 0b11));
-        } else {
-            let mut buffer = vec![0u8; length];
-            rng.fill_bytes(&mut buffer);
-            gene.extend(buffer.into_iter().map(|byte| byte & 0b11));
+        gene.resize(length, 0);
+        rng.fill_bytes(&mut gene);
+        for base in gene.iter_mut() {
+            *base &= 0b11;
         }
 
         gene
@@ -360,4 +355,3 @@ impl Default for Genome {
         Self::new()
     }
 }
-

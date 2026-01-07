@@ -15,7 +15,7 @@ pub struct ComputePipelines {
     pub update_points: wgpu::ComputePipeline,
     pub update_points_bind_group: wgpu::BindGroup,
     pub spawn_cells: wgpu::ComputePipeline,
-    pub spawn_cells_bind_group: wgpu::BindGroup,
+    pub spawn_cells_bind_groups: [wgpu::BindGroup; 2],
 }
 
 impl ComputePipelines {
@@ -169,9 +169,31 @@ impl ComputePipelines {
                     },
                     count: None,
                 },
-                // Lifeform ID buffer
+                // Event buffer
                 wgpu::BindGroupLayoutEntry {
                     binding: 7,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Event counter
+                wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Lifeform ID buffer
+                wgpu::BindGroupLayoutEntry {
+                    binding: 9,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -197,44 +219,61 @@ impl ComputePipelines {
             cache: None,
         });
 
-        let spawn_cells_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Spawn Cells Bind Group"),
-            layout: &spawn_cells_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: buffers.uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: buffers.points.buffer().as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: buffers.points_counter.buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: buffers.points.free_list_buffer().as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: buffers.cells.buffer().as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: buffers.cells_counter.buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: buffers.cells.free_list_buffer().as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 7,
-                    resource: buffers.lifeform_id.as_entire_binding(),
-                },
-            ],
-        });
+        let make_spawn_bind_group = |event_buffer: &wgpu::Buffer, event_counter: &wgpu::Buffer| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Spawn Cells Bind Group"),
+                layout: &spawn_cells_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: buffers.uniform_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: buffers.points.buffer().as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: buffers.points_counter.buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: buffers.points.free_list_buffer().as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: buffers.cells.buffer().as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: buffers.cells_counter.buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: buffers.cells.free_list_buffer().as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: event_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 8,
+                        resource: event_counter.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 9,
+                        resource: buffers.lifeform_id.as_entire_binding(),
+                    },
+                ],
+            })
+        };
+
+        let (event_buffer_0, event_counter_0) = buffers.event_system.gpu_buffers_for_index(0);
+        let (event_buffer_1, event_counter_1) = buffers.event_system.gpu_buffers_for_index(1);
+        let spawn_cells_bind_groups = [
+            make_spawn_bind_group(event_buffer_0, event_counter_0),
+            make_spawn_bind_group(event_buffer_1, event_counter_1),
+        ];
 
         // Create shader module
         let cells_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -471,7 +510,7 @@ impl ComputePipelines {
             update_points,
             update_points_bind_group,
             spawn_cells,
-            spawn_cells_bind_group,
+            spawn_cells_bind_groups,
         }
     }
 }
@@ -1081,4 +1120,3 @@ impl RenderPipelines {
         }
     }
 }
-

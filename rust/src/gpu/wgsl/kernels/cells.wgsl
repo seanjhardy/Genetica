@@ -62,7 +62,7 @@ fn absorb_nutrients(cell_pos: vec2<f32>, radius: f32, absorption_rate: f32) -> f
     return take;
 }
 
-@compute @workgroup_size(128)
+@compute @workgroup_size(1024)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx = global_id.x;
     let dt = uniforms.sim_params.x;

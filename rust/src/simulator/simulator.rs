@@ -9,6 +9,7 @@ use crate::gpu::uniforms::Uniforms;
 use crate::simulator::environment::Environment;
 use crate::simulator::state::{PauseState, SimSlot, SlotState};
 use crate::genetic_algorithm::GeneticAlgorithm;
+use parking_lot::Mutex;
 
 const WORKGROUP_SIZE: u32 = 1024;
 const SIM_STATE_RING_SIZE: usize = 1;
@@ -21,7 +22,7 @@ pub struct Simulation {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     environment: Arc<parking_lot::Mutex<Environment>>,
-    pub genetic_algorithm: GeneticAlgorithm,
+    pub genetic_algorithm: Arc<Mutex<GeneticAlgorithm>>,
     current_bounds: Rect,
     initial_bounds: Rect,
     paused_state: PauseState,
@@ -74,7 +75,7 @@ impl Simulation {
             environment,
             slots,
             step: Arc::new(AtomicUsize::new(0)),
-            genetic_algorithm: GeneticAlgorithm::new(),
+            genetic_algorithm: Arc::new(Mutex::new(GeneticAlgorithm::new())),
             current_bounds: initial_bounds,
             initial_bounds,
             render_slot: 0,
@@ -105,26 +106,27 @@ impl Simulation {
             timestamp_writes: None,
         });
 
+        // Update cells
+        if self.step.load(Ordering::Relaxed) % CELL_UPDATE_INTERVAL == 0 {
+            pass.set_pipeline(&slot.compute_pipelines.update_cells);
+            pass.set_bind_group(0, &slot.compute_pipelines.update_cells_bind_group, &[]);
+            let dispatch = ((CELL_CAPACITY as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+            pass.dispatch_workgroups(dispatch, 1, 1);
+        }
+
         // Update points
         pass.set_pipeline(&slot.compute_pipelines.update_points);
         pass.set_bind_group(0, &slot.compute_pipelines.update_points_bind_group, &[]);
         let dispatch = ((POINT_CAPACITY as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
         pass.dispatch_workgroups(dispatch, 1, 1);
 
-        /*if self.step.load(Ordering::Relaxed) % CELL_UPDATE_INTERVAL == 0 {
-            pass.set_pipeline(&slot.compute_pipelines.update_cells);
-            pass.set_bind_group(0, &slot.compute_pipelines.update_cells_bind_group, &[]);
-            let dispatch = ((CELL_CAPACITY as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-            pass.dispatch_workgroups(dispatch, 1, 1);
-        }*/
-
         // Spawn new points each simulation step
+        let event_index = slot.buffers.event_system.gpu_write_index();
         pass.set_pipeline(&slot.compute_pipelines.spawn_cells);
-        pass.set_bind_group(0, &slot.compute_pipelines.spawn_cells_bind_group, &[]);
+        pass.set_bind_group(0, &slot.compute_pipelines.spawn_cells_bind_groups[event_index], &[]);
         pass.dispatch_workgroups(1, 1, 1);
 
         // Rotate buffers: scratch becomes current, current becomes previous, previous becomes scratch.
-        //self.slots.rotate_left(1);
     }
 
     pub fn reset(&mut self) {
@@ -147,7 +149,7 @@ impl Simulation {
             env.set_bounds(self.initial_bounds);
         }
 
-        self.genetic_algorithm.reset();
+        self.genetic_algorithm.lock().reset();
 
         self.step.store(0, Ordering::Relaxed);
         self.current_bounds = self.initial_bounds;
@@ -155,6 +157,10 @@ impl Simulation {
 
     pub fn get_step(&self) -> usize {
         self.step.load(Ordering::Relaxed)
+    }
+
+    pub fn step_counter(&self) -> Arc<AtomicUsize> {
+        self.step.clone()
     }
 
 

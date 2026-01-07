@@ -9,6 +9,29 @@ use crate::genetic_algorithm::systems::{GeneRegulatoryNetwork, Receptor, Factor,
      RegulatoryUnit, ReceptorType, FactorType, PromoterType, EffectorType, EMBEDDING_DIMENSIONS};
 
 const MIN_GENE_BASES: usize = 20;
+const RECEPTOR_TYPES: [ReceptorType; 6] = [
+    ReceptorType::MaternalFactor,
+    ReceptorType::Crowding,
+    ReceptorType::Constant,
+    ReceptorType::Generation,
+    ReceptorType::Energy,
+    ReceptorType::Time,
+];
+const EFFECTOR_TYPES: [EffectorType; 8] = [
+    EffectorType::Divide,
+    EffectorType::Die,
+    EffectorType::Freeze,
+    EffectorType::Distance,
+    EffectorType::Radius,
+    EffectorType::Red,
+    EffectorType::Green,
+    EffectorType::Blue,
+];
+const FACTOR_TYPES: [FactorType; 3] = [
+    FactorType::ExternalMorphogen,
+    FactorType::InternalMorphogen,
+    FactorType::Orientant,
+];
 
 struct SequenceReader<'a> {
     data: &'a [u8],
@@ -42,9 +65,11 @@ impl<'a> SequenceReader<'a> {
 
     fn read_unique_base_range(&mut self, length: usize) -> Option<f32> {
         let mut result = 0.0f32;
-        for i in 0..length {
+        let mut weight = 0.25f32;
+        for _ in 0..length {
             let base = self.read_base()? as f32;
-            result += base * 0.25f32.powi((i + 1) as i32);
+            result += base * weight;
+            weight *= 0.25f32;
         }
         Some(result)
     }
@@ -55,12 +80,13 @@ impl<'a> SequenceReader<'a> {
 pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
     profile_scope!("Sequence GRN");
     let mut grn = GeneRegulatoryNetwork::new();
+    let gene_count = genome.hox_gene_order.len();
     // Inputs
-    let mut receptors: Vec<Receptor> = Vec::new();
+    let mut receptors: Vec<Receptor> = Vec::with_capacity(gene_count);
     // hidden units
-    let mut regulatory_units: Vec<RegulatoryUnit> = Vec::new();
+    let mut regulatory_units: Vec<RegulatoryUnit> = Vec::with_capacity(gene_count);
     // Outputs
-    let mut effectors: Vec<Effector> = Vec::new();
+    let mut effectors: Vec<Effector> = Vec::with_capacity(gene_count);
     
     let mut regulatory_unit = RegulatoryUnit::new();
     let mut regulatory_promoters: Vec<Promoter> = Vec::new();
@@ -121,19 +147,11 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
             match type_val {
                 0 => {
                     // Receptor
-                    let receptor_types = [
-                        ReceptorType::MaternalFactor,
-                        ReceptorType::Crowding,
-                        ReceptorType::Constant,
-                        ReceptorType::Generation,
-                        ReceptorType::Energy,
-                        ReceptorType::Time,
-                    ];
                     let sub_type = match reader.read_unique_base_range(3) {
                         Some(val) => ((val * 64.0) as usize) % 6,
                         None => break,
                     };
-                    let receptor_type: ReceptorType = receptor_types[sub_type];
+                    let receptor_type: ReceptorType = RECEPTOR_TYPES[sub_type];
                     
                     let extra = match (
                         reader.read_unique_base_range(8),
@@ -148,16 +166,11 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
                 }
                 1 => {
                     // Effectors
-                    let effector_types = [
-                        EffectorType::Divide, EffectorType::Die, EffectorType::Freeze,
-                        EffectorType::Distance, EffectorType::Radius,
-                        EffectorType::Red, EffectorType::Green, EffectorType::Blue,
-                    ];
                     let sub_type = match reader.read_unique_base_range(4) {
-                        Some(val) => ((val * 256.0) as usize) % effector_types.len(),
+                        Some(val) => ((val * 256.0) as usize) % EFFECTOR_TYPES.len(),
                         None => break,
                     };
-                    let effector_type = effector_types[sub_type];
+                    let effector_type = EFFECTOR_TYPES[sub_type];
 
                     let effector = Effector::new(effector_type, sign, modifier, embedding);
                     effectors.push(effector);
@@ -189,17 +202,11 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
                 }
                 3 | 4 | 5 => {
                     // Genes: internal product, external product, receptor
-                    let gene_types = [
-                        FactorType::ExternalMorphogen,
-                        FactorType::InternalMorphogen,
-                        FactorType::Orientant,
-                    ];
-                    
                     if regulatory_promoters.is_empty() {
                         break;
                     }
                     
-                    let factor_type = gene_types[type_val - 3];
+                    let factor_type = FACTOR_TYPES[type_val - 3];
                     let gene = Factor::new(factor_type, sign, modifier, embedding);
                     
                     reading_promoters = false;
@@ -222,4 +229,3 @@ pub fn sequence_grn(genome: &Genome) -> GeneRegulatoryNetwork {
     grn.regulatory_units = regulatory_units;
     grn
 }
-

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use winit::{
@@ -15,17 +16,20 @@ use crate::ui::{UiParser, UiRenderer, UIManager};
 use crate::utils::strings::format_number;
 use puffin::profile_scope;
 use crate::utils::gpu::device::GpuDevice;
-use crate::gpu::pipelines::{RenderPipelines};
+use crate::gpu::pipelines::RenderPipelines;
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
+use crate::gpu::buffers::GpuBuffers;
 use crate::simulator::environment::Environment;
 use crate::simulator::renderer::Renderer;
 use crate::simulator::simulator::Simulation;
+use crate::simulator::poll_thread::PollThread;
 
 const SIMULATION_DELTA_TIME: f32 = 1.0;
 
+
 pub struct Application {
-    simulation: Simulation,
+    simulation: Arc<parking_lot::Mutex<Simulation>>,
     render_pipelines: RenderPipelines,
     pub gpu: GpuDevice,
     bounds_renderer: BoundsRenderer,
@@ -40,7 +44,6 @@ pub struct Application {
     pub last_cursor_pos: Vec2,
     ui_hovered: bool,
     ui_cursor_hint: Option<&'static str>,
-    last_render_step_count: u64,
     last_frame_time: Instant,
     last_render_time: Instant,
     frame_count: u64,
@@ -58,6 +61,13 @@ pub struct Application {
     show_grid: bool,
     uniforms_need_update: bool,
     last_render_slot: usize,
+    poll_thread: PollThread,
+    paused_state: Arc<parking_lot::Mutex<bool>>,
+    genetic_algorithm: Arc<parking_lot::Mutex<crate::genetic_algorithm::GeneticAlgorithm>>,
+    step_counter: Arc<AtomicUsize>,
+    frame_start_nanos: Arc<AtomicU64>,
+    render_buffers: Arc<GpuBuffers>,
+    app_start: Arc<Instant>,
 
     fps_frames: u32,
     compute_time_accum: Duration,
@@ -79,14 +89,41 @@ impl Application {
         bounds: Rect,
         speed: Arc<parking_lot::Mutex<f32>>,
     ) -> Self {
-        let render_buffers = simulation.get_render_buffers();
+        let simulation_arc = Arc::new(parking_lot::Mutex::new(simulation));
+        let paused_state = Arc::new(parking_lot::Mutex::new(false));
+        let genetic_algorithm = {
+            let sim = simulation_arc.lock();
+            sim.genetic_algorithm.clone()
+        };
+        let step_counter = {
+            let sim = simulation_arc.lock();
+            sim.step_counter()
+        };
+        let frame_start_nanos = Arc::new(AtomicU64::new(0));
+
+        let render_buffers = {
+            let sim = simulation_arc.lock();
+            sim.get_render_buffers()
+        };
         let initial_nutrient_dims = render_buffers.nutrient_grid_dimensions();
 
         let initial_camera_position = camera.get_position();
         let initial_camera_zoom = camera.get_zoom();
 
+        // Create the poll thread
+        let app_start = Arc::new(Instant::now());
+        let poll_thread = PollThread::new(
+            Arc::new(gpu.device.clone()),
+            render_buffers.clone(),
+            paused_state.clone(),
+            genetic_algorithm.clone(),
+            step_counter.clone(),
+            frame_start_nanos.clone(),
+            app_start.clone(),
+        );
+
         let mut app = Self {
-            simulation,
+            simulation: simulation_arc,
             render_pipelines,
             gpu,
             bounds_renderer,
@@ -101,7 +138,6 @@ impl Application {
             last_cursor_pos: Vec2::new(0.0, 0.0),
             ui_hovered: false,
             ui_cursor_hint: None,
-            last_render_step_count: 0,
             last_frame_time: Instant::now(),
             last_render_time: Instant::now(),
             frame_count: 0,
@@ -120,8 +156,15 @@ impl Application {
             show_grid: false,
             uniforms_need_update: true, // Need initial update
             last_render_slot: 0,
+            poll_thread,
+            paused_state,
+            genetic_algorithm,
+            step_counter,
+            frame_start_nanos,
+            render_buffers,
             compute_time_accum: Duration::ZERO,
             compute_iterations: 0,
+            app_start,
         };
         app.update_speed_display();
         app
@@ -135,6 +178,9 @@ impl Application {
         });
 
         let render_start = Instant::now();
+        let elapsed = self.app_start.elapsed();
+        self.frame_start_nanos
+            .store(elapsed.as_nanos() as u64, Ordering::Release);
         let now = render_start;
 
         if let Some(new_size) = self.pending_resize.take() {
@@ -191,18 +237,12 @@ impl Application {
             self.uniforms_need_update = true;
         }
 
-        // Swap event buffers at the start of each frame
-        let slot = &mut self.simulation.slots[self.simulation.render_slot];
-        slot.buffers.event_system.swap_buffers();
-
-        if !self.simulation.is_paused() {
+        if !self.simulation.lock().is_paused() {
             puffin::profile_scope!("Compute Pass");
             let speed = *self.speed.lock();
             self.real_time += delta_time * speed;
 
-            // Reset event counter before simulation
-            let slot = &mut self.simulation.slots[self.simulation.render_slot];
-            slot.buffers.event_system.reset_write_counter(&self.gpu.queue);
+            // Event counter is reset when a readback is scheduled
 
             // Time the compute operations
             let compute_start = Instant::now();
@@ -210,11 +250,11 @@ impl Application {
             if self.is_real_time {
                 // In realtime mode, step once every 2 frames
                 if self.realtime_frame_counter % 2 == 0 {
-                    self.simulation.step_simulation(&mut encoder);
+                    self.simulation.lock().step_simulation(&mut encoder);
                 }
             } else {
                 for _ in 0..iterations {
-                    self.simulation.step_simulation(&mut encoder);
+                    self.simulation.lock().step_simulation(&mut encoder);
                 }
             }
 
@@ -224,22 +264,29 @@ impl Application {
             self.compute_iterations += iterations as u32;
         }
 
-        // Schedule event buffer reading if simulation ran
-        //let slot = &self.simulation.slots[self.simulation.render_slot];
-        //slot.buffers.event_system.schedule_read_copy(&mut encoder);
+        // Schedule event buffer reading every frame for prompt event processing
+        let mut event_read_scheduled = false;
+        event_read_scheduled = self
+            .render_buffers
+            .event_system
+            .try_schedule_readback(&mut encoder, &self.gpu.queue);
 
 
         // Skip rendering if UI is hidden, but still submit GPU work for simulation
         if !self.rendering_enabled {
-            self.submit_gpu_work(encoder);
+            self.submit_gpu_work(encoder, event_read_scheduled);
             return Ok(());
         }
 
         // Check if render slot changed and update render pipelines if needed
-        let current_render_slot = self.simulation.render_slot;
+        let (current_render_slot, buffers) = {
+            let sim = self.simulation.lock();
+            let current_render_slot = sim.render_slot;
+            let buffers = sim.get_render_buffers();
+            (current_render_slot, buffers)
+        };
         if current_render_slot != self.last_render_slot {
             profile_scope!("Update Render Pipelines");
-            let buffers = self.simulation.get_render_buffers();
             self.render_pipelines = RenderPipelines::new(
                 &self.gpu.device,
                 &self.gpu.queue,
@@ -251,31 +298,22 @@ impl Application {
             self.uniforms_need_update = true;
         }
 
-
-        let (points_count, cells_count, lifeform_count, species_count) = if self.last_render_step_count % 100 == 0 {
+        let (points_count, cells_count, lifeform_count, species_count) = {
                 profile_scope!("Read Counters");
-                let render_slot_idx = self.simulation.render_slot;
-                let slot = &mut self.simulation.slots[render_slot_idx];
+                let mut sim = self.simulation.lock();
+                let render_slot_idx = sim.render_slot;
+                let slot = &mut sim.slots[render_slot_idx];
                 let buffers = &slot.buffers;
                 buffers.points_counter.begin_map_if_ready();
                 buffers.points_counter.schedule_copy_if_idle(&mut encoder);
                 buffers.cells_counter.begin_map_if_ready();
                 buffers.cells_counter.schedule_copy_if_idle(&mut encoder);
-                
-                (buffers.points_counter.try_read(), 
+
+                let ga = self.genetic_algorithm.lock();
+                (buffers.points_counter.try_read(),
                 buffers.cells_counter.try_read(),
-                self.simulation.genetic_algorithm.num_lifeforms(),
-                self.simulation.genetic_algorithm.num_species())
-        } else {
-            let render_slot_idx = self.simulation.render_slot;
-            let slot = &mut self.simulation.slots[render_slot_idx];
-            let buffers = &slot.buffers;
-            (
-                buffers.points_counter.get_last(),
-                buffers.cells_counter.get_last(),
-                self.simulation.genetic_algorithm.num_lifeforms(),
-                self.simulation.genetic_algorithm.num_species()
-            )
+                ga.num_lifeforms(),
+                ga.num_species())
         };
 
         let camera_pos = self.camera.get_position();
@@ -303,13 +341,14 @@ impl Application {
             );
 
             // Update uniforms for all slots to ensure consistency when slots rotate
-            for slot in &self.simulation.slots {
+            let sim = self.simulation.lock();
+            for slot in &sim.slots {
                 slot.buffers.update_uniforms(&self.gpu.queue, bytemuck::cast_slice(&[uniforms]));
             }
             self.uniforms_need_update = false;
         }
 
-        let current_step = self.simulation.get_step();
+        let current_step = self.simulation.lock().get_step();
 
         {
             profile_scope!("Update UI");
@@ -356,9 +395,10 @@ impl Application {
         {
             profile_scope!("Render Simulation");
             let mut environment = self.environment.lock();
+            let render_buffers = self.simulation.lock().get_render_buffers();
             Renderer::render_simulation(
                 &mut self.gpu,
-                &self.simulation.get_render_buffers(),
+                &render_buffers,
                 &self.render_pipelines,
                 &mut self.bounds_renderer,
                 &mut *environment,
@@ -387,7 +427,7 @@ impl Application {
         }
 
         {
-            self.submit_gpu_work(encoder);
+            self.submit_gpu_work(encoder, event_read_scheduled);
             output.present();
         }
 
@@ -492,15 +532,16 @@ impl Application {
     }
 
     pub fn toggle_pause(&mut self) {
-        let is_paused = self.simulation.is_paused();
-        self.simulation.set_paused(!is_paused);
+        let is_paused = self.simulation.lock().is_paused();
+        self.simulation.lock().set_paused(!is_paused);
+        *self.paused_state.lock() = !is_paused;
         self.update_play_pause_button();
     }
 
     fn update_play_pause_button(&mut self) {
         if let Some(screen) = self.ui_manager.get_screen("simulation") {
             if let Some(play_btn_icon) = screen.find_element_by_id("playBtnIcon") {
-                let icon_path = if self.simulation.is_paused() {
+                let icon_path = if self.simulation.lock().is_paused() {
                     "assets/icons/play.png"
                 } else {
                     "assets/icons/pause.png"
@@ -551,46 +592,26 @@ impl Application {
     }
 
     pub fn reset_simulation(&mut self) {
-        self.simulation.reset();
+        self.simulation.lock().reset();
 
         self.camera.set_position(self.initial_camera_position);
         self.camera.set_zoom(self.initial_camera_zoom);
         self.uniforms_need_update = true;
 
         self.real_time = 0.0;
-        self.last_render_step_count = 0;
         self.realtime_frame_counter = 0;
     }
 
-        /// Submits GPU work to the queue and polls the device for async operations
-    fn submit_gpu_work(&mut self, encoder: wgpu::CommandEncoder) {
+        /// Submits GPU work to the queue
+    fn submit_gpu_work(&mut self, encoder: wgpu::CommandEncoder, event_read_scheduled: bool) {
         profile_scope!("Submit GPU Work");
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
 
-        // Check if we scheduled event reading this frame
-        let slot = &self.simulation.slots[self.simulation.render_slot];
-        // Start async mapping of the staging buffers
-        //let mapping = slot.buffers.event_system.begin_async_mapping();
-
-        // Wait for mapping to complete (required to avoid buffer mapping issues)
-        let _ = self.gpu.device.poll(wgpu::MaintainBase::Wait);
-
-        // Always try to read events to unmap the buffers, but only process them when not paused
-        /*let events = slot.buffers.event_system.try_read_events(&mapping);
-        if !self.simulation.is_paused() && !events.is_empty() {
-            puffin::profile_scope!("Process GPU Events");
-            for event in events {
-                puffin::profile_scope!("Process Single Event");
-                self.simulation.genetic_algorithm.process_event(
-                    self.simulation.get_step(),
-                    event
-                );
-            }
-        }*/
-
-        // The swap already happened at the start of the frame,
-        // so just ensure the counter is reset for next frame if needed
-        // But since we reset before simulation, it should be fine
+        // Notify poll thread if we scheduled event reading this frame
+        if event_read_scheduled {
+            self.render_buffers.event_system.start_readback();
+            self.poll_thread.notify_event_scheduled();
+        }
     }
 
 }
@@ -844,11 +865,22 @@ impl Application {
     }
 }
 
+impl Drop for Application {
+    fn drop(&mut self) {
+        // Shutdown the poll thread when the application is dropped
+        self.poll_thread.shutdown();
+    }
+}
+
+impl Drop for ApplicationWrapper {
+    fn drop(&mut self) {
+        // The Application's drop will handle poll thread shutdown
+    }
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::new()?;
     let mut app = ApplicationWrapper::new();
     event_loop.run_app(&mut app)?;
     Ok(())
 }
-
-
