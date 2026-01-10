@@ -7,7 +7,7 @@ use std::sync::Arc;
 use bytemuck::Zeroable;
 
 use crate::gpu::structures::{
-    Cell, CompiledRegulatoryUnit, GrnDescriptor, Link, MAX_GRN_REGULATORY_UNITS, PositionChangeEntry, VerletPoint
+    Cell, CompiledRegulatoryUnit, GrnDescriptor, Link, MAX_GRN_REGULATORY_UNITS, VerletPoint
 };
 use crate::simulator::state::{Counter, EventSystem};
 use crate::utils::math::Rect;
@@ -36,7 +36,6 @@ pub struct GpuBuffers {
     pub nutrient_grid_height: AtomicU32,
     pub grn_descriptors: wgpu::Buffer,
     pub grn_units: wgpu::Buffer,
-    pub position_changes: wgpu::Buffer,
     pub points_counter: Counter,
     pub cells_counter: Counter,
 }
@@ -114,26 +113,19 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_SRC,
         });
 
-        let total_grn_units = LIFEFORM_CAPACITY * MAX_GRN_REGULATORY_UNITS;
-        let grn_units_init = vec![CompiledRegulatoryUnit::zeroed(); total_grn_units];
+        // Allocate compacted GRN units buffer (total units across all lifeforms)
+        // For now, allocate a reasonable maximum - in production this would be dynamic
+        let max_total_grn_units = LIFEFORM_CAPACITY * MAX_GRN_REGULATORY_UNITS;
+        let grn_units_init = vec![CompiledRegulatoryUnit::zeroed(); max_total_grn_units];
         let grn_units = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("GRN Units Buffer"),
+            label: Some("GRN Units Buffer (Compacted)"),
             contents: bytemuck::cast_slice(&grn_units_init),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
         });
 
-        
-        let position_changes_init = vec![PositionChangeEntry::zero(); CELL_CAPACITY];
-        let position_changes = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Position Changes Buffer"),
-            contents: bytemuck::cast_slice(&position_changes_init),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-        });
-
+    
         let grid_width = (bounds.width / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
         let grid_height = (bounds.height / NUTRIENT_CELL_SIZE as f32).ceil().max(1.0) as u32;
         let nutrient_grid_size = (grid_width * grid_height) as usize;
@@ -171,7 +163,6 @@ impl GpuBuffers {
             nutrient_grid_height: AtomicU32::new(grid_height),
             grn_descriptors,
             grn_units,
-            position_changes,
             points_counter,
             cells_counter,
         }
@@ -218,7 +209,7 @@ impl GpuBuffers {
 
     /// Reset all GPU buffers to their initial empty state
     pub fn reset(&self, device: &wgpu::Device, queue: &wgpu::Queue, bounds: Rect) {
-        use crate::gpu::structures::{Cell, CompiledRegulatoryUnit, GrnDescriptor, Link, PositionChangeEntry};
+        use crate::gpu::structures::{Cell, CompiledRegulatoryUnit, GrnDescriptor, Link};
 
         let initial_count = 0u32;
         let cell_capacity = self.cells.capacity();
@@ -259,10 +250,6 @@ impl GpuBuffers {
         let total_grn_units = LIFEFORM_CAPACITY * MAX_GRN_REGULATORY_UNITS;
         let grn_units_init = vec![CompiledRegulatoryUnit::zeroed(); total_grn_units];
         queue.write_buffer(&self.grn_units, 0, bytemuck::cast_slice(&grn_units_init));
-        
-        // Reset position changes
-        let position_changes_init = vec![PositionChangeEntry::zero(); cell_capacity];
-        queue.write_buffer(&self.position_changes, 0, bytemuck::cast_slice(&position_changes_init));
         
         // Reset nutrient grid
         let _ = self.resize_nutrient_grid(device, bounds);

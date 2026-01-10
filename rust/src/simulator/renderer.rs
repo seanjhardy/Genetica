@@ -11,15 +11,21 @@ use crate::gpu::bounds_renderer::BoundsRenderer;
 use crate::ui::UiRenderer;
 
 /// Renderer handles simulation rendering (cells and bounds) to viewport textures
-pub struct Renderer;
+pub struct Renderer {
+}
 
 impl Renderer {
+    pub fn new() -> Self {
+        Self {}
+    }
+
     /// Render simulation cells and bounds to viewport textures
     /// Returns whether a viewport was found and rendered to
     pub fn render_simulation(
+        &mut self,
         gpu: &mut GpuDevice,
         buffers: &GpuBuffers,
-        render_pipelines: &RenderPipelines,
+        render_pipelines: &mut RenderPipelines,
         bounds_renderer: &mut BoundsRenderer,
         environment: &mut crate::simulator::environment::Environment,
         ui_renderer: &mut UiRenderer,
@@ -40,9 +46,11 @@ impl Renderer {
                 for element in screen.get_elements_mut() {
                     ui_renderer.compute_layout(element);
                     ui_renderer.ensure_viewport_textures(element, &gpu.device);
-                    
+
                     // Get the simulation viewport texture from the component
-                    viewport_texture_view = ui_renderer.get_viewport_texture_view(element, "simulation");
+                    if let Some(view) = ui_renderer.get_viewport_texture_view(element, "simulation") {
+                        viewport_texture_view = Some(view);
+                    }
                 }
             }
         }
@@ -53,6 +61,7 @@ impl Renderer {
                 return false; // No viewport exists, don't render simulation
             }
         };
+
 
         // Update bounds renderer with viewport dimensions
         {
@@ -79,11 +88,11 @@ impl Renderer {
             environment.planet_mut().update(&gpu.device, &gpu.queue, gpu.config.format);
         }
         
-        // Render planet background and bounds border to viewport texture
+        // Render planet background and bounds border to viewport texture first
         {
             profile_scope!("Render Planet Background & Bounds");
             let planet_texture_view = environment.planet().texture_view();
-            
+
             bounds_renderer.render(
                 encoder,
                 &gpu.device,
@@ -118,7 +127,8 @@ impl Renderer {
                 render_pass.draw(0..4, 0..grid_cells);
             }
         }
-        
+
+        // Render cells directly to viewport
         {
             profile_scope!("Render Cells");
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -127,7 +137,7 @@ impl Renderer {
                     view: viewport_texture_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,  // Load existing planet background
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -140,6 +150,7 @@ impl Renderer {
             render_pass.set_bind_group(0, &render_pipelines.cell_render_bind_group, &[]);
             render_pass.draw(0..6, 0..(CELL_CAPACITY as u32));
         }
+
         true
     }
 }

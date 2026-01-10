@@ -17,8 +17,9 @@ struct Cell {
     cell_wall_thickness: f32,
     color: vec4<f32>,
     flags: u32,
-    noise_permutations: array<u32, CELL_WALL_SAMPLES>,
+    noise_permutations: array<f32, CELL_WALL_SAMPLES>,
     noise_texture_offset: vec2<f32>,
+    //inputs: array<f32, CELL_INPUT_ARRAY_SIZE>,
 }
 
 struct Link {
@@ -82,14 +83,10 @@ struct CompiledRegulatoryUnit {
 }
 
 struct GrnDescriptor {
-    receptor_count: u32,
     unit_count: u32,
-    state_stride: u32,
-    unit_offset: u32,
+    unit_start_index: u32,
     _pad0: u32,
     _pad1: u32,
-    _pad2: u32,
-    _pad3: u32,
 }
 
 struct FreeList {
@@ -99,13 +96,6 @@ struct FreeList {
 
 struct NutrientGrid {
     values: array<atomic<u32>>,
-}
-
-struct PositionChangeEntry {
-    delta_x: atomic<i32>,
-    delta_y: atomic<i32>,
-    num_changes: atomic<u32>,
-    _pad: u32,
 }
 
 struct Uniforms {

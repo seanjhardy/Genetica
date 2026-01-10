@@ -6,6 +6,19 @@ use std::path::PathBuf;
 
 use crate::gpu::wgsl::{CELLS_KERNEL, CELLS_SHADER, LINKS_KERNEL, LINKS_SHADER, NUTRIENTS_KERNEL, NUTRIENTS_SHADER, PERLIN_NOISE_TEXTURE_SHADER, SPAWN_CELLS_KERNEL, VERLET_KERNEL};
 use crate::gpu::buffers::GpuBuffers;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct NoiseTextureUniforms {
+    seed: f32,
+    base_frequency: f32,
+    octave_count: u32,
+    _padding0: u32,
+    frequency_falloff: f32,
+    amplitude_falloff: f32,
+    time: f32,
+    _padding3: f32,
+}
 /// Compute pipelines for physics simulation
 pub struct ComputePipelines {
     pub update_cells: wgpu::ComputePipeline,
@@ -526,8 +539,13 @@ pub struct RenderPipelines {
     // Keep texture and sampler alive
     _nucleus_texture: wgpu::Texture,
     _nucleus_sampler: wgpu::Sampler,
-    _perlin_noise_texture: wgpu::Texture,
-    _perlin_noise_sampler: wgpu::Sampler,
+    pub perlin_noise_texture: wgpu::Texture,
+    pub perlin_noise_sampler: wgpu::Sampler,
+    // Components for noise texture regeneration
+    noise_pipeline: wgpu::RenderPipeline,
+    noise_bind_group: wgpu::BindGroup,
+    noise_uniform_buffer: wgpu::Buffer,
+    perlin_noise_texture_view: wgpu::TextureView,
 }
 
 impl RenderPipelines {
@@ -577,6 +595,22 @@ impl RenderPipelines {
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -685,7 +719,18 @@ impl RenderPipelines {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_config.format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: Default::default(),
@@ -879,8 +924,8 @@ impl RenderPipelines {
             ..Default::default()
         });
 
-        // Generate perlin noise texture (200x200, single channel stored in RGBA)
-        const NOISE_TEXTURE_SIZE: u32 = 200;
+        // Generate perlin noise texture (400x400, single channel stored in RGBA)
+        const NOISE_TEXTURE_SIZE: u32 = 400;
         let perlin_noise_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Perlin Noise Texture"),
             size: wgpu::Extent3d {
@@ -905,28 +950,16 @@ impl RenderPipelines {
         });
 
         // Create uniform buffer for perlin noise texture
-        #[repr(C)]
-        #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-        struct NoiseTextureUniforms {
-            seed: f32,
-            base_frequency: f32,
-            octave_count: u32,
-            _padding0: u32,
-            frequency_falloff: f32,
-            amplitude_falloff: f32,
-            _padding1: f32,
-            _padding2: f32,
-        }
 
         let noise_uniforms = NoiseTextureUniforms {
-            seed: 0.5, // Default seed
-            base_frequency: 0.8, // Base frequency for first octave
+            seed: 0.2, // Default seed
+            base_frequency: 4.0, // Base frequency for first octave - increased for more detail
             octave_count: 6, // Number of octaves for fractal noise
             _padding0: 0,
-            frequency_falloff: 0.2, // Each octave has half the frequency (standard Perlin)
-            amplitude_falloff: 0.1, // Each octave has half the amplitude (standard Perlin)
-            _padding1: 0.0,
-            _padding2: 0.0,
+            frequency_falloff: 0.4, // Each octave has double the frequency (standard Perlin)
+            amplitude_falloff: 0.5, // Each octave has half the amplitude (standard Perlin)
+            time: 0.0, // Animation time for 3D noise
+            _padding3: 0.0,
         };
 
         let noise_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1065,6 +1098,14 @@ impl RenderPipelines {
                     binding: 2,
                     resource: buffers.cells.buffer().as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&perlin_noise_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&perlin_noise_sampler),
+                },
             ],
         });
 
@@ -1115,8 +1156,57 @@ impl RenderPipelines {
             nutrient_bind_group,
             _nucleus_texture: nucleus_texture,
             _nucleus_sampler: nucleus_sampler,
-            _perlin_noise_texture: perlin_noise_texture,
-            _perlin_noise_sampler: perlin_noise_sampler,
+            perlin_noise_texture: perlin_noise_texture,
+            perlin_noise_sampler: perlin_noise_sampler,
+            noise_pipeline,
+            noise_bind_group,
+            noise_uniform_buffer,
+            perlin_noise_texture_view,
         }
+    }
+
+    pub fn regenerate_noise_texture(&self, device: &wgpu::Device, queue: &wgpu::Queue, time: f32) {
+        // Update the time uniform
+        let time_uniforms = NoiseTextureUniforms {
+            seed: 0.2,
+            base_frequency: 4.0,
+            octave_count: 6,
+            _padding0: 0,
+            frequency_falloff: 0.4,
+            amplitude_falloff: 0.5,
+            time,
+            _padding3: 0.0,
+        };
+
+        queue.write_buffer(&self.noise_uniform_buffer, 0, bytemuck::bytes_of(&time_uniforms));
+
+        // Regenerate the texture
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Regenerate Perlin Noise Texture Encoder"),
+        });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Regenerate Perlin Noise Texture Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.perlin_noise_texture_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                ..Default::default()
+            });
+
+            render_pass.set_pipeline(&self.noise_pipeline);
+            render_pass.set_bind_group(0, &self.noise_bind_group, &[]);
+            render_pass.draw(0..4, 0..1); // Full-screen quad
+        }
+
+        queue.submit(std::iter::once(encoder.finish()));
     }
 }

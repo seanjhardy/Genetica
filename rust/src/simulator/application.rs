@@ -31,6 +31,7 @@ const SIMULATION_DELTA_TIME: f32 = 1.0;
 pub struct Application {
     simulation: Arc<parking_lot::Mutex<Simulation>>,
     render_pipelines: RenderPipelines,
+    renderer: crate::simulator::renderer::Renderer,
     pub gpu: GpuDevice,
     bounds_renderer: BoundsRenderer,
     ui_renderer: UiRenderer,
@@ -54,6 +55,7 @@ pub struct Application {
     last_nutrient_dims: (u32, u32),
     pending_resize: Option<PhysicalSize<u32>>,
     real_time: f32,
+    application_time: f32,
     is_real_time: bool,
     speed: Arc<parking_lot::Mutex<f32>>,
     realtime_frame_counter: u32,
@@ -125,6 +127,7 @@ impl Application {
         let mut app = Self {
             simulation: simulation_arc,
             render_pipelines,
+            renderer: crate::simulator::renderer::Renderer::new(),
             gpu,
             bounds_renderer,
             ui_renderer,
@@ -149,6 +152,7 @@ impl Application {
             last_nutrient_dims: initial_nutrient_dims,
             pending_resize: None,
             real_time: 0.0,
+            application_time: 0.0,
             is_real_time: false,
             speed,
             realtime_frame_counter: 0,
@@ -237,6 +241,8 @@ impl Application {
             self.uniforms_need_update = true;
         }
 
+        self.application_time += 1.0;
+
         if !self.simulation.lock().is_paused() {
             puffin::profile_scope!("Compute Pass");
             let speed = *self.speed.lock();
@@ -277,6 +283,15 @@ impl Application {
             self.submit_gpu_work(encoder, event_read_scheduled);
             return Ok(());
         }
+
+        // Regenerate animated noise texture every frame when rendering is enabled
+        let speed = *self.speed.lock();
+        let time = self.application_time * 0.005; // Animation speed scales with simulation speed
+        self.render_pipelines.regenerate_noise_texture(
+            &self.gpu.device,
+            &self.gpu.queue,
+            time
+        );
 
         // Check if render slot changed and update render pipelines if needed
         let (current_render_slot, buffers) = {
@@ -396,10 +411,10 @@ impl Application {
             profile_scope!("Render Simulation");
             let mut environment = self.environment.lock();
             let render_buffers = self.simulation.lock().get_render_buffers();
-            Renderer::render_simulation(
+            self.renderer.render_simulation(
                 &mut self.gpu,
                 &render_buffers,
-                &self.render_pipelines,
+                &mut self.render_pipelines,
                 &mut self.bounds_renderer,
                 &mut *environment,
                 &mut self.ui_renderer,

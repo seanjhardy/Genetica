@@ -49,8 +49,6 @@ var<storage, read_write> species_free: FreeList;
 @group(0) @binding(16)
 var<storage, read_write> species_counter: atomic<u32>;
 
-@group(0) @binding(17)
-var<storage, read_write> position_changes: array<PositionChangeEntry>;
 /*se_link(idx: u32) {
     if idx >= arrayLength(&links) {
         return;

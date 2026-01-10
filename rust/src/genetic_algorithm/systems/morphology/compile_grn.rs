@@ -5,9 +5,12 @@ use crate::genetic_algorithm::systems::morphology::gene_regulatory_network::{BIN
 use crate::genetic_algorithm::systems::morphology::gene_regulatory_network::GeneRegulatoryNetwork;
 use crate::utils::math::length;
 
-
+/// Compiles gene regulatory networks into GPU-compatible format for efficient simulation.
+/// Limits connections to MAX_CONNECTIONS for performance and memory constraints.
 const MAX_CONNECTIONS: usize = 8;
 
+/// Represents a regulatory input connection from either a receptor or transcription factor.
+/// Used in GPU kernels for efficient memory layout.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Input {
@@ -26,6 +29,8 @@ impl Default for Input {
   }
 }
 
+/// GPU-compatible representation of a single regulatory unit.
+/// Contains strongest input connections and output effector bindings, limited to MAX_CONNECTIONS.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CompiledRegulatoryUnit {
@@ -50,6 +55,9 @@ impl Default for CompiledRegulatoryUnit {
   }
 }
 
+/// Compiles a gene regulatory network into GPU-compatible format.
+/// For each regulatory unit, selects strongest input connections and computes effector outputs.
+/// Returns one CompiledRegulatoryUnit per regulatory unit in the network.
 pub fn compile_grn(id: u32, grn: &GeneRegulatoryNetwork) -> Vec<CompiledRegulatoryUnit> {
   puffin::profile_scope!("Compile GRN");
   let mut regulatory_units = Vec::with_capacity(grn.regulatory_units.len());
@@ -63,7 +71,7 @@ pub fn compile_grn(id: u32, grn: &GeneRegulatoryNetwork) -> Vec<CompiledRegulato
 
   for unit in grn.regulatory_units.iter() {
     profile_scope!("Compile GRN Unit");
-    // Compoute strongest inputs for this regulatory unit
+    // Compute strongest inputs for this regulatory unit from all promoters
     let mut inputs: Vec<(u16, f32, bool)> = Vec::with_capacity(
       unit.promoters.len().saturating_mul(receptors_len + total_factors),
     );
@@ -99,6 +107,8 @@ pub fn compile_grn(id: u32, grn: &GeneRegulatoryNetwork) -> Vec<CompiledRegulato
       outputs.push((i as u16, affinity));
     }
   
+    // Select and sort strongest input connections by affinity (highest first)
+    // Only include inputs that are actually linked to live regulatory units
     let by_affinity = |a: &(u16, f32, bool), b: &(u16, f32, bool)| {
       b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal)
     };
@@ -117,6 +127,7 @@ pub fn compile_grn(id: u32, grn: &GeneRegulatoryNetwork) -> Vec<CompiledRegulato
       };
     }
 
+    // Select and sort strongest effector outputs by weight (highest first)
     let by_weight = |a: &(u16, f32), b: &(u16, f32)| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal);
     if outputs.len() > MAX_CONNECTIONS {
       outputs.select_nth_unstable_by(MAX_CONNECTIONS - 1, by_weight);
@@ -144,6 +155,9 @@ pub fn compile_grn(id: u32, grn: &GeneRegulatoryNetwork) -> Vec<CompiledRegulato
   regulatory_units
 }
 
+/// Calculates binding affinity between two genes based on their embeddings.
+/// Returns 0 if genes are too far apart. Positive affinity for activation, negative for repression.
+/// Affinity strength depends on modifier values and decreases with distance.
 fn calculate_affinity(gene1: &impl Embedded, gene2: &impl Embedded) -> f32 {
   puffin::profile_scope!("Calculate Affinity");
   let distance = length(&gene1.embedding(), &gene2.embedding());
@@ -152,8 +166,8 @@ fn calculate_affinity(gene1: &impl Embedded, gene2: &impl Embedded) -> f32 {
   }
 
   let affinity_sign = if gene1.sign() == gene2.sign() { 1.0 } else { -1.0 };
-  let affinity = affinity_sign * 
-      (2.0 * (gene1.modifier() * gene2.modifier()).abs() 
+  let affinity = affinity_sign *
+      (2.0 * (gene1.modifier() * gene2.modifier()).abs()
       * (BINDING_DISTANCE_THRESHOLD - distance)) /
       (10.0 * distance + (gene1.modifier() * gene2.modifier()).abs());
   affinity

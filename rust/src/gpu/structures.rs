@@ -4,9 +4,10 @@ use bytemuck::{self, Pod, Zeroable};
 pub const CELL_WALL_SAMPLES: usize = 20;
 
 pub const MAX_GRN_RECEPTOR_INPUTS: usize = 2;
-pub const MAX_GRN_REGULATORY_UNITS: usize = 2;
+pub const MAX_GRN_REGULATORY_UNITS: usize = 100;
 pub const MAX_GRN_INPUTS_PER_UNIT: usize = 8;
 pub const MAX_GRN_STATE_SIZE: usize = MAX_GRN_RECEPTOR_INPUTS + MAX_GRN_REGULATORY_UNITS;
+pub const CELL_INPUT_ARRAY_SIZE: usize = 32; // Fixed size input array per cell
 
 pub const MAX_GENES_PER_GENOME: usize = 200;
 pub const WORDS_PER_GENE: usize = 4;
@@ -35,10 +36,11 @@ pub struct Cell {
     pub generation: u32,
     pub energy: f32,
     pub cell_wall_thickness: f32,
-    pub noise_permutations: [u32; CELL_WALL_SAMPLES],
+    pub noise_permutations: [f32; CELL_WALL_SAMPLES],
     pub noise_texture_offset: [f32; 2],
     pub color: [f32; 4],
     pub flags: u32,
+    //pub inputs: [f32; CELL_INPUT_ARRAY_SIZE],
 }
 
 #[repr(C)]
@@ -74,27 +76,6 @@ pub struct Genome {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct PositionChangeEntry {
-    pub delta_x: i32,
-    pub delta_y: i32,
-    pub num_changes: u32,
-    pub _pad: u32,
-}
-
-impl PositionChangeEntry {
-    pub fn zero() -> Self {
-        Self {
-            delta_x: 0,
-            delta_y: 0,
-            num_changes: 0,
-            _pad: 0,
-        }
-    }
-}
-
-
-#[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Input {
     pub weight: f32,
@@ -113,21 +94,16 @@ pub struct CompiledRegulatoryUnit {
     pub inputs: [Input; MAX_GRN_INPUTS_PER_UNIT],
 }
 
+pub type CompiledGrn = Vec<CompiledRegulatoryUnit>;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GrnDescriptor {
-    pub receptor_count: u32,
     pub unit_count: u32,
-    pub state_stride: u32,
-    pub unit_offset: u32,
+    pub unit_start_index: u32,
     pub _pad0: u32,
     pub _pad1: u32,
-    pub _pad2: u32,
-    pub _pad3: u32,
 }
-
-pub type CompiledGrn = Vec<CompiledRegulatoryUnit>;
-
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]

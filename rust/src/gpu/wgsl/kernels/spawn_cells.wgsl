@@ -88,7 +88,20 @@ fn create_cell(point_idx: u32, seed: f32) -> Cell {
     cell.generation = 0u;
     cell.flags = 1u;
     cell.energy = 100.0; // Starting energy
-    cell.cell_wall_thickness = 0.1;
+    cell.cell_wall_thickness = 0.05;
+    // Generate noise offset within safe bounds to prevent edge sampling discontinuities
+    // Cell radius is ~25px, buffer is 50px, so total margin needed is 75px from each edge
+    let margin = 75.0;
+    let max_pos = 400.0 - margin;
+
+    cell.noise_texture_offset = vec2<f32>(
+        margin + rand_01(seed + 1000.0) * (max_pos - margin),
+        margin + rand_01(seed + 2000.0) * (max_pos - margin)
+    );
+
+    // Generate random noise permutations for smooth cell wall variation
+    let frequency = rand_01(seed + 1000.0) * 2.0 + 0.01;
+    //cell.noise_permutations = generate_noise20_circle(u32(seed * 1000.0), 3.0, frequency, 2);
 
     return cell;
 }

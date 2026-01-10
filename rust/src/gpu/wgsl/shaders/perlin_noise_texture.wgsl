@@ -8,8 +8,8 @@ struct NoiseTextureUniforms {
     _padding0: u32,
     frequency_falloff: f32,
     amplitude_falloff: f32,
-    _padding1: f32,
-    _padding2: f32,
+    time: f32,
+    _padding3: f32,
 }
 
 @group(0) @binding(0)
@@ -167,48 +167,53 @@ fn noise3D(x: f32, y: f32, z: f32) -> f32 {
     return mix(r0, r1, w);
 }
 
-fn octave_noise(tex_coord: vec2<f32>) -> f32 {
+fn octave_noise(tex_coord: vec3<f32>) -> f32 {
     var total = 0.0;
     var amplitude = 1.0;
     var frequency = uniforms.base_frequency;
     var amplitude_sum = 0.0;
-    let seed_offset = vec2<f32>(uniforms.seed * 1000.0, uniforms.seed * 2000.0);
-    
+    let seed_offset = vec3<f32>(uniforms.seed * 1000.0, uniforms.seed * 2000.0, uniforms.seed * 3000.0);
+
     var octave = 0u;
     loop {
         if (octave >= uniforms.octave_count) {
             break;
         }
-        
+
         let sample_coord = tex_coord * frequency + seed_offset;
-        let sample = noise3D(sample_coord.x, sample_coord.y, 0.0);
+        let sample = noise3D(sample_coord.x, sample_coord.y, sample_coord.z);
         total += sample * amplitude;
         amplitude_sum += amplitude;
-        
+
         frequency *= uniforms.frequency_falloff;
         amplitude *= uniforms.amplitude_falloff;
         octave += 1u;
     }
-    
+
     if (amplitude_sum == 0.0) {
         return 0.0;
     }
-    
+
     return total / amplitude_sum;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Generate perlin noise at this UV position
-    // Scale UV to texture coordinates (200x200)
-    let tex_coord = in.uv * 200.0;
-    
-    var noise_value = octave_noise(tex_coord);
-    
-    // Normalize noise value to [0, 1] range
-    noise_value = clamp(noise_value * 0.5 + 0.5, 0.0, 1.0);
-    
-    // Output as RGBA (store single channel value in all RGB channels for easier sampling)
-    return vec4<f32>(noise_value, noise_value, noise_value, 1.0);
+    // Use UV coordinates directly, scaled by base_frequency
+    let tex_coord = in.uv * uniforms.base_frequency;
+
+    // Generate different animated noise patterns for each channel using time as Z coordinate
+    let noise_r = octave_noise(vec3<f32>(tex_coord, uniforms.time * 0.1)); // Very slow animation for red
+    let noise_g = octave_noise(vec3<f32>(tex_coord + vec2<f32>(100.0, 50.0), uniforms.time * 0.08)); // Slightly different very slow speed for green
+    let noise_b = octave_noise(vec3<f32>(tex_coord + vec2<f32>(200.0, 150.0), uniforms.time * 0.12)); // Different very slow speed for blue
+
+    // Normalize each noise value to [0, 1] range
+    let r = clamp(noise_r * 0.5 + 0.5, 0.0, 1.0);
+    let g = clamp(noise_g * 0.5 + 0.5, 0.0, 1.0);
+    let b = clamp(noise_b * 0.5 + 0.5, 0.0, 1.0);
+
+    // Output as RGBA with different animated noise in each channel
+    return vec4<f32>(r, g, b, 1.0);
 }
 
