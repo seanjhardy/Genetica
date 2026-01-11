@@ -3,6 +3,5 @@
 /out/
 /.vs/
 /.idea/
-/rust/target/
 /target/
-/rust/Cargo.lock
+/Cargo.lock

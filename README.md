@@ -1,8 +1,39 @@
-![Genetica](./assets/Genetica.png)
+# Genetica Rust - GPU-Accelerated Verlet Integration
 
-Based on an earlier project I made called [Hyperlife](https://github.com/seanjhardy/HyperLife)
+This is a Rust implementation demonstrating GPU-accelerated physics simulation using wgpu.
 
-# PROJECT GENETICA
-A GPU-accelerated genetic algorithm using CUDA.
+## Features
 
-Genetica combines a 2D physics environment, with multicellular creature morphology and advanced modular neuroevolution to simulate evolution
+- **6000 points** simulated using Verlet integration on the GPU
+- **GPU-side storage** - All point data stays on the GPU
+- **GPU-side rendering** - Points are rendered directly from GPU buffers
+- **Cross-platform** - Works on macOS and Windows (and Linux)
+
+## Requirements
+
+- Rust (latest stable version recommended)
+- Cargo (comes with Rust)
+
+## Building
+
+```bash
+cd rust
+cargo build --release
+```
+
+## Running
+
+```bash
+cargo run --release
+```
+
+Or run the compiled binary:
+```bash
+./target/release/genetica-rust
+```
+
+## Architecture
+
+The simulation runs entirely on the GPU - points are stored in GPU buffers, updated via compute shaders, and rendered without any CPU-GPU data transfer during the simulation loop.
+
+
