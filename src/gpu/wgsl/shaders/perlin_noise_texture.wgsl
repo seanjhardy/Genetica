@@ -204,9 +204,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let tex_coord = in.uv * uniforms.base_frequency;
 
     // Generate different animated noise patterns for each channel using time as Z coordinate
-    let noise_r = octave_noise(vec3<f32>(tex_coord, uniforms.time * 0.1)); // Very slow animation for red
-    let noise_g = octave_noise(vec3<f32>(tex_coord + vec2<f32>(100.0, 50.0), uniforms.time * 0.08)); // Slightly different very slow speed for green
-    let noise_b = octave_noise(vec3<f32>(tex_coord + vec2<f32>(200.0, 150.0), uniforms.time * 0.12)); // Different very slow speed for blue
+    let noise_r = octave_noise(vec3<f32>(tex_coord + vec2<f32>(100.0, 50.0), uniforms.time * 0.1)); // Very slow animation for red
+    let noise_g = octave_noise(vec3<f32>(tex_coord + vec2<f32>(100.0, 150.0), uniforms.time * 0.08)); // Slightly different very slow speed for green
+    let noise_b = octave_noise(vec3<f32>(tex_coord + vec2<f32>(200.0, 250.0), uniforms.time * 0.12)); // Different very slow speed for blue
 
     // Normalize each noise value to [0, 1] range
     let r = clamp(noise_r * 0.5 + 0.5, 0.0, 1.0);

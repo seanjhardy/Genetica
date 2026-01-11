@@ -240,14 +240,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     if cell_pixels >= 7.0 {
         // Sample perlin noise texture using UV coordinates with fisheye distortion
-        let local_uv = uv_offset * 0.2;
+        let local_uv = uv_offset * 0.05;
 
         // Apply fisheye distortion normalized to cell radius
         // Points at cell edge (dist = radius_normalized) get maximum distortion
         let normalized_dist = dist / radius_normalized;
         let distortion_uv = uv_offset / radius_normalized; // Normalize so cell edge = ±1.0
         let distorted_uv = fisheye_distortion(distortion_uv, 1.5);
-        let final_local_uv = distorted_uv * 0.2; // Scale back to original local_uv range
+        let final_local_uv = distorted_uv * 0.05; // Scale back to original local_uv range
 
         let cell_uv_offset = cell.noise_texture_offset / 400.0; // Convert world offset to UV offset (400x400 texture)
         let texture_sample_uv = cell_uv_offset + final_local_uv;
@@ -263,16 +263,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         var brightness_boost = 0.0;
         if noise_r > 0.5 {
-            brightness_boost -= 1.0; // Red channel contribution - lower threshold for visibility
+            brightness_boost += 0.2; // Red channel contribution - lower threshold for visibility
         }
         if noise_g > 0.5 {
             brightness_boost += 0.4; // Green channel contribution
         }
-        if noise_b > 0.8 {
+        if noise_b > 0.5 {
             brightness_boost += 0.6; // Blue channel contribution
         }
 
         brightness_boost *= (0.5 - dist) * 2.0;
+
+        brightness_boost -= 2.0 * (0.5 - dist);
 
         cell_color = brighten(cell_color, 1.0 + brightness_boost);
     }
