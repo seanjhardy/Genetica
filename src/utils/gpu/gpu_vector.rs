@@ -439,6 +439,63 @@ impl<T: Pod + Zeroable + Clone> GpuVector<T> {
         
         data.first().cloned()
     }
+
+    /// Read element at a specific index without checking current CPU-side size.
+    /// Useful when the GPU mutates buffers and the CPU size is stale.
+    pub fn read_item_unchecked(&self, device: &wgpu::Device, queue: &wgpu::Queue, index: u32) -> Option<T> {
+        if index >= self.capacity as u32 {
+            return None;
+        }
+
+        let item_size = std::mem::size_of::<T>();
+        let offset = (index as usize * item_size) as u64;
+        let buffer_size = item_size as u64;
+
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Item Staging Buffer (Unchecked)"),
+            size: buffer_size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Readback Encoder (Unchecked)"),
+        });
+        encoder.copy_buffer_to_buffer(&self.buffer, offset, &staging_buffer, 0, buffer_size);
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let buffer_slice = staging_buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+
+        loop {
+            let _ = device.poll(wgpu::MaintainBase::Wait);
+            match receiver.try_recv() {
+                Ok(Ok(_)) => break,
+                Ok(Err(e)) => {
+                    eprintln!("Buffer mapping failed: {:?}", e);
+                    return None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    std::thread::sleep(std::time::Duration::from_micros(100));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    eprintln!("Channel disconnected before mapping completed");
+                    return None;
+                }
+            }
+        }
+
+        let mapped_range = buffer_slice.get_mapped_range();
+        let data: Vec<T> = bytemuck::cast_slice(&mapped_range).to_vec();
+        drop(mapped_range);
+        staging_buffer.unmap();
+
+        data.first().cloned()
+    }
     
     /// Read all elements from GPU (up to size)
     /// Note: Does not filter by free list - the free list is the source of truth

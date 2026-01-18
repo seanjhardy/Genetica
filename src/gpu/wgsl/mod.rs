@@ -18,6 +18,8 @@ pub static SPAWN_CELLS_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/spawn_cells.wgsl").to_string()));
 pub static VERLET_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/verlet.wgsl").to_string()));
+pub static PICK_CELL_KERNEL: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/pick_cell.wgsl").to_string()));
     
 pub static CELLS_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/cells.wgsl").to_string()));

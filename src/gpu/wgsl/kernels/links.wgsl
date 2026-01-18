@@ -100,8 +100,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let new_angle_a = point_a.angle + link.angle_from_a;
     let new_angle_b = point_b.angle + link.angle_from_b;
-    let point_pos_a = point_a.pos + vec2<f32>(cos(new_angle_a), sin(new_angle_a)) * point_a.radius;
-    let point_pos_b = point_b.pos + vec2<f32>(cos(new_angle_b), sin(new_angle_b)) * point_b.radius;
+    let point_pos_a = point_a.pos + vec2<f32>(cos(new_angle_a), sin(new_angle_a)) * point_a.radius * 0.7;
+    let point_pos_b = point_b.pos + vec2<f32>(cos(new_angle_b), sin(new_angle_b)) * point_b.radius * 0.7;
 
     // Calculate desired correction to bring attachment points together
     let target_offset = point_pos_b - point_pos_a;

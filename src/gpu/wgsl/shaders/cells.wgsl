@@ -169,6 +169,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (cell.flags & CELL_FLAG_ACTIVE) == 0u {
         discard;
     }
+    let selected_cell = uniforms.selection.x;
+    let is_selected = selected_cell != 0xffffffffu && cell_idx == selected_cell;
 
     let center = vec2<f32>(0.5, 0.5);
     let uv_offset = (in.uv - center) * 2.0; // [-0.5, 0.5]
@@ -228,7 +230,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     if dist > radius_normalized - cell.cell_wall_thickness {
-        cell_color = brighten(cell_color, 1.5);
+        if is_selected {
+            let highlight = vec3<f32>(0.55, 0.8, 1.0);
+            cell_color = vec4<f32>(mix(cell_color.rgb, highlight, 0.85), cell_color.a);
+        } else {
+            cell_color = brighten(cell_color, 1.5);
+        }
     }
 
     // LOD: Skip noise texture sampling for cells smaller than 20 pixels on screen

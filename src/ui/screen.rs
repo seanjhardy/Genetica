@@ -2,6 +2,7 @@
 // Manages a collection of UI elements
 
 use super::components::{Component, ComponentType};
+use crate::utils::math::Rect;
 use std::collections::HashMap;
 
 pub struct Screen {
@@ -213,6 +214,45 @@ impl Screen {
     pub fn get_elements_mut(&mut self) -> &mut [Component] {
         &mut self.elements
     }
+
+    pub fn find_component_bounds(&self, id: &str) -> Option<Rect> {
+        for element in &self.elements {
+            if let Some(bounds) = Self::find_component_bounds_recursive(element, id, 0.0, 0.0) {
+                return Some(bounds);
+            }
+        }
+        None
+    }
+
+    fn find_component_bounds_recursive(
+        component: &Component,
+        id: &str,
+        parent_x: f32,
+        parent_y: f32,
+    ) -> Option<Rect> {
+        if let Some(component_id) = &component.id {
+            if component_id == id {
+                let (x, y) = component.calculate_absolute_position(parent_x, parent_y);
+                return Some(Rect::new(
+                    x,
+                    y,
+                    component.layout.computed_width,
+                    component.layout.computed_height,
+                ));
+            }
+        }
+
+        if let ComponentType::View(view) = &component.component_type {
+            let (x, y) = component.calculate_absolute_position(parent_x, parent_y);
+            for child in &view.children {
+                if let Some(bounds) = Self::find_component_bounds_recursive(child, id, x, y) {
+                    return Some(bounds);
+                }
+            }
+        }
+
+        None
+    }
 }
 
 impl Default for Screen {
@@ -220,4 +260,3 @@ impl Default for Screen {
         Self::new()
     }
 }
-

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+use std::sync::mpsc;
 
 use winit::{
     application::ApplicationHandler,
@@ -19,13 +20,16 @@ use crate::utils::gpu::device::GpuDevice;
 use crate::gpu::pipelines::RenderPipelines;
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
-use crate::gpu::buffers::GpuBuffers;
+use crate::gpu::buffers::{GpuBuffers, CELL_CAPACITY};
+use crate::gpu::structures::{PickParams, PickResult, VerletPoint};
 use crate::simulator::environment::Environment;
 use crate::simulator::renderer::Renderer;
 use crate::simulator::simulator::Simulation;
 use crate::simulator::poll_thread::PollThread;
 
 const SIMULATION_DELTA_TIME: f32 = 1.0;
+const PICK_WORKGROUP_SIZE: u32 = 256;
+const FISH_EYE_STRENGTH: f32 = 0.3;
 
 
 pub struct Application {
@@ -45,6 +49,11 @@ pub struct Application {
     pub last_cursor_pos: Vec2,
     ui_hovered: bool,
     ui_cursor_hint: Option<&'static str>,
+    mouse_pressed: bool,
+    selected_cell: Option<u32>,
+    selected_point: Option<u32>,
+    drag_offset: Vec2,
+    dragging_cell: bool,
     last_frame_time: Instant,
     last_render_time: Instant,
     frame_count: u64,
@@ -141,6 +150,11 @@ impl Application {
             last_cursor_pos: Vec2::new(0.0, 0.0),
             ui_hovered: false,
             ui_cursor_hint: None,
+            mouse_pressed: false,
+            selected_cell: None,
+            selected_point: None,
+            drag_offset: Vec2::zero(),
+            dragging_cell: false,
             last_frame_time: Instant::now(),
             last_render_time: Instant::now(),
             frame_count: 0,
@@ -338,6 +352,7 @@ impl Application {
 
         // Only update uniforms if camera moved, bounds changed, or window resized
         if self.uniforms_need_update {
+            let selected_cell = self.selected_cell.unwrap_or(u32::MAX);
             let uniforms = Uniforms::new(
                 SIMULATION_DELTA_TIME,
                 [camera_pos.x, camera_pos.y],
@@ -353,6 +368,7 @@ impl Application {
                 4_000_000_000, // nutrient scale (not used for points)
                 100, // nutrient grid width (not used for points)
                 100, // nutrient grid height (not used for points)
+                selected_cell,
             );
 
             // Update uniforms for all slots to ensure consistency when slots rotate
@@ -475,12 +491,18 @@ impl Application {
 
     pub fn handle_mouse_move(&mut self, mouse_pos: Vec2, ui_hovered: bool) {
         self.ui_hovered = ui_hovered;
-        let world_pos = self.camera.screen_to_world(mouse_pos);
+        let adjusted_screen_pos = self.adjust_mouse_for_fisheye(mouse_pos);
+        let world_pos = self.camera.screen_to_world(adjusted_screen_pos);
+        if self.dragging_cell && self.mouse_pressed {
+            self.drag_selected_cell(world_pos);
+            return;
+        }
         let mut environment = self.environment.lock();
         environment.update(world_pos, self.camera.get_zoom(), ui_hovered);
     }
 
     pub fn handle_mouse_press(&mut self, pressed: bool) {
+        self.mouse_pressed = pressed;
         if pressed && !self.rendering_enabled {
             self.set_ui_visibility(true);
             return;
@@ -492,6 +514,37 @@ impl Application {
                 self.handle_ui_action(&handler);
                 return;
             }
+
+            if !self.is_mouse_in_simulation_viewport(self.last_cursor_pos) {
+                self.clear_selected_cell();
+                return;
+            }
+
+            if self.is_point_over_ui(self.last_cursor_pos) {
+                return;
+            }
+
+            let adjusted_screen_pos = self.adjust_mouse_for_fisheye(self.last_cursor_pos);
+            let world_pos = self.camera.screen_to_world(adjusted_screen_pos);
+            let bounds = self.environment.lock().get_bounds();
+            if !bounds.contains(world_pos) {
+                self.clear_selected_cell();
+                return;
+            }
+
+            if let Some(cell_idx) = self.pick_cell_at_world_pos(world_pos) {
+                if self.select_cell_for_drag(cell_idx, world_pos) {
+                    self.dragging_cell = true;
+                } else {
+                    self.clear_selected_cell();
+                }
+                return;
+            }
+
+            self.clear_selected_cell();
+        }
+        if !pressed {
+            self.dragging_cell = false;
         }
 
         let mut environment = self.environment.lock();
@@ -509,6 +562,210 @@ impl Application {
             "toggleRealtime" => self.toggle_realtime(),
             _ => {}
         }
+    }
+
+    fn is_point_over_ui(&mut self, mouse_pos: Vec2) -> bool {
+        if let Some(screen) = self.ui_manager.get_screen("simulation") {
+            return screen.is_point_over_ui((mouse_pos.x, mouse_pos.y));
+        }
+        false
+    }
+
+    fn is_mouse_in_simulation_viewport(&mut self, mouse_pos: Vec2) -> bool {
+        if let Some(screen) = self.ui_manager.get_screen("simulation") {
+            if let Some(bounds) = screen.find_component_bounds("simulation") {
+                return bounds.contains(mouse_pos);
+            }
+        }
+        true
+    }
+
+    fn clear_selected_cell(&mut self) {
+        if self.selected_cell.is_some() {
+            self.selected_cell = None;
+            self.selected_point = None;
+            self.drag_offset = Vec2::zero();
+            self.dragging_cell = false;
+            self.uniforms_need_update = true;
+        }
+    }
+
+    fn adjust_mouse_for_fisheye(&mut self, screen_pos: Vec2) -> Vec2 {
+        let Some(screen) = self.ui_manager.get_screen("simulation") else {
+            return screen_pos;
+        };
+        let Some(bounds) = screen.find_component_bounds("simulation") else {
+            return screen_pos;
+        };
+        if bounds.width <= 0.0 || bounds.height <= 0.0 {
+            return screen_pos;
+        }
+
+        let uv = Vec2::new(
+            (screen_pos.x - bounds.left) / bounds.width,
+            (screen_pos.y - bounds.top) / bounds.height,
+        );
+        if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+            return screen_pos;
+        }
+
+        let corrected_uv = self.inverse_fish_eye_uv(uv);
+        Vec2::new(
+            bounds.left + corrected_uv.x * bounds.width,
+            bounds.top + corrected_uv.y * bounds.height,
+        )
+    }
+
+    fn inverse_fish_eye_uv(&self, screen_uv: Vec2) -> Vec2 {
+        let mut uv = screen_uv;
+        for _ in 0..6 {
+            let centered = Vec2::new(uv.x - 0.5, uv.y - 0.5);
+            let dist = centered.length();
+            let radius = FISH_EYE_STRENGTH * dist * dist;
+            let warped = Vec2::new(
+                uv.x + centered.x * radius,
+                uv.y + centered.y * radius,
+            );
+            let delta = Vec2::new(screen_uv.x - warped.x, screen_uv.y - warped.y);
+            uv = Vec2::new(uv.x + delta.x, uv.y + delta.y);
+        }
+        uv
+    }
+
+    fn select_cell_for_drag(&mut self, cell_idx: u32, mouse_world_pos: Vec2) -> bool {
+        let buffers = self.simulation.lock().get_render_buffers();
+        let Some(cell) = buffers
+            .cells
+            .read_item_unchecked(&self.gpu.device, &self.gpu.queue, cell_idx)
+        else {
+            return false;
+        };
+
+        let Some(point) = buffers
+            .points
+            .read_item_unchecked(&self.gpu.device, &self.gpu.queue, cell.point_idx)
+        else {
+            return false;
+        };
+
+        let point_pos = Vec2::new(point.pos[0], point.pos[1]);
+        self.selected_cell = Some(cell_idx);
+        self.selected_point = Some(cell.point_idx);
+        self.drag_offset = point_pos - mouse_world_pos;
+        self.uniforms_need_update = true;
+        true
+    }
+
+    fn drag_selected_cell(&mut self, mouse_world_pos: Vec2) {
+        let Some(point_idx) = self.selected_point else {
+            return;
+        };
+        let target_pos = mouse_world_pos + self.drag_offset;
+        let offset = (point_idx as usize * std::mem::size_of::<VerletPoint>()) as u64;
+        let data = [target_pos.x, target_pos.y, target_pos.x, target_pos.y];
+        let buffers = self.simulation.lock().get_render_buffers();
+        self.gpu
+            .queue
+            .write_buffer(buffers.points.buffer(), offset, bytemuck::cast_slice(&data));
+    }
+
+    fn pick_cell_at_world_pos(&mut self, world_pos: Vec2) -> Option<u32> {
+        let (buffers, pick_pipeline, pick_bind_group) = {
+            let sim = self.simulation.lock();
+            let slot = &sim.slots[sim.render_slot];
+            (
+                slot.buffers.clone(),
+                slot.compute_pipelines.pick_cell.clone(),
+                slot.compute_pipelines.pick_cell_bind_group.clone(),
+            )
+        };
+
+        let pick_params = PickParams {
+            mouse_pos: [world_pos.x, world_pos.y],
+            _pad: [0.0, 0.0],
+        };
+        self.gpu.queue.write_buffer(
+            &buffers.cell_pick_params,
+            0,
+            bytemuck::cast_slice(&[pick_params]),
+        );
+
+        let reset = PickResult::reset();
+        self.gpu.queue.write_buffer(
+            &buffers.cell_pick_result,
+            0,
+            bytemuck::cast_slice(&[reset]),
+        );
+
+        let mut encoder = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Pick Cell Encoder"),
+        });
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Pick Cell Pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&pick_pipeline);
+            pass.set_bind_group(0, &pick_bind_group, &[]);
+            let dispatch = (CELL_CAPACITY as u32 + PICK_WORKGROUP_SIZE - 1) / PICK_WORKGROUP_SIZE;
+            pass.dispatch_workgroups(dispatch, 1, 1);
+        }
+        self.gpu.queue.submit(std::iter::once(encoder.finish()));
+        let _ = self.gpu.device.poll(wgpu::MaintainBase::Wait);
+
+        let result = self.read_pick_result(&buffers.cell_pick_result)?;
+        if result.cell_index == u32::MAX {
+            None
+        } else {
+            Some(result.cell_index)
+        }
+    }
+
+    fn read_pick_result(&self, buffer: &wgpu::Buffer) -> Option<PickResult> {
+        let size = std::mem::size_of::<PickResult>() as u64;
+        let staging = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Pick Result Staging"),
+            size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Pick Result Readback Encoder"),
+        });
+        encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, size);
+        self.gpu.queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = staging.slice(..);
+        let (sender, receiver) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+
+        loop {
+            let _ = self.gpu.device.poll(wgpu::MaintainBase::Wait);
+            match receiver.try_recv() {
+                Ok(Ok(())) => break,
+                Ok(Err(err)) => {
+                    eprintln!("Pick result readback failed: {:?}", err);
+                    return None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {
+                    std::thread::sleep(std::time::Duration::from_micros(50));
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    eprintln!("Pick result readback channel disconnected");
+                    return None;
+                }
+            }
+        }
+
+        let mapped = slice.get_mapped_range();
+        let result = bytemuck::from_bytes::<PickResult>(&mapped[..]);
+        let result = *result;
+        drop(mapped);
+        staging.unmap();
+        Some(result)
     }
 
     pub fn get_cursor_hint(&self) -> Option<&'static str> {
@@ -608,6 +865,7 @@ impl Application {
 
     pub fn reset_simulation(&mut self) {
         self.simulation.lock().reset();
+        self.clear_selected_cell();
 
         self.camera.set_position(self.initial_camera_position);
         self.camera.set_zoom(self.initial_camera_zoom);
@@ -814,6 +1072,7 @@ impl Application {
             4_000_000_000,
             nutrient_grid_width,
             nutrient_grid_height,
+            u32::MAX,
         );
 
         let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.queue, &gpu.config);

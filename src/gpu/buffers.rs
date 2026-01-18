@@ -7,7 +7,8 @@ use std::sync::Arc;
 use bytemuck::Zeroable;
 
 use crate::gpu::structures::{
-    Cell, CompiledRegulatoryUnit, DivisionRequest, GrnDescriptor, Link, MAX_GRN_REGULATORY_UNITS, VerletPoint
+    Cell, CompiledRegulatoryUnit, DivisionRequest, GrnDescriptor, Link, PickParams, PickResult,
+    MAX_GRN_REGULATORY_UNITS, VerletPoint
 };
 use crate::simulator::state::{Counter, EventSystem};
 use crate::utils::math::Rect;
@@ -27,6 +28,8 @@ pub struct GpuBuffers {
     pub cells: GpuVector<Cell>,
     pub lifeform_id: wgpu::Buffer,
     pub uniform_buffer: wgpu::Buffer,
+    pub cell_pick_params: wgpu::Buffer,
+    pub cell_pick_result: wgpu::Buffer,
     pub event_system: EventSystem,
     pub link_buffer: wgpu::Buffer,
     pub link_free_list: wgpu::Buffer,
@@ -79,6 +82,18 @@ impl GpuBuffers {
             label: Some("Uniform Buffer"),
             contents: initial_uniforms,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let cell_pick_params = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Cell Pick Params"),
+            contents: bytemuck::cast_slice(&[PickParams::zeroed()]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let cell_pick_result = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Cell Pick Result"),
+            contents: bytemuck::cast_slice(&[PickResult::reset()]),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
         });
 
         // event system
@@ -169,6 +184,8 @@ impl GpuBuffers {
             points,
             cells,
             uniform_buffer,
+            cell_pick_params,
+            cell_pick_result,
             event_system,
             link_buffer,
             link_free_list,

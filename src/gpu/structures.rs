@@ -26,6 +26,7 @@ pub struct VerletPoint {
     pub angle: f32,
     pub radius: f32,
     pub flags: u32,
+    pub _pad0: u32,
 }
 
 #[repr(C)]
@@ -36,10 +37,12 @@ pub struct Cell {
     pub generation: u32,
     pub energy: f32,
     pub cell_wall_thickness: f32,
-    pub noise_permutations: [f32; CELL_WALL_SAMPLES],
-    pub noise_texture_offset: [f32; 2],
+    pub _pad0: [u32; 3],
     pub color: [f32; 4],
     pub flags: u32,
+    pub noise_permutations: [f32; CELL_WALL_SAMPLES],
+    pub _pad1: u32,
+    pub noise_texture_offset: [f32; 2],
     //pub inputs: [f32; CELL_INPUT_ARRAY_SIZE],
 }
 
@@ -123,4 +126,27 @@ pub struct DivisionRequest {
     pub generation: u32,
     pub energy: f32,
     pub angle: f32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct PickParams {
+    pub mouse_pos: [f32; 2],
+    pub _pad: [f32; 2],
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct PickResult {
+    pub best_dist: u32,
+    pub cell_index: u32,
+}
+
+impl PickResult {
+    pub fn reset() -> Self {
+        Self {
+            best_dist: f32::MAX.to_bits(),
+            cell_index: u32::MAX,
+        }
+    }
 }

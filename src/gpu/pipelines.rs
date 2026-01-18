@@ -4,7 +4,7 @@ use wgpu;
 use wgpu::util::DeviceExt;
 use std::path::PathBuf;
 
-use crate::gpu::wgsl::{CELLS_KERNEL, CELLS_SHADER, LINKS_KERNEL, LINKS_SHADER, NUTRIENTS_KERNEL, NUTRIENTS_SHADER, PERLIN_NOISE_TEXTURE_SHADER, SPAWN_CELLS_KERNEL, VERLET_KERNEL};
+use crate::gpu::wgsl::{CELLS_KERNEL, CELLS_SHADER, LINKS_KERNEL, LINKS_SHADER, NUTRIENTS_KERNEL, NUTRIENTS_SHADER, PERLIN_NOISE_TEXTURE_SHADER, PICK_CELL_KERNEL, SPAWN_CELLS_KERNEL, VERLET_KERNEL};
 use crate::gpu::buffers::GpuBuffers;
 
 #[repr(C)]
@@ -29,6 +29,8 @@ pub struct ComputePipelines {
     pub update_points_bind_group: wgpu::BindGroup,
     pub spawn_cells: wgpu::ComputePipeline,
     pub spawn_cells_bind_groups: [wgpu::BindGroup; 2],
+    pub pick_cell: wgpu::ComputePipeline,
+    pub pick_cell_bind_group: wgpu::BindGroup,
 }
 
 impl ComputePipelines {
@@ -258,6 +260,95 @@ impl ComputePipelines {
                         min_binding_size: None,
                     },
                     count: None,
+                },
+            ],
+        });
+
+        let pick_cell_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Pick Cell Shader"),
+            source: PICK_CELL_KERNEL.clone(),
+        });
+
+        let pick_cell_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Pick Cell Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let pick_cell_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Pick Cell Pipeline Layout"),
+            bind_group_layouts: &[&pick_cell_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let pick_cell = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Pick Cell Pipeline"),
+            layout: Some(&pick_cell_pipeline_layout),
+            module: &pick_cell_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let pick_cell_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Pick Cell Bind Group"),
+            layout: &pick_cell_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.cell_pick_params.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.points.buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buffers.cells.buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buffers.cell_pick_result.as_entire_binding(),
                 },
             ],
         });
@@ -614,6 +705,8 @@ impl ComputePipelines {
             update_points_bind_group,
             spawn_cells,
             spawn_cells_bind_groups,
+            pick_cell,
+            pick_cell_bind_group,
         }
     }
 }
