@@ -82,6 +82,7 @@ impl PollThread {
         puffin::set_scopes_on(true);
 
         let mut pending_readback = false;
+        let mut mapping: Option<crate::simulator::state::BufferMapping> = None;
         let mut last_frame_start_nanos = 0u64;
         let mut frame_deadline_nanos = 0u64;
         let mut pending_events: VecDeque<Event> = VecDeque::new();
@@ -111,13 +112,22 @@ impl PollThread {
 
             if pending_readback && should_process {
                 profile_scope!("Process Pending Readback");
-                profile_scope!("Read Events");
-                let events = render_buffers.event_system.read_events_blocking(&device);
-                if !events.is_empty() {
-                    pending_events.extend(events);
+                if mapping.is_none() {
+                    mapping = Some(render_buffers.event_system.begin_async_mapping());
                 }
-                render_buffers.event_system.finish_readback();
-                pending_readback = false;
+
+                profile_scope!("Read Events");
+                device.poll(wgpu::MaintainBase::Poll);
+                if let Some(active_mapping) = &mapping {
+                    if let Some(events) = render_buffers.event_system.try_read_events(active_mapping) {
+                        if !events.is_empty() {
+                            pending_events.extend(events);
+                        }
+                        render_buffers.event_system.finish_readback();
+                        pending_readback = false;
+                        mapping = None;
+                    }
+                }
             }
 
             if should_process && !pending_events.is_empty() && !*paused_state.lock() {

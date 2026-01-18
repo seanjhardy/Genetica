@@ -796,6 +796,16 @@ impl RenderPipelines {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -1299,6 +1309,10 @@ impl RenderPipelines {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: wgpu::BindingResource::Sampler(&perlin_noise_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: buffers.link_buffer.as_entire_binding(),
                 },
             ],
         });

@@ -14,6 +14,8 @@ var<storage, read> cells: array<Cell>;
 
 @group(0) @binding(3) var perlin_noise_texture: texture_2d<f32>;
 @group(0) @binding(4) var perlin_noise_sampler: sampler;
+@group(0) @binding(5)
+var<storage, read> links: array<Link>;
 
 
 struct VertexOutput {
@@ -26,7 +28,13 @@ struct VertexOutput {
     @location(5) world_pos: vec2<f32>,
     @location(6) max_radius: f32, // Maximum radius including perturbation (for quad sizing)
     @location(7) cell_angle: f32, // Cell rotation angle for UV rotation
+    @location(8) link_plane0: vec4<f32>,
+    @location(9) link_plane1: vec4<f32>,
+    @location(10) link_plane2: vec4<f32>,
+    @location(11) link_plane3: vec4<f32>,
 }
+
+const MAX_LINK_PLANES: u32 = 4u;
 
 @vertex
 fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
@@ -49,6 +57,10 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
         out.world_pos = vec2<f32>(0.0);
         out.max_radius = 0.0;
         out.cell_angle = 0.0;
+        out.link_plane0 = vec4<f32>(0.0);
+        out.link_plane1 = vec4<f32>(0.0);
+        out.link_plane2 = vec4<f32>(0.0);
+        out.link_plane3 = vec4<f32>(0.0);
         return out;
     }
 
@@ -82,7 +94,81 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
         out.world_pos = world_pos;
         out.max_radius = max_radius_world;
         out.cell_angle = point.angle;
+        out.link_plane0 = vec4<f32>(0.0);
+        out.link_plane1 = vec4<f32>(0.0);
+        out.link_plane2 = vec4<f32>(0.0);
+        out.link_plane3 = vec4<f32>(0.0);
         return out;
+    }
+
+    var link_planes: array<vec4<f32>, 4>;
+    var link_plane_dists: array<f32, 4>;
+    for (var i: u32 = 0u; i < MAX_LINK_PLANES; i = i + 1u) {
+        link_planes[i] = vec4<f32>(0.0);
+        link_plane_dists[i] = 1e9;
+    }
+
+    let link_count = arrayLength(&links);
+    for (var i: u32 = 0u; i < link_count; i = i + 1u) {
+        let link = links[i];
+        if (link.flags & LINK_FLAG_ACTIVE) == 0u {
+            continue;
+        }
+
+        var neighbor_idx: u32 = 0u;
+        var neighbor_generation: u32 = 0u;
+        if link.a_cell == cell_idx {
+            neighbor_idx = link.b_cell;
+            neighbor_generation = link.b_generation;
+        } else if link.b_cell == cell_idx {
+            neighbor_idx = link.a_cell;
+            neighbor_generation = link.a_generation;
+        } else {
+            continue;
+        }
+
+        if neighbor_idx >= arrayLength(&cells) {
+            continue;
+        }
+
+        let neighbor_cell = cells[neighbor_idx];
+        if neighbor_cell.generation != neighbor_generation {
+            continue;
+        }
+        if (neighbor_cell.flags & CELL_FLAG_ACTIVE) == 0u {
+            continue;
+        }
+        if neighbor_cell.point_idx >= arrayLength(&points) {
+            continue;
+        }
+
+        let neighbor_point = points[neighbor_cell.point_idx];
+        if (neighbor_point.flags & POINT_FLAG_ACTIVE) == 0u {
+            continue;
+        }
+
+        let to_neighbor = neighbor_point.pos - cell_center;
+        let dist = length(to_neighbor);
+        if dist <= 0.0001 {
+            continue;
+        }
+
+        let half_dist = 0.5 * dist;
+        let plane = vec4<f32>(to_neighbor / dist, half_dist, 1.0);
+
+        var max_index: u32 = 0u;
+        var max_dist: f32 = link_plane_dists[0];
+        for (var j: u32 = 1u; j < MAX_LINK_PLANES; j = j + 1u) {
+            if link_plane_dists[j] > max_dist {
+                max_dist = link_plane_dists[j];
+                max_index = j;
+            }
+        }
+
+        if half_dist < max_dist {
+            link_planes[max_index] = plane;
+            link_plane_dists[max_index] = half_dist;
+        }
     }
 
     // LOD check: skip organelles when cell size in clip space is too small
@@ -125,6 +211,10 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     out.world_pos = world_pos;
     out.max_radius = max_radius_world; // Store max radius for reference
     out.cell_angle = point.angle;
+    out.link_plane0 = link_planes[0];
+    out.link_plane1 = link_planes[1];
+    out.link_plane2 = link_planes[2];
+    out.link_plane3 = link_planes[3];
     return out;
 }
 
@@ -159,6 +249,24 @@ fn cell_noise(permutations: array<f32, CELL_WALL_SAMPLES>, angle: f32) -> f32 {
 
     // Linear interpolation between the two samples
     return mix(sample0, sample1, fraction);
+}
+
+fn clamp_radius_with_plane(plane: vec4<f32>, pixel_dir: vec2<f32>, current_radius: f32) -> f32 {
+    if plane.w == 0.0 {
+        return current_radius;
+    }
+
+    let denom = dot(plane.xy, pixel_dir);
+    if denom <= 0.0001 {
+        return current_radius;
+    }
+
+    let t = plane.z / denom;
+    if t > 0.0 && t < current_radius {
+        return t;
+    }
+
+    return current_radius;
 }
 
 @fragment
@@ -206,17 +314,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let perturbation_amount = in.radius * 0.1; // 10% of radius
     adjusted_radius = in.radius + noise_value * perturbation_amount;
     
-    // SECOND: Clamp to midpoint boundary if near neighbors
-    // This creates flat edges where cells are close together
-    let perturbed_point = in.world_pos + pixel_dir_world * adjusted_radius;
-    let search_radius = in.radius * 3.5;
-    /*adjusted_radius = calculate_directional_radius(
-        perturbed_point,
-        in.world_pos,
-        adjusted_radius,
-        search_radius,
-        cell_idx
-    );*/
+    // SECOND: Clamp to midpoint boundaries for linked neighbors to flatten shared walls.
+    adjusted_radius = clamp_radius_with_plane(in.link_plane0, pixel_dir_world, adjusted_radius);
+    adjusted_radius = clamp_radius_with_plane(in.link_plane1, pixel_dir_world, adjusted_radius);
+    adjusted_radius = clamp_radius_with_plane(in.link_plane2, pixel_dir_world, adjusted_radius);
+    adjusted_radius = clamp_radius_with_plane(in.link_plane3, pixel_dir_world, adjusted_radius);
     
     // Base cell color from compute_cell_color
     var cell_color = in.color;
