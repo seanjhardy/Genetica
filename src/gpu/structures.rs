@@ -2,6 +2,8 @@
 use bytemuck::{self, Pod, Zeroable};
 
 pub const CELL_WALL_SAMPLES: usize = 20;
+pub const MAX_CELL_LINKS: usize = 8;
+pub const LINK_CORRECTION_STRIDE: usize = 3;
 
 pub const MAX_GRN_RECEPTOR_INPUTS: usize = 2;
 pub const MAX_GRN_REGULATORY_UNITS: usize = 100;
@@ -40,8 +42,9 @@ pub struct Cell {
     pub _pad0: [u32; 3],
     pub color: [f32; 4],
     pub flags: u32,
+    pub link_count: u32,
+    pub link_indices: [u32; MAX_CELL_LINKS],
     pub noise_permutations: [f32; CELL_WALL_SAMPLES],
-    pub _pad1: u32,
     pub noise_texture_offset: [f32; 2],
     //pub inputs: [f32; CELL_INPUT_ARRAY_SIZE],
 }
@@ -58,6 +61,14 @@ pub struct Link {
     pub stiffness: f32,
     pub flags: u32,
     pub _pad: [u32; 4],
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+pub struct LinkCorrection {
+    pub dx: i32,
+    pub dy: i32,
+    pub d_angle: i32,
 }
 
 impl Link {

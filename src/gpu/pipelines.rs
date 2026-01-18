@@ -66,6 +66,16 @@ impl ComputePipelines {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
         
@@ -94,6 +104,10 @@ impl ComputePipelines {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: buffers.points.buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buffers.link_corrections.as_entire_binding(),
                 },
             ],
         });
@@ -592,6 +606,17 @@ impl ComputePipelines {
                     },
                     count: None,
                 },
+                // 13 link corrections
+                wgpu::BindGroupLayoutEntry {
+                    binding: 13,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -618,7 +643,7 @@ impl ComputePipelines {
             label: Some("Update Links Pipeline"),
             layout: Some(&cells_pipeline_layout),
             module: &links_shader,
-            entry_point: Some("main"),
+            entry_point: Some("accumulate"),
             compilation_options: Default::default(),
             cache: None,
         });
@@ -678,6 +703,10 @@ impl ComputePipelines {
                 wgpu::BindGroupEntry {
                     binding: 12,
                     resource: buffers.division_counter.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 13,
+                    resource: buffers.link_corrections.as_entire_binding(),
                 },
             ],
         });

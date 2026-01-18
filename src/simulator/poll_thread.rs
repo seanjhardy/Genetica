@@ -110,13 +110,13 @@ impl PollThread {
             let now_nanos = app_start.elapsed().as_nanos() as u64;
             let should_process = start_nanos == 0 || now_nanos <= frame_deadline_nanos;
 
-            if pending_readback && should_process {
+            if pending_readback {
                 profile_scope!("Process Pending Readback");
+                profile_scope!("Read Events");
                 if mapping.is_none() {
                     mapping = Some(render_buffers.event_system.begin_async_mapping());
                 }
 
-                profile_scope!("Read Events");
                 device.poll(wgpu::MaintainBase::Poll);
                 if let Some(active_mapping) = &mapping {
                     if let Some(events) = render_buffers.event_system.try_read_events(active_mapping) {
@@ -126,11 +126,13 @@ impl PollThread {
                         render_buffers.event_system.finish_readback();
                         pending_readback = false;
                         mapping = None;
+                    } else {
+                        thread::sleep(Duration::from_millis(1));
                     }
                 }
             }
 
-            if should_process && !pending_events.is_empty() && !*paused_state.lock() {
+            if !pending_events.is_empty() && !*paused_state.lock() {
                 let mut ga = genetic_algorithm.lock();
                 profile_scope!("Process Events");
                 let current_step = step_counter.load(Ordering::Relaxed);

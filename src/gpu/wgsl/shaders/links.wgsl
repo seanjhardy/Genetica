@@ -73,8 +73,8 @@ fn vs_main(
 
     let angle_a = point_a.angle + link.angle_from_a;
     let angle_b = point_b.angle + link.angle_from_b;
-    let attach_a = point_a.pos + vec2<f32>(cos(angle_a), sin(angle_a)) * point_a.radius;
-    let attach_b = point_b.pos + vec2<f32>(cos(angle_b), sin(angle_b)) * point_a.radius;
+    let attach_a = point_a.pos;
+    let attach_b = point_b.pos;
 
     let delta = attach_b - attach_a;
     let dist = length(delta);
@@ -83,18 +83,18 @@ fn vs_main(
     }
 
     let angle_to_b = atan2(delta.y, delta.x) + M_PI/2.0;
-    let offset = vec2<f32>(cos(angle_to_b), sin(angle_to_b)) * 0.1;
+    let offset = vec2<f32>(cos(angle_to_b), sin(angle_to_b)) * 0.05;
 
     var world_pos: vec2<f32>;
     switch vertex_index {
-        case 0u: { world_pos = attach_a + offset; }
-        case 1u: { world_pos = attach_a - offset; }
-        case 2u: { world_pos = attach_b + offset; }
-        default: { world_pos = attach_b - offset; }
+        case 0u: { world_pos = attach_a + offset * point_a.radius; }
+        case 1u: { world_pos = attach_a - offset * point_a.radius; }
+        case 2u: { world_pos = attach_b + offset * point_b.radius; }
+        default: { world_pos = attach_b - offset * point_b.radius; }
     }
 
     output.clip_position = compute_clip_position(world_pos);
-    output.color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
+    output.color = cell_a.color;
     return output;
 }
 
@@ -103,5 +103,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if in.color.a <= 0.0 {
         discard;
     }
-    return saturate(brighten(in.color, 3), 1.0);
+    return alpha(brighten(in.color, 2.0), 0.2);
 }

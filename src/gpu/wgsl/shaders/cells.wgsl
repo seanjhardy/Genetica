@@ -32,6 +32,7 @@ struct VertexOutput {
     @location(9) link_plane1: vec4<f32>,
     @location(10) link_plane2: vec4<f32>,
     @location(11) link_plane3: vec4<f32>,
+    @location(12) min_plane_distance: f32,
 }
 
 const MAX_LINK_PLANES: u32 = 4u;
@@ -61,6 +62,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
         out.link_plane1 = vec4<f32>(0.0);
         out.link_plane2 = vec4<f32>(0.0);
         out.link_plane3 = vec4<f32>(0.0);
+        out.min_plane_distance = 1e9;
         return out;
     }
 
@@ -98,6 +100,7 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
         out.link_plane1 = vec4<f32>(0.0);
         out.link_plane2 = vec4<f32>(0.0);
         out.link_plane3 = vec4<f32>(0.0);
+        out.min_plane_distance = 1e9;
         return out;
     }
 
@@ -108,66 +111,74 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
         link_plane_dists[i] = 1e9;
     }
 
-    let link_count = arrayLength(&links);
-    for (var i: u32 = 0u; i < link_count; i = i + 1u) {
-        let link = links[i];
-        if (link.flags & LINK_FLAG_ACTIVE) == 0u {
-            continue;
-        }
-
-        var neighbor_idx: u32 = 0u;
-        var neighbor_generation: u32 = 0u;
-        if link.a_cell == cell_idx {
-            neighbor_idx = link.b_cell;
-            neighbor_generation = link.b_generation;
-        } else if link.b_cell == cell_idx {
-            neighbor_idx = link.a_cell;
-            neighbor_generation = link.a_generation;
-        } else {
-            continue;
-        }
-
-        if neighbor_idx >= arrayLength(&cells) {
-            continue;
-        }
-
-        let neighbor_cell = cells[neighbor_idx];
-        if neighbor_cell.generation != neighbor_generation {
-            continue;
-        }
-        if (neighbor_cell.flags & CELL_FLAG_ACTIVE) == 0u {
-            continue;
-        }
-        if neighbor_cell.point_idx >= arrayLength(&points) {
-            continue;
-        }
-
-        let neighbor_point = points[neighbor_cell.point_idx];
-        if (neighbor_point.flags & POINT_FLAG_ACTIVE) == 0u {
-            continue;
-        }
-
-        let to_neighbor = neighbor_point.pos - cell_center;
-        let dist = length(to_neighbor);
-        if dist <= 0.0001 {
-            continue;
-        }
-
-        let half_dist = 0.5 * dist;
-        let plane = vec4<f32>(to_neighbor / dist, half_dist, 1.0);
-
-        var max_index: u32 = 0u;
-        var max_dist: f32 = link_plane_dists[0];
-        for (var j: u32 = 1u; j < MAX_LINK_PLANES; j = j + 1u) {
-            if link_plane_dists[j] > max_dist {
-                max_dist = link_plane_dists[j];
-                max_index = j;
+    // Skip link calculations if cell is too small
+    if cell_radius_world < 20 {
+        let link_count = min(cell.link_count, MAX_CELL_LINKS);
+        for (var i: u32 = 0u; i < link_count; i = i + 1u) {
+            let link_idx = cell.link_indices[i];
+            if link_idx >= arrayLength(&links) {
+                continue;
             }
-        }
 
-        if half_dist < max_dist {
-            link_planes[max_index] = plane;
-            link_plane_dists[max_index] = half_dist;
+            let link = links[link_idx];
+            if (link.flags & LINK_FLAG_ACTIVE) == 0u {
+                continue;
+            }
+
+            var neighbor_idx: u32 = 0u;
+            var neighbor_generation: u32 = 0u;
+            if link.a_cell == cell_idx {
+                neighbor_idx = link.b_cell;
+                neighbor_generation = link.b_generation;
+            } else if link.b_cell == cell_idx {
+                neighbor_idx = link.a_cell;
+                neighbor_generation = link.a_generation;
+            } else {
+                continue;
+            }
+
+            if neighbor_idx >= arrayLength(&cells) {
+                continue;
+            }
+
+            let neighbor_cell = cells[neighbor_idx];
+            if neighbor_cell.generation != neighbor_generation {
+                continue;
+            }
+            if (neighbor_cell.flags & CELL_FLAG_ACTIVE) == 0u {
+                continue;
+            }
+            if neighbor_cell.point_idx >= arrayLength(&points) {
+                continue;
+            }
+
+            let neighbor_point = points[neighbor_cell.point_idx];
+            if (neighbor_point.flags & POINT_FLAG_ACTIVE) == 0u {
+                continue;
+            }
+
+            let to_neighbor = neighbor_point.pos - cell_center;
+            let dist = length(to_neighbor);
+            if dist <= 0.0001 {
+                continue;
+            }
+
+            let half_dist = 0.5 * dist;
+            let plane = vec4<f32>(to_neighbor / dist, half_dist, 1.0);
+
+            var max_index: u32 = 0u;
+            var max_dist: f32 = link_plane_dists[0];
+            for (var j: u32 = 1u; j < MAX_LINK_PLANES; j = j + 1u) {
+                if link_plane_dists[j] > max_dist {
+                    max_dist = link_plane_dists[j];
+                    max_index = j;
+                }
+            }
+
+            if half_dist < max_dist {
+                link_planes[max_index] = plane;
+                link_plane_dists[max_index] = half_dist;
+            }
         }
     }
 
@@ -215,6 +226,13 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     out.link_plane1 = link_planes[1];
     out.link_plane2 = link_planes[2];
     out.link_plane3 = link_planes[3];
+    var min_plane_distance: f32 = 1e9;
+    for (var i: u32 = 0u; i < MAX_LINK_PLANES; i = i + 1u) {
+        if link_plane_dists[i] < min_plane_distance {
+            min_plane_distance = link_plane_dists[i];
+        }
+    }
+    out.min_plane_distance = min_plane_distance;
     return out;
 }
 
@@ -306,19 +324,31 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     const MAX_DETAIL_LOD: f32 = 0.1; // If cell size in clip space > 0.1, use simplified rendering
     
     var adjusted_radius: f32;
+
+    // LOD: Skip noise texture sampling for cells smaller than 20 pixels on screen
+    let cell_diameter_clip = max((in.radius / view_size_x) * 2.0, (in.radius / view_size_y) * 2.0);
+    let cell_pixels = cell_diameter_clip * (uniforms.sim_params.z / 2.0);
+
+
     // Full detail rendering for normal/zoomed out view
     // FIRST: Apply perlin noise perturbation to cell wall
     // Use non-rotated angle for noise sampling (cell wall doesn't rotate)
     let angle = atan2(uv_offset.y, uv_offset.x);
-    let noise_value = cell_noise(cell.noise_permutations, angle);
+    let noise_value = 0.0f;//cell_noise(cell.noise_permutations, angle);
     let perturbation_amount = in.radius * 0.1; // 10% of radius
     adjusted_radius = in.radius + noise_value * perturbation_amount;
     
     // SECOND: Clamp to midpoint boundaries for linked neighbors to flatten shared walls.
-    adjusted_radius = clamp_radius_with_plane(in.link_plane0, pixel_dir_world, adjusted_radius);
-    adjusted_radius = clamp_radius_with_plane(in.link_plane1, pixel_dir_world, adjusted_radius);
-    adjusted_radius = clamp_radius_with_plane(in.link_plane2, pixel_dir_world, adjusted_radius);
-    adjusted_radius = clamp_radius_with_plane(in.link_plane3, pixel_dir_world, adjusted_radius);
+    if adjusted_radius > in.min_plane_distance && cell_pixels >= 20.0 {
+        var planes: array<vec4<f32>, 4>;
+        planes[0] = in.link_plane0;
+        planes[1] = in.link_plane1;
+        planes[2] = in.link_plane2;
+        planes[3] = in.link_plane3;
+        for (var i: u32 = 0u; i < MAX_LINK_PLANES; i = i + 1u) {
+            adjusted_radius = clamp_radius_with_plane(planes[i], pixel_dir_world, adjusted_radius);
+        }
+    }
     
     // Base cell color from compute_cell_color
     var cell_color = in.color;
@@ -339,10 +369,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             cell_color = brighten(cell_color, 1.5);
         }
     }
-
-    // LOD: Skip noise texture sampling for cells smaller than 20 pixels on screen
-    let cell_diameter_clip = max((in.radius / view_size_x) * 2.0, (in.radius / view_size_y) * 2.0);
-    let cell_pixels = cell_diameter_clip * (uniforms.sim_params.z / 2.0);
 
     if cell_pixels >= 20.0 {
         // Sample perlin noise texture using UV coordinates with fisheye distortion

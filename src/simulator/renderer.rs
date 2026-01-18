@@ -153,9 +153,7 @@ impl Renderer {
             render_pass.draw(0..6, 0..(CELL_CAPACITY as u32));
         }
 
-        
-        // Render links behind cells
-       /* */ {
+        {
             profile_scope!("Render Links");
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Link Render Pass"),
@@ -176,6 +174,7 @@ impl Renderer {
             render_pass.set_bind_group(0, &render_pipelines.link_bind_group, &[]);
             render_pass.draw(0..4, 0..(LINK_CAPACITY as u32));
         }
+
         true
     }
 }

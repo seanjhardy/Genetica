@@ -4,9 +4,14 @@
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> points: array<VerletPoint>;
+@group(0) @binding(2) var<storage, read_write> link_corrections: array<atomic<i32>>;
 
 const FRICTION: f32 = 0.99;
 const VELOCITY_EPSILON: f32 = 0.001;
+
+fn correction_base(point_idx: u32) -> u32 {
+    return point_idx * 3u;
+}
 
 @compute @workgroup_size(128)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -18,11 +23,25 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     var point: VerletPoint = points[idx];
-    
+    let base = correction_base(idx);
+    var correction = vec2<f32>(0.0, 0.0);
+    var angle_correction = 0.0;
+    if base + 2u < arrayLength(&link_corrections) {
+        correction = vec2<f32>(
+            f32(atomicExchange(&link_corrections[base], 0)),
+            f32(atomicExchange(&link_corrections[base + 1u], 0))
+        ) / LINK_CORRECTION_SCALE_POS;
+        angle_correction = f32(atomicExchange(&link_corrections[base + 2u], 0)) / LINK_CORRECTION_SCALE_ANGLE;
+    }
+
     if (point.flags & POINT_FLAG_ACTIVE) == 0u {
         return;
     }
     
+    point.pos = point.pos + correction;
+    point.prev_pos = point.prev_pos;
+    point.angle = point.angle + angle_correction;
+
     let radius: f32 = point.radius;
 
     // Clamp to exact bounds from uniforms (accounting for radius)

@@ -18,15 +18,7 @@
 @group(0) @binding(11) var<storage, read_write> division_requests: array<DivisionRequest>;
 @group(0) @binding(12) var<storage, read_write> division_counter: atomic<u32>;
 
-const DIVISION_CHANCE: f32 = 0.0;
-
-
-fn compute_cell_color(radius: f32, energy: f32) -> vec4<f32> {
-    let energy_normalized = clamp(energy / (radius * 50.0), 0.0, 1.0);
-    let color_vec4 = mix(vec4<f32>(46.0, 133.0, 48.0, 255.0) / 255.0, 
-    vec4<f32>(46.0, 133.0, 48.0, 255.0) / 255.0, energy_normalized);
-    return srgb(color_vec4);
-}
+const DIVISION_CHANCE: f32 = 0.01;
 
 fn seed_from_u32(v: u32) -> vec2<u32> {
     return vec2<u32>(v * 1664525u + 1013904223u, v * 22695477u + 1u);
@@ -83,9 +75,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     var point = points[cell.point_idx];
     
-    if (point.flags & POINT_FLAG_ACTIVE) == 0u {
+    /*if (point.flags & POINT_FLAG_ACTIVE) == 0u {
         return;
-    }
+    }*/
 
     let seed = point.pos.x * 1000.0 + point.pos.y * 10.0 + cell.energy;
     point.pos += rand_vec2(seed) * 0.1f;
@@ -93,17 +85,18 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     points[cell.point_idx] = point;
 
 
+
     // Simple metabolism and nutrient intake (with regeneration to keep cells alive)
-    let metabolic_loss = (0.02 + 0.001 * point.radius) * dt;
+    /*let metabolic_loss = (0.02 + 0.001 * point.radius) * dt;
     let nutrient_gain = absorb_nutrients(point.pos, point.radius, 0.05 * point.radius);
     cell.energy = max(cell.energy - metabolic_loss + nutrient_gain + 0.1, 0.0); // +0.1 regeneration
 
     if cell.energy <= 0.0 || point.radius <= 0.1 {
         //kill_cell(idx);
         return;
-    }
+    }*/
 
-    cell.color = compute_cell_color(point.radius, cell.energy);
+    /*cell.color = compute_cell_color(point.radius, cell.energy);
 
     let division_seed = f32(idx) + point.pos.x * 13.7 + point.pos.y * 7.3 + cell.energy;
     if rand_01(division_seed) < DIVISION_CHANCE { // 1% chance per cell per frame
@@ -123,7 +116,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
             division_requests[request_idx] = request;
         }
-    }
+    }*/
 
     cells[idx] = cell;
 }

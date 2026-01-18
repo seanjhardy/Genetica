@@ -20,6 +20,7 @@ fn spawn_cell_at_slot(
     position: vec2<f32>,
     velocity: vec2<f32>,
     radius: f32,
+    color: vec4<f32>,
     angle: f32,
     seed: f32,
     has_parent: bool,
@@ -59,10 +60,31 @@ fn spawn_cell_at_slot(
     cell.lifeform_id = lifeform_id;
     cell.generation = generation;
     cell.energy = energy;
+
+    cell.color = color;
     cell.flags = CELL_FLAG_ACTIVE;
+    cell.link_count = 0u;
+    for (var i: u32 = 0u; i < MAX_CELL_LINKS; i = i + 1u) {
+        cell.link_indices[i] = 0u;
+    }
 
     points[point_slot] = point;
     cells[cell_slot] = cell;
+}
+
+fn add_link_to_cell(cell_index: u32, link_index: u32) {
+    if cell_index >= arrayLength(&cells) {
+        return;
+    }
+
+    var cell = cells[cell_index];
+    if cell.link_count >= MAX_CELL_LINKS {
+        return;
+    }
+
+    cell.link_indices[cell.link_count] = link_index;
+    cell.link_count = cell.link_count + 1u;
+    cells[cell_index] = cell;
 }
 
 fn create_link(

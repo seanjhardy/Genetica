@@ -7,8 +7,8 @@ use std::sync::Arc;
 use bytemuck::Zeroable;
 
 use crate::gpu::structures::{
-    Cell, CompiledRegulatoryUnit, DivisionRequest, GrnDescriptor, Link, PickParams, PickResult,
-    MAX_GRN_REGULATORY_UNITS, VerletPoint
+    Cell, CompiledRegulatoryUnit, DivisionRequest, GrnDescriptor, Link, LinkCorrection,
+    LINK_CORRECTION_STRIDE, PickParams, PickResult, MAX_GRN_REGULATORY_UNITS, VerletPoint
 };
 use crate::simulator::state::{Counter, EventSystem};
 use crate::utils::math::Rect;
@@ -34,6 +34,7 @@ pub struct GpuBuffers {
     pub link_buffer: wgpu::Buffer,
     pub link_free_list: wgpu::Buffer,
     pub link_capacity: usize,
+    pub link_corrections: wgpu::Buffer,
     pub nutrient_grid: wgpu::Buffer,
     pub nutrient_grid_width: AtomicU32,
     pub nutrient_grid_height: AtomicU32,
@@ -103,6 +104,18 @@ impl GpuBuffers {
         let link_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Link Buffer"),
             contents: bytemuck::cast_slice(&link_init),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let link_corrections_init = vec![
+            LinkCorrection::zeroed();
+            POINT_CAPACITY * LINK_CORRECTION_STRIDE
+        ];
+        let link_corrections = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Link Corrections Buffer"),
+            contents: bytemuck::cast_slice(&link_corrections_init),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_SRC
                 | wgpu::BufferUsages::COPY_DST,
@@ -190,6 +203,7 @@ impl GpuBuffers {
             link_buffer,
             link_free_list,
             link_capacity: LINK_CAPACITY,
+            link_corrections,
             lifeform_id,
             nutrient_grid,
             nutrient_grid_width: AtomicU32::new(grid_width),
@@ -269,6 +283,16 @@ impl GpuBuffers {
         // Reset link buffer
         let link_zero = vec![Link::zeroed(); self.link_capacity];
         queue.write_buffer(&self.link_buffer, 0, bytemuck::cast_slice(&link_zero));
+
+        let link_corrections_zero = vec![
+            LinkCorrection::zeroed();
+            POINT_CAPACITY * LINK_CORRECTION_STRIDE
+        ];
+        queue.write_buffer(
+            &self.link_corrections,
+            0,
+            bytemuck::cast_slice(&link_corrections_zero),
+        );
         
         // Reset link free list
         let mut link_free_list_init: Vec<u32> = Vec::with_capacity(self.link_capacity + 1);
