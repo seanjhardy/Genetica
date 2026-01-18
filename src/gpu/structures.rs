@@ -50,9 +50,11 @@ pub struct Link {
     pub a_generation: u32,
     pub b_cell: u32,
     pub b_generation: u32,
-    pub rest_length: f32,
+    pub angle_from_a: f32,
+    pub angle_from_b: f32,
     pub stiffness: f32,
     pub flags: u32,
+    pub _pad: [u32; 4],
 }
 
 impl Link {
@@ -112,4 +114,13 @@ pub struct Event {
   pub parent_lifeform_id: u32,
   pub lifeform_id: u32,
   _pad: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct DivisionRequest {
+    pub parent_cell_idx: u32,
+    pub generation: u32,
+    pub energy: f32,
+    pub angle: f32,
 }

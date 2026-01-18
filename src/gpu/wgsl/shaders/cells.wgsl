@@ -90,9 +90,9 @@ fn vs_main(@builtin(instance_index) instance_index: u32, @builtin(vertex_index) 
     // TODO: Re-enable LOD check once organelles are confirmed visible
     let cell_size_clip = max((cell_radius_world / view_size_x) * 2.0, (cell_radius_world / view_size_y) * 2.0);
 
-    // Extend UV quad to 3x the cell radius to allow for outward deformation and glow effects
-    let size_clip_x = (radius_world * 3.0 / view_size_x) * 4.0;
-    let size_clip_y = (radius_world * 3.0 / view_size_y) * 4.0;
+    // Quad sized to the cell diameter so UVs map 0-1 across the cell.
+    let size_clip_x = (radius_world / view_size_x) * 2.0;
+    let size_clip_y = (radius_world / view_size_y) * 2.0;
 
     var offset: vec2<f32>;
     var uv_offset: vec2<f32>;
@@ -219,15 +219,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Base cell color from compute_cell_color
     var cell_color = in.color;
 
-    // Render circle with adjusted radius (can now be larger or smaller due to 2x UV quad)
+    // Render circle with adjusted radius (normalized to quad size)
     // Use non-rotated distance for circle check
-    let radius_normalized = 0.5 * (adjusted_radius / in.radius);
+    let radius_normalized = adjusted_radius / in.radius;
 
     if dist > radius_normalized {
-        // Glow effect based on exponential decay
-        let glow_amount = exp(-(dist - radius_normalized) * 10.0) * (1 - dist);
-        let glow_color = mix(cell.color, brighten(cell.color, 5.0), glow_amount);
-        return vec4<f32>(glow_color.rgb, glow_amount);
+        discard;
     }
 
     if dist > radius_normalized - cell.cell_wall_thickness {
@@ -238,7 +235,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let cell_diameter_clip = max((in.radius / view_size_x) * 2.0, (in.radius / view_size_y) * 2.0);
     let cell_pixels = cell_diameter_clip * (uniforms.sim_params.z / 2.0);
 
-    if cell_pixels >= 7.0 {
+    if cell_pixels >= 20.0 {
         // Sample perlin noise texture using UV coordinates with fisheye distortion
         let local_uv = uv_offset * 0.05;
 
@@ -261,20 +258,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         // Apply brightness increases based on different thresholds for each channel
 
-        var brightness_boost = 0.0;
+        var brightness_boost = -0.5;
         if noise_r > 0.5 {
             brightness_boost += 0.2; // Red channel contribution - lower threshold for visibility
         }
         if noise_g > 0.5 {
             brightness_boost += 0.4; // Green channel contribution
         }
-        if noise_b > 0.5 {
-            brightness_boost += 0.6; // Blue channel contribution
+        if noise_b > 0.6 {
+            brightness_boost += 0.8; // Blue channel contribution
         }
 
-        brightness_boost *= (0.5 - dist) * 2.0;
-
-        brightness_boost -= 2.0 * (0.5 - dist);
+        brightness_boost *= (1.0 - dist);
 
         cell_color = brighten(cell_color, 1.0 + brightness_boost);
     }

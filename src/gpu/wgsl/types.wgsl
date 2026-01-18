@@ -27,10 +27,14 @@ struct Link {
     a_generation: u32,
     b_cell: u32,
     b_generation: u32,
-    rest_length: f32,
+    angle_from_a: f32,
+    angle_from_b: f32,
     stiffness: f32,
     flags: u32,
-    _pad: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+    _pad3: u32,
 }
 
 struct Lifeform {
@@ -106,6 +110,13 @@ struct Uniforms {
     nutrient: vec4<u32>,   // (Cell size, scale, reserved, reserved)
 }
 
+
+struct DivisionRequest {
+    parent_cell_idx: u32,
+    generation: u32,
+    energy: f32,
+    angle: f32,
+}
 
 struct Event {
     event_type: u32,

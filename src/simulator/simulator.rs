@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicUsize;
 use crate::utils::math::{Rect};
 use puffin::profile_scope;
-use crate::gpu::buffers::{CELL_CAPACITY, GpuBuffers, POINT_CAPACITY};
+use crate::gpu::buffers::{CELL_CAPACITY, GpuBuffers, LINK_CAPACITY, POINT_CAPACITY};
 use crate::gpu::pipelines::{ComputePipelines};
 use crate::gpu::uniforms::Uniforms;
 use crate::simulator::environment::Environment;
@@ -118,6 +118,12 @@ impl Simulation {
         pass.set_pipeline(&slot.compute_pipelines.update_points);
         pass.set_bind_group(0, &slot.compute_pipelines.update_points_bind_group, &[]);
         let dispatch = ((POINT_CAPACITY as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+        pass.dispatch_workgroups(dispatch, 1, 1);
+
+        // Update links
+        pass.set_pipeline(&slot.compute_pipelines.update_links);
+        pass.set_bind_group(0, &slot.compute_pipelines.update_cells_bind_group, &[]);
+        let dispatch = ((LINK_CAPACITY as u32) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
         pass.dispatch_workgroups(dispatch, 1, 1);
 
         // Spawn new points each simulation step

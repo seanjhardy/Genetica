@@ -2,18 +2,23 @@
 @include src/gpu/wgsl/types.wgsl;
 @include src/gpu/wgsl/utils/color.wgsl;
 @include src/gpu/wgsl/utils/random.wgsl;
+@include src/gpu/wgsl/utils/spawn_helpers.wgsl;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> points: array<VerletPoint>;
-@group(0) @binding(2) var<storage, read_write> physics_free_list: FreeList;
+@group(0) @binding(2) var<storage, read_write> physics_free_list: array<atomic<u32>>;
 @group(0) @binding(3) var<storage, read_write> physics_counter: atomic<u32>;
 @group(0) @binding(4) var<storage, read_write> cells: array<Cell>;
-@group(0) @binding(5) var<storage, read_write> cell_free_list: FreeList;
+@group(0) @binding(5) var<storage, read_write> cell_free_list: array<atomic<u32>>;
 @group(0) @binding(6) var<storage, read_write> cell_counter: atomic<u32>;
 @group(0) @binding(7) var<storage, read_write> nutrient_grid: NutrientGrid;
 @group(0) @binding(8) var<storage, read_write> links: array<Link>;
-@group(0) @binding(9) var<storage, read_write> link_free_list: FreeList;
-@group(0) @binding(10) var<storage, read_write> lifeform_counter: atomic<u32>;
+@group(0) @binding(9) var<storage, read_write> link_free_list: array<atomic<u32>>;
+@group(0) @binding(10) var<storage, read_write> points_counter: atomic<u32>;
+@group(0) @binding(11) var<storage, read_write> division_requests: array<DivisionRequest>;
+@group(0) @binding(12) var<storage, read_write> division_counter: atomic<u32>;
+
+const DIVISION_CHANCE: f32 = 0.0;
 
 
 fn compute_cell_color(radius: f32, energy: f32) -> vec4<f32> {
@@ -88,10 +93,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     points[cell.point_idx] = point;
 
 
-    // Simple metabolism and nutrient intake
+    // Simple metabolism and nutrient intake (with regeneration to keep cells alive)
     let metabolic_loss = (0.02 + 0.001 * point.radius) * dt;
     let nutrient_gain = absorb_nutrients(point.pos, point.radius, 0.05 * point.radius);
-    cell.energy = max(cell.energy - metabolic_loss + nutrient_gain, 0.0);
+    cell.energy = max(cell.energy - metabolic_loss + nutrient_gain + 0.1, 0.0); // +0.1 regeneration
 
     if cell.energy <= 0.0 || point.radius <= 0.1 {
         //kill_cell(idx);
@@ -99,6 +104,26 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     cell.color = compute_cell_color(point.radius, cell.energy);
+
+    let division_seed = f32(idx) + point.pos.x * 13.7 + point.pos.y * 7.3 + cell.energy;
+    if rand_01(division_seed) < DIVISION_CHANCE { // 1% chance per cell per frame
+        // Record division request for later processing by spawn_cells kernel
+        let request_idx = atomicAdd(&division_counter, 1u);
+
+        // Check if we have space for the request (should be plenty)
+        if request_idx < 100000u {  // Match DIVISION_REQUEST_CAPACITY
+            let division_angle = rand_01(division_seed + 91.0) * (M_PI * 2.0);
+
+            let request = DivisionRequest(
+                idx,  // parent_cell_idx
+                cell.generation + 1u,  // generation
+                15.0,  // energy
+                division_angle  // angle
+            );
+
+            division_requests[request_idx] = request;
+        }
+    }
 
     cells[idx] = cell;
 }

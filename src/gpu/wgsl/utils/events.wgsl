@@ -35,18 +35,18 @@ fn release_link(index: u32) {
     }
 
     // Remove link from both cells' link_indices arrays
-    remove_link_from_cell(existing.a, index);
-    remove_link_from_cell(existing.b, index);
+    remove_link_from_cell(existing.a_cell, index);
+    remove_link_from_cell(existing.b_cell, index);
 
     var cleared = existing;
     cleared.flags = 0u;
-    cleared.a = 0u;
-    cleared.b = 0u;
-    cleared.generation_a = 0u;
-    cleared.rest_length = 0.0;
+    cleared.a_cell = 0u;
+    cleared.b_cell = 0u;
+    cleared.a_generation = 0u;
+    cleared.angle_from_a = 0.0;
+    cleared.angle_from_b = 0.0;
     cleared.stiffness = 0.0;
-    cleared.energy_transfer_rate = 0.0;
-    cleared.generation_b = 0u;
+    cleared.b_generation = 0u;
     links[index] = cleared;
 
     let free_index = atomicAdd(&link_free_list.count, 1u);
@@ -56,5 +56,3 @@ fn release_link(index: u32) {
         atomicSub(&link_free_list.count, 1u);
     }
 }
-
-

@@ -29,7 +29,10 @@ fn compute_clip_position(world_pos: vec2<f32>) -> vec4<f32> {
 }
 
 fn empty_vertex() -> VertexOutput {
-    return VertexOutput(vec4<f32>(0.0, 0.0, 0.0, 0.0), vec4<f32>(0.0));
+    var out: VertexOutput;
+    out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    out.color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    return out;
 }
 
 @vertex
@@ -38,7 +41,7 @@ fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
 ) -> VertexOutput {
     var output: VertexOutput;
-    /*if instance_index >= arrayLength(&links) {
+    if instance_index >= arrayLength(&links) {
         return empty_vertex();
     }
 
@@ -53,7 +56,7 @@ fn vs_main(
 
     let cell_a = cells[link.a_cell];
     let cell_b = cells[link.b_cell];
-    if (cell_a.flags & CELL_FLAG_ACTIVE == 0u) || (cell_b.flags & CELL_FLAG_ACTIVE == 0u) {
+    if (cell_a.flags & CELL_FLAG_ACTIVE) == 0u || (cell_b.flags & CELL_FLAG_ACTIVE) == 0u {
         return empty_vertex();
     }
 
@@ -65,49 +68,40 @@ fn vs_main(
         return empty_vertex();
     }
 
-    let pos_a = points[cell_a.point_idx].pos;
-    let pos_b = points[cell_b.point_idx].pos;
-    let delta = pos_b - pos_a;
+    let point_a = points[cell_a.point_idx];
+    let point_b = points[cell_b.point_idx];
+
+    let angle_a = point_a.angle + link.angle_from_a;
+    let angle_b = point_b.angle + link.angle_from_b;
+    let attach_a = point_a.pos + vec2<f32>(cos(angle_a), sin(angle_a)) * point_a.radius;
+    let attach_b = point_b.pos + vec2<f32>(cos(angle_b), sin(angle_b)) * point_a.radius;
+
+    let delta = attach_b - attach_a;
     let dist = length(delta);
     if dist <= 0.0001 {
         return empty_vertex();
     }
 
-    let dir = delta / dist;
-    let perp = vec2<f32>(-dir.y, dir.x);
-    let offset_a = perp * cell_a.radius * 0.2;
-    let offset_b = perp * cell_b.radius * 0.2;
+    let angle_to_b = atan2(delta.y, delta.x) + M_PI/2.0;
+    let offset = vec2<f32>(cos(angle_to_b), sin(angle_to_b)) * 0.1;
 
     var world_pos: vec2<f32>;
-    var color: vec4<f32>;
-
     switch vertex_index {
-        case 0u: {
-            world_pos = pos_a + offset_a;
-            color = cell_a.color;
-        }
-        case 1u: {
-            world_pos = pos_a - offset_a;
-            color = cell_a.color;
-        }
-        case 2u: {
-            world_pos = pos_b + offset_b;
-            color = cell_b.color;
-        }
-        default: {
-            world_pos = pos_b - offset_b;
-            color = cell_b.color;
-        }
+        case 0u: { world_pos = attach_a + offset; }
+        case 1u: { world_pos = attach_a - offset; }
+        case 2u: { world_pos = attach_b + offset; }
+        default: { world_pos = attach_b - offset; }
     }
 
     output.clip_position = compute_clip_position(world_pos);
-    output.color = color;*/
+    output.color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
     return output;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    if in.color.a <= 0.0 {
+        discard;
+    }
     return saturate(brighten(in.color, 3), 1.0);
 }
-
-

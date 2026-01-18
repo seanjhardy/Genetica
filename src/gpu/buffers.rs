@@ -7,7 +7,7 @@ use std::sync::Arc;
 use bytemuck::Zeroable;
 
 use crate::gpu::structures::{
-    Cell, CompiledRegulatoryUnit, GrnDescriptor, Link, MAX_GRN_REGULATORY_UNITS, VerletPoint
+    Cell, CompiledRegulatoryUnit, DivisionRequest, GrnDescriptor, Link, MAX_GRN_REGULATORY_UNITS, VerletPoint
 };
 use crate::simulator::state::{Counter, EventSystem};
 use crate::utils::math::Rect;
@@ -38,6 +38,8 @@ pub struct GpuBuffers {
     pub grn_units: wgpu::Buffer,
     pub points_counter: Counter,
     pub cells_counter: Counter,
+    pub division_requests: wgpu::Buffer,
+    pub division_counter: wgpu::Buffer,
 }
 
 impl GpuBuffers {
@@ -91,9 +93,8 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_DST,
         });
 
-        let mut link_free_list_init: Vec<u32> = Vec::with_capacity(LINK_FREE_LIST_CAPACITY + 2);
+        let mut link_free_list_init: Vec<u32> = Vec::with_capacity(LINK_FREE_LIST_CAPACITY + 1);
         link_free_list_init.push(LINK_FREE_LIST_CAPACITY as u32);
-        link_free_list_init.push(0u32);
         link_free_list_init.extend((0..LINK_FREE_LIST_CAPACITY as u32).rev());
         let link_free_list = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Link Free List"),
@@ -141,6 +142,21 @@ impl GpuBuffers {
         let points_counter = Counter::new(device, "Points", 0);
         let cells_counter = Counter::new(device, "Cells", 0);
 
+        // Division request system - cells kernel writes requests, spawn_cells processes them
+        const DIVISION_REQUEST_CAPACITY: usize = 10_000;
+        let division_requests = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Division Requests Buffer"),
+            size: (DIVISION_REQUEST_CAPACITY * std::mem::size_of::<DivisionRequest>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let division_counter = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Division Counter Buffer"),
+            contents: bytemuck::cast_slice(&[0u32]),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+        });
+
         let lifeform_id = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Lifeform ID Buffer"),
             contents: bytemuck::cast_slice(&[1u32]),
@@ -165,6 +181,8 @@ impl GpuBuffers {
             grn_units,
             points_counter,
             cells_counter,
+            division_requests,
+            division_counter,
         }
     }
 
@@ -236,9 +254,8 @@ impl GpuBuffers {
         queue.write_buffer(&self.link_buffer, 0, bytemuck::cast_slice(&link_zero));
         
         // Reset link free list
-        let mut link_free_list_init: Vec<u32> = Vec::with_capacity(self.link_capacity + 2);
+        let mut link_free_list_init: Vec<u32> = Vec::with_capacity(self.link_capacity + 1);
         link_free_list_init.push(self.link_capacity as u32);
-        link_free_list_init.push(0u32);
         link_free_list_init.extend((0..self.link_capacity as u32).rev());
         queue.write_buffer(&self.link_free_list, 0, bytemuck::cast_slice(&link_free_list_init));
         

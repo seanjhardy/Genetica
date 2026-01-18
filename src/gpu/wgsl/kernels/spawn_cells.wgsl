@@ -1,6 +1,7 @@
 @include src/gpu/wgsl/types.wgsl;
 @include src/gpu/wgsl/constants.wgsl;
 @include src/gpu/wgsl/utils/random.wgsl;
+@include src/gpu/wgsl/utils/spawn_helpers.wgsl;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> points: array<VerletPoint>;
@@ -12,10 +13,14 @@
 @group(0) @binding(7) var<storage, read_write> event_buffer: array<Event>;
 @group(0) @binding(8) var<storage, read_write> event_counter: atomic<u32>;
 @group(0) @binding(9) var<storage, read_write> lifeform_id: atomic<u32>;
+@group(0) @binding(10) var<storage, read_write> links: array<Link>;
+@group(0) @binding(11) var<storage, read_write> link_free_list: array<atomic<u32>>;
+@group(0) @binding(12) var<storage, read_write> division_requests: array<DivisionRequest>;
+@group(0) @binding(13) var<storage, read_write> division_counter: atomic<u32>;
 
 // Check if we should spawn more cells (below capacity limit)
 fn should_spawn_more(current_count: u32) -> bool {
-    return current_count < 1000u;
+    return current_count < 4u;
 }
 
 // Attempt to acquire both physics and cell slots atomically
@@ -49,61 +54,43 @@ fn try_acquire_slots() -> vec2<i32> {
     return vec2<i32>(i32(physics_slot_idx), i32(cell_slot_idx));
 }
 
-// Generate a random position within simulation bounds with padding
-fn generate_random_position(seed: f32) -> vec2<f32> {
-    let bounds_left = uniforms.bounds.x;
-    let bounds_top = uniforms.bounds.y;
-    let bounds_right = uniforms.bounds.z;
-    let bounds_bottom = uniforms.bounds.w;
+// Attempt to acquire physics, cell, and link slots atomically for division
+// Returns (physics_slot_idx, cell_slot_idx, link_slot_idx) on success, or (-1, -1, -1) on failure
+fn try_acquire_slots_with_link() -> vec3<i32> {
+    let physics_free_count = atomicLoad(&points_free_list[0]);
+    if physics_free_count == 0u {
+        return vec3<i32>(-1, -1, -1);
+    }
 
-    let rand_x = rand_01(seed);
-    let rand_y = rand_01(seed + 777.0);
+    let cell_free_count = atomicLoad(&cells_free_list[0]);
+    if cell_free_count == 0u {
+        return vec3<i32>(-1, -1, -1);
+    }
 
-    // Position randomly within bounds, with some padding from edges
-    let padding = 10.0;
-    let pos_x = bounds_left + padding + rand_x * (bounds_right - bounds_left - 2.0 * padding);
-    let pos_y = bounds_top + padding + rand_y * (bounds_bottom - bounds_top - 2.0 * padding);
+    let link_free_count = atomicLoad(&link_free_list[0]);
+    if link_free_count == 0u {
+        return vec3<i32>(-1, -1, -1);
+    }
 
-    return vec2<f32>(pos_x, pos_y);
-}
+    // Atomically decrement all free counts
+    let new_physics_free_count = atomicSub(&points_free_list[0], 1u);
+    let new_cell_free_count = atomicSub(&cells_free_list[0], 1u);
+    let new_link_free_count = atomicSub(&link_free_list[0], 1u);
 
-// Generate initial random velocity
+    if new_physics_free_count == 0u || new_cell_free_count == 0u || new_link_free_count == 0u {
+        // Restore counts if we couldn't get all slots
+        atomicAdd(&points_free_list[0], 1u);
+        atomicAdd(&cells_free_list[0], 1u);
+        atomicAdd(&link_free_list[0], 1u);
+        return vec3<i32>(-1, -1, -1);
+    }
 
-// Create a VerletPoint with the given position and velocity
-fn create_point(position: vec2<f32>, velocity: vec2<f32>, radius: f32) -> VerletPoint {
-    var point: VerletPoint;
-    point.pos = position;
-    point.prev_pos = position - velocity * uniforms.sim_params.x; // Set prev_pos to create initial velocity
-    point.accel = vec2<f32>(0.0, 0.0);
-    point.radius = radius;
-    point.flags = POINT_FLAG_ACTIVE;
-    return point;
-}
+    // Get the actual slot indices
+    let physics_slot_idx = atomicLoad(&points_free_list[new_physics_free_count]);
+    let cell_slot_idx = atomicLoad(&cells_free_list[new_cell_free_count]);
+    let link_slot_idx = atomicLoad(&link_free_list[new_link_free_count]);
 
-// Create a Cell that references the given physics point index
-fn create_cell(point_idx: u32, seed: f32) -> Cell {
-    var cell: Cell;
-    cell.point_idx = point_idx;
-    cell.lifeform_id = 0u; // No lifeform initially
-    cell.generation = 0u;
-    cell.flags = 1u;
-    cell.energy = 100.0; // Starting energy
-    cell.cell_wall_thickness = 0.05;
-    // Generate noise offset within safe bounds to prevent edge sampling discontinuities
-    // Cell radius is ~25px, buffer is 50px, so total margin needed is 75px from each edge
-    let margin = 75.0;
-    let max_pos = 400.0 - margin;
-
-    cell.noise_texture_offset = vec2<f32>(
-        margin + rand_01(seed + 1000.0) * (max_pos - margin),
-        margin + rand_01(seed + 2000.0) * (max_pos - margin)
-    );
-
-    // Generate random noise permutations for smooth cell wall variation
-    let frequency = rand_01(seed + 1000.0) * 3.0 + 0.01;
-    //cell.noise_permutations = generate_noise20_circle(u32(seed * 1000.0), 3.0, frequency, 2);
-
-    return cell;
+    return vec3<i32>(i32(physics_slot_idx), i32(cell_slot_idx), i32(link_slot_idx));
 }
 
 // Create a new cell directly in the simulation
@@ -122,22 +109,64 @@ fn spawn_cell(seed: f32) {
     let physics_slot_idx = u32(slots.x);
     let cell_slot_idx = u32(slots.y);
 
-    // Generate position and create physics point
-    let position = generate_random_position(seed);
-    let velocity = vec2<f32>(0.0, 0.0); // Start with no velocity
-    let radius = rand_01(seed + position.x * 1000.0 + position.y * 10.0) * 1.0 + 0.1;
-    let point = create_point(position, velocity, radius);
+    // Generate position and create physics point (test line)
+    let velocity = vec2<f32>(0.0, 0.0);
+    let radius = 5.0;
+    let point_angle = 0.0;
+    let center = (uniforms.bounds.xy + uniforms.bounds.zw) * 0.5;
+    let spacing = radius * 4.0;
+    let index = f32(atomicLoad(&points_counter));
+    let position = center + vec2<f32>((index - 1.5) * spacing, 0.0);
 
-    // Increment the lifeform ID counter
-    let new_lifeform_id = atomicAdd(&lifeform_id, 1u);
+    let existing_lifeform = atomicLoad(&lifeform_id);
+    var new_lifeform_id: u32;
+    if existing_lifeform == 0u {
+        new_lifeform_id = atomicAdd(&lifeform_id, 1u);
+    } else {
+        new_lifeform_id = existing_lifeform - 1u;
+    }
 
-    // Create cell
-    var cell = create_cell(physics_slot_idx, seed);
-    cell.lifeform_id = new_lifeform_id;
+    var empty_parent: Cell;
+    spawn_cell_at_slot(
+        physics_slot_idx,
+        cell_slot_idx,
+        position,
+        velocity,
+        radius,
+        point_angle,
+        seed,
+        false,
+        empty_parent,
+        new_lifeform_id,
+        0u,
+        100.0
+    );
 
-    // Store the point and cell in their respective buffers
-    points[physics_slot_idx] = point;
-    cells[cell_slot_idx] = cell;
+    if cell_slot_idx > 0u {
+        let link_free_count = atomicLoad(&link_free_list[0]);
+        if link_free_count > 0u {
+            let link_slot_raw = atomicSub(&link_free_list[0], 1u);
+            if link_slot_raw > 0u && link_slot_raw < arrayLength(&link_free_list) {
+                let link_slot = atomicLoad(&link_free_list[link_slot_raw]);
+                if link_slot < arrayLength(&links) {
+                    let link = create_link(
+                        cell_slot_idx - 1u,
+                        0u,
+                        cell_slot_idx,
+                        0u,
+                        0.0,
+                        M_PI,
+                        1.0
+                    );
+                    links[link_slot] = link;
+                } else {
+                    atomicAdd(&link_free_list[0], 1u);
+                }
+            } else {
+                atomicAdd(&link_free_list[0], 1u);
+            }
+        }
+    }
 
     // Increment counters
     atomicAdd(&points_counter, 1u);
@@ -152,16 +181,110 @@ fn spawn_cell(seed: f32) {
     event_buffer[event_idx] = event;
 }
 
-@compute @workgroup_size(1)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let current_count = atomicLoad(&points_counter);
-
-    // Early return if we've reached capacity
-    if !should_spawn_more(current_count) {
+fn process_division_request(request: DivisionRequest) {
+    // Safety check: ensure parent indices are valid
+    if request.parent_cell_idx >= arrayLength(&cells) {
         return;
     }
 
-    // Spawn a new cell directly
-    let seed = f32(current_count);
-    spawn_cell(seed);
+    // Load parent cell data
+    let parent_cell = cells[request.parent_cell_idx];
+    if parent_cell.point_idx >= arrayLength(&points) {
+        return;
+    }
+
+    let parent_point = points[parent_cell.point_idx];
+
+    // Calculate daughter position
+    let world_angle = parent_point.angle + request.angle;
+    let offset = vec2<f32>(cos(world_angle), sin(world_angle)) * (parent_point.radius * 2.0);
+    var daughter_pos = parent_point.pos + offset;
+
+    // Clamp to bounds
+    let min_bound = uniforms.bounds.xy + vec2<f32>(parent_point.radius, parent_point.radius);
+    let max_bound = uniforms.bounds.zw - vec2<f32>(parent_point.radius, parent_point.radius);
+    daughter_pos.x = clamp(daughter_pos.x, min_bound.x, max_bound.x);
+    daughter_pos.y = clamp(daughter_pos.y, min_bound.y, max_bound.y);
+
+    // Allocate slots for daughter (physics, cell, and link)
+    let slots = try_acquire_slots_with_link();
+    if slots.x < 0 || slots.y < 0 || slots.z < 0 {
+        return; // No slots available
+    }
+
+    let point_slot_idx = u32(slots.x);
+    let cell_slot_idx = u32(slots.y);
+    let link_slot_idx = u32(slots.z);
+
+    // Safety check: ensure allocated slots are within buffer bounds
+    if point_slot_idx >= arrayLength(&points) ||
+       cell_slot_idx >= arrayLength(&cells) ||
+       link_slot_idx >= arrayLength(&links) {
+        // Note: try_acquire_slots_with_link already decremented the free lists
+        // In a production system, we'd need to restore them, but for now we'll skip
+        return;
+    }
+
+    // Create daughter cell
+    spawn_cell_at_slot(
+        point_slot_idx,
+        cell_slot_idx,
+        daughter_pos,
+        vec2<f32>(0.0, 0.0),
+        parent_point.radius,
+        parent_point.angle,
+        f32(request.parent_cell_idx), // Use parent index as seed
+        true, // has_parent
+        parent_cell,
+        parent_cell.lifeform_id,
+        request.generation,
+        request.energy
+    );
+
+    // Create link between parent and daughter
+    let link = create_link(
+        request.parent_cell_idx,  // parent cell index
+        parent_cell.generation,   // parent generation
+        cell_slot_idx,            // daughter cell index
+        request.generation,       // daughter generation
+        request.angle,            // angle from parent to daughter
+        request.angle + M_PI,     // angle from daughter to parent (opposite)
+        1.0                       // stiffness
+    );
+    links[link_slot_idx] = link;
+
+    // Increment counters for the new cells and link created
+    atomicAdd(&points_counter, 1u);
+    atomicAdd(&cells_counter, 1u);
+
+    // Send event notification
+    let event_idx = atomicAdd(&event_counter, 1u);
+    if (event_idx < 2000u) {
+        var event: Event;
+        event.event_type = 2u; // Division event
+        event.parent_lifeform_id = parent_cell.lifeform_id;
+        event.lifeform_id = parent_cell.lifeform_id; // Same lifeform, new cell
+        event._pad = request.generation;
+        event_buffer[event_idx] = event;
+    }
+}
+
+@compute @workgroup_size(1)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    // Always process all pending division requests
+    let division_count = atomicLoad(&division_counter);
+    for (var i = 0u; i < division_count; i = i + 1u) {
+        let request = division_requests[i];
+        process_division_request(request);
+    }
+
+    // Reset division counter for next frame
+    atomicStore(&division_counter, 0u);
+
+    // Then spawn initial cells if needed (legacy behavior)
+    let current_count = atomicLoad(&points_counter);
+    if should_spawn_more(current_count) {
+        let seed = f32(current_count);
+        spawn_cell(seed);
+    }
 }

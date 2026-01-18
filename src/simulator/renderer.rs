@@ -5,7 +5,7 @@ use puffin::profile_scope;
 
 use crate::utils::math::Vec2;
 use crate::utils::gpu::device::GpuDevice;
-use crate::gpu::buffers::{GpuBuffers, CELL_CAPACITY};
+use crate::gpu::buffers::{GpuBuffers, CELL_CAPACITY, LINK_CAPACITY};
 use crate::gpu::pipelines::RenderPipelines;
 use crate::gpu::bounds_renderer::BoundsRenderer;
 use crate::ui::UiRenderer;
@@ -128,6 +128,8 @@ impl Renderer {
             }
         }
 
+
+
         // Render cells directly to viewport
         {
             profile_scope!("Render Cells");
@@ -151,6 +153,29 @@ impl Renderer {
             render_pass.draw(0..6, 0..(CELL_CAPACITY as u32));
         }
 
+        
+        // Render links behind cells
+       /* */ {
+            profile_scope!("Render Links");
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Link Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: viewport_texture_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                ..Default::default()
+            });
+            render_pass.set_pipeline(&render_pipelines.links);
+            render_pass.set_bind_group(0, &render_pipelines.link_bind_group, &[]);
+            render_pass.draw(0..4, 0..(LINK_CAPACITY as u32));
+        }
         true
     }
 }
