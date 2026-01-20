@@ -28,7 +28,7 @@ pub struct ComputePipelines {
     pub update_points: wgpu::ComputePipeline,
     pub update_points_bind_group: wgpu::BindGroup,
     pub spawn_cells: wgpu::ComputePipeline,
-    pub spawn_cells_bind_groups: [wgpu::BindGroup; 2],
+    pub spawn_cells_bind_groups: Vec<wgpu::BindGroup>,
     pub pick_cell: wgpu::ComputePipeline,
     pub pick_cell_bind_group: wgpu::BindGroup,
 }
@@ -446,12 +446,11 @@ impl ComputePipelines {
             })
         };
 
-        let (event_buffer_0, event_counter_0) = buffers.event_system.gpu_buffers_for_index(0);
-        let (event_buffer_1, event_counter_1) = buffers.event_system.gpu_buffers_for_index(1);
-        let spawn_cells_bind_groups = [
-            make_spawn_bind_group(event_buffer_0, event_counter_0),
-            make_spawn_bind_group(event_buffer_1, event_counter_1),
-        ];
+        let mut spawn_cells_bind_groups = Vec::with_capacity(buffers.event_system.ring_size());
+        for index in 0..buffers.event_system.ring_size() {
+            let (event_buffer, event_counter) = buffers.event_system.gpu_buffers_for_index(index);
+            spawn_cells_bind_groups.push(make_spawn_bind_group(event_buffer, event_counter));
+        }
 
         // Create shader module
         let cells_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {

@@ -8,12 +8,9 @@ use std::collections::VecDeque;
 use puffin::profile_scope;
 
 use crate::gpu::structures::Event;
-use crate::simulator::simulator::Simulation;
 
 /// Commands sent from main thread to poll thread
 enum PollCommand {
-    /// Notify that event reading was scheduled for the current frame
-    EventReadScheduled,
     /// Request the poll thread to shutdown
     Shutdown,
 }
@@ -27,7 +24,7 @@ pub struct PollThread {
 impl PollThread {
     pub fn new(
         device: Arc<wgpu::Device>,
-        render_buffers: Arc<crate::gpu::buffers::GpuBuffers>,
+        render_buffers: Arc<parking_lot::Mutex<Arc<crate::gpu::buffers::GpuBuffers>>>,
         paused_state: Arc<parking_lot::Mutex<bool>>,
         genetic_algorithm: Arc<parking_lot::Mutex<crate::genetic_algorithm::GeneticAlgorithm>>,
         step_counter: Arc<std::sync::atomic::AtomicUsize>,
@@ -59,7 +56,7 @@ impl PollThread {
     }
 
     pub fn notify_event_scheduled(&self) {
-        let _ = self.command_sender.send(PollCommand::EventReadScheduled);
+        // No-op for now; the poll thread runs continuously.
     }
 
     pub fn shutdown(&mut self) {
@@ -71,7 +68,7 @@ impl PollThread {
 
     fn run_poll_loop(
         device: Arc<wgpu::Device>,
-        render_buffers: Arc<crate::gpu::buffers::GpuBuffers>,
+        render_buffers: Arc<parking_lot::Mutex<Arc<crate::gpu::buffers::GpuBuffers>>>,
         paused_state: Arc<parking_lot::Mutex<bool>>,
         genetic_algorithm: Arc<parking_lot::Mutex<crate::genetic_algorithm::GeneticAlgorithm>>,
         step_counter: Arc<std::sync::atomic::AtomicUsize>,
@@ -81,23 +78,20 @@ impl PollThread {
     ) {
         puffin::set_scopes_on(true);
 
-        let mut pending_readback = false;
-        let mut mapping: Option<crate::simulator::state::BufferMapping> = None;
         let mut last_frame_start_nanos = 0u64;
+        let mut last_read_frame_start_nanos = 0u64;
         let mut frame_deadline_nanos = 0u64;
         let mut pending_events: VecDeque<Event> = VecDeque::new();
+        let mut last_debug_log = std::time::Instant::now();
+        let mut read_attempts_this_frame = 0u32;
+        const MAX_READ_ATTEMPTS_PER_FRAME: u32 = 2;
 
         loop {
             profile_scope!("Poll Loop");
 
             while let Ok(cmd) = command_receiver.try_recv() {
                 match cmd {
-                    PollCommand::EventReadScheduled => {
-                        pending_readback = true;
-                    }
-                    PollCommand::Shutdown => {
-                        return;
-                    }
+                    PollCommand::Shutdown => return,
                 }
             }
 
@@ -105,31 +99,43 @@ impl PollThread {
             if start_nanos != 0 && start_nanos != last_frame_start_nanos {
                 last_frame_start_nanos = start_nanos;
                 frame_deadline_nanos = start_nanos.saturating_add(5_000_000);
+                read_attempts_this_frame = 0;
             }
 
             let now_nanos = app_start.elapsed().as_nanos() as u64;
             let should_process = start_nanos == 0 || now_nanos <= frame_deadline_nanos;
 
-            if pending_readback {
-                profile_scope!("Process Pending Readback");
-                profile_scope!("Read Events");
-                if mapping.is_none() {
-                    mapping = Some(render_buffers.event_system.begin_async_mapping());
-                }
+            let render_buffers_snapshot = render_buffers.lock().clone();
+            let has_pending_readback = render_buffers_snapshot.event_system.has_pending_readback();
+            let new_frame = start_nanos != 0 && start_nanos != last_read_frame_start_nanos;
+            let should_attempt_read = (new_frame || has_pending_readback)
+                && read_attempts_this_frame < MAX_READ_ATTEMPTS_PER_FRAME;
 
-                device.poll(wgpu::MaintainBase::Poll);
-                if let Some(active_mapping) = &mapping {
-                    if let Some(events) = render_buffers.event_system.try_read_events(active_mapping) {
-                        if !events.is_empty() {
-                            pending_events.extend(events);
-                        }
-                        render_buffers.event_system.finish_readback();
-                        pending_readback = false;
-                        mapping = None;
-                    } else {
-                        thread::sleep(Duration::from_millis(1));
-                    }
+            if should_attempt_read {
+                last_read_frame_start_nanos = start_nanos;
+                read_attempts_this_frame = read_attempts_this_frame.saturating_add(1);
+                profile_scope!("Read Events");
+                render_buffers_snapshot.event_system.begin_pending_mappings();
+                let _ = device.poll(wgpu::MaintainBase::Poll);
+                let events = render_buffers_snapshot.event_system.drain_ready_events();
+                if !events.is_empty() {
+                    pending_events.extend(events);
                 }
+                if last_debug_log.elapsed().as_secs_f32() >= 1.0 {
+                    let (cpu_idx, gpu_idx, event_count, processed_count) =
+                        render_buffers_snapshot.event_system.debug_snapshot();
+                    println!(
+                        "event readback: cpu_idx={}, gpu_idx={}, event_count={}, processed={}, queued={}",
+                        cpu_idx,
+                        gpu_idx,
+                        event_count,
+                        processed_count,
+                        pending_events.len()
+                    );
+                    last_debug_log = std::time::Instant::now();
+                }
+            } else {
+                thread::sleep(Duration::from_micros(200));
             }
 
             if !pending_events.is_empty() && !*paused_state.lock() {
@@ -148,13 +154,8 @@ impl PollThread {
 
             if !should_process {
                 profile_scope!("Idle Sleep");
-                thread::sleep(Duration::from_millis(1));
+                thread::sleep(Duration::from_micros(200));
                 continue;
-            }
-
-            if !pending_readback {
-                profile_scope!("Idle Sleep");
-                thread::sleep(Duration::from_millis(1));
             }
         }
     }

@@ -29,7 +29,6 @@ use crate::simulator::poll_thread::PollThread;
 
 const SIMULATION_DELTA_TIME: f32 = 1.0;
 const PICK_WORKGROUP_SIZE: u32 = 256;
-const FISH_EYE_STRENGTH: f32 = 0.3;
 
 
 pub struct Application {
@@ -77,7 +76,7 @@ pub struct Application {
     genetic_algorithm: Arc<parking_lot::Mutex<crate::genetic_algorithm::GeneticAlgorithm>>,
     step_counter: Arc<AtomicUsize>,
     frame_start_nanos: Arc<AtomicU64>,
-    render_buffers: Arc<GpuBuffers>,
+    render_buffers: Arc<parking_lot::Mutex<Arc<GpuBuffers>>>,
     app_start: Arc<Instant>,
 
     fps_frames: u32,
@@ -114,9 +113,9 @@ impl Application {
 
         let render_buffers = {
             let sim = simulation_arc.lock();
-            sim.get_render_buffers()
+            Arc::new(parking_lot::Mutex::new(sim.get_render_buffers()))
         };
-        let initial_nutrient_dims = render_buffers.nutrient_grid_dimensions();
+        let initial_nutrient_dims = render_buffers.lock().nutrient_grid_dimensions();
 
         let initial_camera_position = camera.get_position();
         let initial_camera_zoom = camera.get_zoom();
@@ -257,12 +256,25 @@ impl Application {
 
         self.application_time += 1.0;
 
+        // Schedule event readback BEFORE compute so we read the previous frame's buffer.
+        let event_read_scheduled = {
+            let current_buffers = self.simulation.lock().get_render_buffers();
+            {
+                let mut render_buffers = self.render_buffers.lock();
+                if !Arc::ptr_eq(&current_buffers, &render_buffers) {
+                    println!("event readback: render buffers out of sync, updating");
+                }
+                *render_buffers = current_buffers.clone();
+            }
+            current_buffers
+                .event_system
+                .try_schedule_readback(&mut encoder, &self.gpu.queue)
+        };
+
         if !self.simulation.lock().is_paused() {
             puffin::profile_scope!("Compute Pass");
-            let speed = *self.speed.lock();
+            let _speed = *self.speed.lock();
             self.real_time += delta_time * speed;
-
-            // Event counter is reset when a readback is scheduled
 
             // Time the compute operations
             let compute_start = Instant::now();
@@ -284,14 +296,6 @@ impl Application {
             self.compute_iterations += iterations as u32;
         }
 
-        // Schedule event buffer reading every frame for prompt event processing
-        let mut event_read_scheduled = false;
-        event_read_scheduled = self
-            .render_buffers
-            .event_system
-            .try_schedule_readback(&mut encoder, &self.gpu.queue);
-
-
         // Skip rendering if UI is hidden, but still submit GPU work for simulation
         if !self.rendering_enabled {
             self.submit_gpu_work(encoder, event_read_scheduled);
@@ -299,7 +303,6 @@ impl Application {
         }
 
         // Regenerate animated noise texture every frame when rendering is enabled
-        let speed = *self.speed.lock();
         let time = self.application_time * 0.005; // Animation speed scales with simulation speed
         self.render_pipelines.regenerate_noise_texture(
             &self.gpu.device,
@@ -323,6 +326,7 @@ impl Application {
                 &buffers,
             );
             self.last_render_slot = current_render_slot;
+            *self.render_buffers.lock() = buffers.clone();
             // Mark uniforms for update since we're now using a different buffer
             self.uniforms_need_update = true;
         }
@@ -621,7 +625,7 @@ impl Application {
         for _ in 0..6 {
             let centered = Vec2::new(uv.x - 0.5, uv.y - 0.5);
             let dist = centered.length();
-            let radius = FISH_EYE_STRENGTH * dist * dist;
+            let radius = 0.3 * dist * dist;
             let warped = Vec2::new(
                 uv.x + centered.x * radius,
                 uv.y + centered.y * radius,
@@ -882,7 +886,8 @@ impl Application {
 
         // Notify poll thread if we scheduled event reading this frame
         if event_read_scheduled {
-            self.render_buffers.event_system.start_readback();
+            let render_buffers = self.render_buffers.lock();
+            render_buffers.event_system.mark_readback_submitted();
             self.poll_thread.notify_event_scheduled();
         }
     }

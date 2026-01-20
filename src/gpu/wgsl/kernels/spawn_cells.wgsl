@@ -12,12 +12,18 @@
 @group(0) @binding(5) var<storage, read_write> cells_counter: atomic<u32>;
 @group(0) @binding(6) var<storage, read_write> cells_free_list: array<atomic<u32>>;
 @group(0) @binding(7) var<storage, read_write> event_buffer: array<Event>;
-@group(0) @binding(8) var<storage, read_write> event_counter: atomic<u32>;
+struct EventCounter {
+    value: atomic<u32>,
+}
+
+@group(0) @binding(8) var<storage, read_write> event_counter: EventCounter;
 @group(0) @binding(9) var<storage, read_write> lifeform_id: atomic<u32>;
 @group(0) @binding(10) var<storage, read_write> links: array<Link>;
 @group(0) @binding(11) var<storage, read_write> link_free_list: array<atomic<u32>>;
 @group(0) @binding(12) var<storage, read_write> division_requests: array<DivisionRequest>;
 @group(0) @binding(13) var<storage, read_write> division_counter: atomic<u32>;
+
+const MAX_EVENTS: u32 = 2000u;
 
 // Check if we should spawn more cells (below capacity limit)
 fn should_spawn_more(current_count: u32) -> bool {
@@ -57,8 +63,8 @@ fn try_acquire_slots() -> vec2<i32> {
 
 // Create a new cell directly in the simulation
 fn spawn_cell(seed: f32) {
-    let event_idx = atomicAdd(&event_counter, 1u);
-    if (event_idx >= 2000u) {
+    let event_idx = atomicAdd(&event_counter.value, 1u);
+    if (event_idx >= MAX_EVENTS) {
         return;
     }
     // Try to acquire slots for both physics point and cell
@@ -180,8 +186,8 @@ fn process_division_request(request: DivisionRequest) {
     atomicAdd(&cells_counter, 1u);
 
     // Send event notification
-    let event_idx = atomicAdd(&event_counter, 1u);
-    if (event_idx < 2000u) {
+    let event_idx = atomicAdd(&event_counter.value, 1u);
+    if (event_idx < MAX_EVENTS) {
         var event: Event;
         event.event_type = 2u; // Division event
         event.parent_lifeform_id = parent_cell.lifeform_id;
@@ -206,7 +212,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Then spawn initial cells if needed (legacy behavior)
     let current_count = atomicLoad(&points_counter);
     if should_spawn_more(current_count) {
-        let seed = f32(current_count);
-        spawn_cell(seed);
+        // Spawn only a single cell per dispatch to pace growth.
+        if (atomicLoad(&event_counter.value) < MAX_EVENTS) {
+            let seed = f32(current_count);
+            spawn_cell(seed);
+        }
     }
 }
