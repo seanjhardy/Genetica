@@ -3,7 +3,7 @@
 @include src/gpu/wgsl/utils/color.wgsl;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<storage, read_write> points: array<VerletPoint>;
+@group(0) @binding(1) var<storage, read_write> points: array<Point>;
 @group(0) @binding(2) var<storage, read_write> link_corrections: array<atomic<i32>>;
 
 const FRICTION: f32 = 0.99;
@@ -22,7 +22,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
-    var point: VerletPoint = points[idx];
+    var point: Point = points[idx];
     let base = correction_base(idx);
     var correction = vec2<f32>(0.0, 0.0);
     var angle_correction = 0.0;
@@ -39,7 +39,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     
     point.pos = point.pos + correction;
-    point.prev_pos = point.prev_pos;
+    point.prev_pos = point.prev_pos;// + correction;
     point.angle = point.angle + angle_correction;
 
     let radius: f32 = point.radius;

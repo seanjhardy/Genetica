@@ -16,8 +16,8 @@ pub static NUTRIENTS_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/nutrients.wgsl").to_string()));
 pub static SPAWN_CELLS_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/spawn_cells.wgsl").to_string()));
-pub static VERLET_KERNEL: Lazy<ShaderSource<'static>> =
-    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/verlet.wgsl").to_string()));
+pub static POINTS_KERNEL: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/points.wgsl").to_string()));
 pub static PICK_CELL_KERNEL: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/kernels/pick_cell.wgsl").to_string()));
     
@@ -41,5 +41,5 @@ pub static UI_RECT_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/ui_rect.wgsl").to_string()));
 pub static PERLIN_NOISE_TEXTURE_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/perlin_noise_texture.wgsl").to_string()));
-pub static VERLET_SHADER: Lazy<ShaderSource<'static>> =
-    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/verlet.wgsl").to_string()));
+pub static POINT_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wgsl!("src/gpu/wgsl/shaders/points.wgsl").to_string()));

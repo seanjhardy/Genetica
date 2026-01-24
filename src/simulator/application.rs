@@ -21,7 +21,7 @@ use crate::gpu::pipelines::RenderPipelines;
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
 use crate::gpu::buffers::{GpuBuffers, CELL_CAPACITY};
-use crate::gpu::structures::{PickParams, PickResult, VerletPoint};
+use crate::gpu::structures::{PickParams, PickResult, Point};
 use crate::simulator::environment::Environment;
 use crate::simulator::renderer::Renderer;
 use crate::simulator::simulator::Simulation;
@@ -51,7 +51,9 @@ pub struct Application {
     mouse_pressed: bool,
     selected_cell: Option<u32>,
     selected_point: Option<u32>,
-    drag_offset: Vec2,
+    drag_distance: f32,
+    last_drag_dir: Vec2,
+    last_drag_center: Vec2,
     dragging_cell: bool,
     last_frame_time: Instant,
     last_render_time: Instant,
@@ -152,7 +154,9 @@ impl Application {
             mouse_pressed: false,
             selected_cell: None,
             selected_point: None,
-            drag_offset: Vec2::zero(),
+            drag_distance: 0.0,
+            last_drag_dir: Vec2::new(1.0, 0.0),
+            last_drag_center: Vec2::zero(),
             dragging_cell: false,
             last_frame_time: Instant::now(),
             last_render_time: Instant::now(),
@@ -254,6 +258,13 @@ impl Application {
             self.uniforms_need_update = true;
         }
 
+        // Move selected cell to cursor position every frame if dragging
+        if self.dragging_cell {
+            let adjusted_screen_pos = self.adjust_mouse_for_fisheye(self.last_cursor_pos);
+            let world_pos = self.camera.screen_to_world(adjusted_screen_pos);
+            self.drag_selected_cell(world_pos);
+        }
+
         self.application_time += 1.0;
 
         // Schedule event readback BEFORE compute so we read the previous frame's buffer.
@@ -282,11 +293,11 @@ impl Application {
             if self.is_real_time {
                 // In realtime mode, step once every 2 frames
                 if self.realtime_frame_counter % 2 == 0 {
-                    self.simulation.lock().step_simulation(&mut encoder);
+                    self.simulation.lock().step_simulation(&mut encoder, &self.gpu.queue);
                 }
             } else {
                 for _ in 0..iterations {
-                    self.simulation.lock().step_simulation(&mut encoder);
+                    self.simulation.lock().step_simulation(&mut encoder, &self.gpu.queue);
                 }
             }
 
@@ -588,7 +599,9 @@ impl Application {
         if self.selected_cell.is_some() {
             self.selected_cell = None;
             self.selected_point = None;
-            self.drag_offset = Vec2::zero();
+            self.drag_distance = 0.0;
+            self.last_drag_dir = Vec2::new(1.0, 0.0);
+            self.last_drag_center = Vec2::zero();
             self.dragging_cell = false;
             self.uniforms_need_update = true;
         }
@@ -655,7 +668,14 @@ impl Application {
         let point_pos = Vec2::new(point.pos[0], point.pos[1]);
         self.selected_cell = Some(cell_idx);
         self.selected_point = Some(cell.point_idx);
-        self.drag_offset = point_pos - mouse_world_pos;
+        let grab_dir = point_pos - mouse_world_pos;
+        self.drag_distance = mouse_world_pos.distance(&point_pos);
+        self.last_drag_dir = if grab_dir.length() > 0.0001 {
+            grab_dir.normalize()
+        } else {
+            Vec2::new(1.0, 0.0)
+        };
+        self.last_drag_center = point_pos;
         self.uniforms_need_update = true;
         true
     }
@@ -664,8 +684,18 @@ impl Application {
         let Some(point_idx) = self.selected_point else {
             return;
         };
-        let target_pos = mouse_world_pos + self.drag_offset;
-        let offset = (point_idx as usize * std::mem::size_of::<VerletPoint>()) as u64;
+
+        let delta = self.last_drag_center - mouse_world_pos;
+        let offset_dir = if delta.length() > 0.0001 {
+            delta.normalize()
+        } else {
+            self.last_drag_dir
+        };
+        self.last_drag_dir = offset_dir;
+        let target_pos = mouse_world_pos + offset_dir * self.drag_distance;
+        self.last_drag_center = target_pos;
+
+        let offset = (point_idx as usize * std::mem::size_of::<Point>()) as u64;
         let data = [target_pos.x, target_pos.y, target_pos.x, target_pos.y];
         let buffers = self.simulation.lock().get_render_buffers();
         self.gpu
@@ -988,7 +1018,6 @@ impl ApplicationHandler for ApplicationWrapper {
                 };
 
                 app.ui_cursor_hint = ui_cursor_hint;
-                app.handle_mouse_move(mouse_pos, ui_hovered);
                 app.set_last_cursor_pos(mouse_pos);
             }
             

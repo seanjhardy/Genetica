@@ -4,7 +4,7 @@ use wgpu;
 use wgpu::util::DeviceExt;
 use std::path::PathBuf;
 
-use crate::gpu::wgsl::{CELLS_KERNEL, CELLS_SHADER, LINKS_KERNEL, LINKS_SHADER, NUTRIENTS_KERNEL, NUTRIENTS_SHADER, PERLIN_NOISE_TEXTURE_SHADER, PICK_CELL_KERNEL, SPAWN_CELLS_KERNEL, VERLET_KERNEL};
+use crate::gpu::wgsl::{CELLS_KERNEL, CELLS_SHADER, LINKS_KERNEL, LINKS_SHADER, NUTRIENTS_KERNEL, NUTRIENTS_SHADER, PERLIN_NOISE_TEXTURE_SHADER, PICK_CELL_KERNEL, POINTS_KERNEL, SPAWN_CELLS_KERNEL};
 use crate::gpu::buffers::GpuBuffers;
 
 #[repr(C)]
@@ -40,7 +40,7 @@ impl ComputePipelines {
     ) -> Self {
         let points_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Physics Shader"),
-            source: VERLET_KERNEL.clone(),
+            source: POINTS_KERNEL.clone(),
         });
 
         let points_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -616,6 +616,17 @@ impl ComputePipelines {
                     },
                     count: None,
                 },
+                // 14 step counter
+                wgpu::BindGroupLayoutEntry {
+                    binding: 14,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -706,6 +717,10 @@ impl ComputePipelines {
                 wgpu::BindGroupEntry {
                     binding: 13,
                     resource: buffers.link_corrections.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 14,
+                    resource: buffers.step_counter_buffer.as_entire_binding(),
                 },
             ],
         });

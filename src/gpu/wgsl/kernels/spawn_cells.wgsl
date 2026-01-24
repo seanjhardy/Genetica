@@ -5,7 +5,7 @@
 @include src/gpu/wgsl/utils/spawn_helpers.wgsl;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<storage, read_write> points: array<VerletPoint>;
+@group(0) @binding(1) var<storage, read_write> points: array<Point>;
 @group(0) @binding(2) var<storage, read_write> points_counter: atomic<u32>;
 @group(0) @binding(3) var<storage, read_write> points_free_list: array<atomic<u32>>;
 @group(0) @binding(4) var<storage, read_write> cells: array<Cell>;
@@ -61,6 +61,22 @@ fn try_acquire_slots() -> vec2<i32> {
     return vec2<i32>(i32(physics_slot_idx), i32(cell_slot_idx));
 }
 
+fn try_acquire_link_slot() -> i32 {
+    let link_free_count = atomicLoad(&link_free_list[0]);
+    if link_free_count == 0u {
+        return -1;
+    }
+
+    let new_link_free_count = atomicSub(&link_free_list[0], 1u);
+    if new_link_free_count == 0u {
+        atomicAdd(&link_free_list[0], 1u);
+        return -1;
+    }
+
+    let link_slot_idx = atomicLoad(&link_free_list[new_link_free_count]);
+    return i32(link_slot_idx);
+}
+
 // Create a new cell directly in the simulation
 fn spawn_cell(seed: f32) {
     let event_idx = atomicAdd(&event_counter.value, 1u);
@@ -83,9 +99,9 @@ fn spawn_cell(seed: f32) {
     let point_angle = rand_01(seed + 3.0) * (M_PI * 2.0);
     let position = generate_random_position(seed);
 
-    let hue = 0.4 + rand_11(seed + 2000.0) * 0.05;
-    let saturation = rand_01(seed + 4000.0) * 0.4 + 0.6;
-    let lightness = rand_01(seed + 5000.0) * 0.1 + 0.2;
+    let hue = 0.45;
+    let saturation = rand_01(seed + 4000.0) * 0.2 + 0.5;
+    let lightness = rand_01(seed + 5000.0) * 0.1 + 0.1;
 
     let color = hsl_to_rgb(vec4<f32>(hue, saturation, lightness, 1.0));
 
@@ -138,7 +154,7 @@ fn process_division_request(request: DivisionRequest) {
 
     // Calculate daughter position
     let world_angle = parent_point.angle + request.angle;
-    let offset = vec2<f32>(cos(world_angle), sin(world_angle)) * (parent_point.radius * 2.0);
+    let offset = vec2<f32>(cos(world_angle), sin(world_angle)) * parent_point.radius;
     var daughter_pos = parent_point.pos + offset;
 
     // Clamp to bounds
@@ -164,7 +180,8 @@ fn process_division_request(request: DivisionRequest) {
         return;
     }
 
-    // Create daughter cell
+    // Create daughter cell with unique seed based on parent, generation, and daughter position
+    let daughter_seed = f32(request.parent_cell_idx) + f32(request.generation) * 1000.0 + daughter_pos.x * 0.1 + daughter_pos.y * 0.01;
     spawn_cell_at_slot(
         point_slot_idx,
         cell_slot_idx,
@@ -173,13 +190,32 @@ fn process_division_request(request: DivisionRequest) {
         parent_point.radius,
         parent_cell.color,
         parent_point.angle,
-        f32(request.parent_cell_idx), // Use parent index as seed
+        daughter_seed,
         true, // has_parent
         parent_cell,
         parent_cell.lifeform_id,
         request.generation,
         request.energy
     );
+
+    let link_slot_idx = try_acquire_link_slot();
+    if link_slot_idx >= 0 {
+        let angle_from_parent = request.angle;
+        let angle_from_daughter = request.angle + M_PI;
+        let link = create_link(
+            request.parent_cell_idx,
+            parent_cell.generation,
+            cell_slot_idx,
+            request.generation,
+            angle_from_parent,
+            angle_from_daughter,
+            0.1,
+        );
+        let link_index = u32(link_slot_idx);
+        links[link_index] = link;
+        add_link_to_cell(request.parent_cell_idx, link_index);
+        add_link_to_cell(cell_slot_idx, link_index);
+    }
 
     // Increment counters for the new cells and link created
     atomicAdd(&points_counter, 1u);

@@ -124,14 +124,6 @@ impl PollThread {
                 if last_debug_log.elapsed().as_secs_f32() >= 1.0 {
                     let (cpu_idx, gpu_idx, event_count, processed_count) =
                         render_buffers_snapshot.event_system.debug_snapshot();
-                    println!(
-                        "event readback: cpu_idx={}, gpu_idx={}, event_count={}, processed={}, queued={}",
-                        cpu_idx,
-                        gpu_idx,
-                        event_count,
-                        processed_count,
-                        pending_events.len()
-                    );
                     last_debug_log = std::time::Instant::now();
                 }
             } else {

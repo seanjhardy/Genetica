@@ -3,7 +3,7 @@
 @include src/gpu/wgsl/utils/color.wgsl;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<storage, read> points: array<VerletPoint>;
+@group(0) @binding(1) var<storage, read> points: array<Point>;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,

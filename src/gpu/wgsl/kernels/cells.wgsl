@@ -5,7 +5,7 @@
 @include src/gpu/wgsl/utils/spawn_helpers.wgsl;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<storage, read_write> points: array<VerletPoint>;
+@group(0) @binding(1) var<storage, read_write> points: array<Point>;
 @group(0) @binding(2) var<storage, read_write> physics_free_list: array<atomic<u32>>;
 @group(0) @binding(3) var<storage, read_write> physics_counter: atomic<u32>;
 @group(0) @binding(4) var<storage, read_write> cells: array<Cell>;
@@ -18,7 +18,13 @@
 @group(0) @binding(11) var<storage, read_write> division_requests: array<DivisionRequest>;
 @group(0) @binding(12) var<storage, read_write> division_counter: atomic<u32>;
 
-const DIVISION_CHANCE: f32 = 0.01;
+@group(0) @binding(13)
+var<storage, read_write> link_corrections: array<atomic<i32>>;
+
+@group(0) @binding(14)
+var<uniform> step_counter: u32;
+
+const DIVISION_CHANCE: f32 = 0.0001;
 
 fn seed_from_u32(v: u32) -> vec2<u32> {
     return vec2<u32>(v * 1664525u + 1013904223u, v * 22695477u + 1u);
@@ -59,7 +65,7 @@ fn absorb_nutrients(cell_pos: vec2<f32>, radius: f32, absorption_rate: f32) -> f
     return take;
 }
 
-@compute @workgroup_size(1024)
+@compute @workgroup_size(128)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx = global_id.x;
     let dt = uniforms.sim_params.x;
@@ -73,17 +79,23 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
+    if cell.point_idx >= arrayLength(&points) {
+        return;
+    }
+
     var point = points[cell.point_idx];
     
-    /*if (point.flags & POINT_FLAG_ACTIVE) == 0u {
+    if (point.flags & POINT_FLAG_ACTIVE) == 0u {
         return;
-    }*/
+    }
+    
 
-    let seed = point.pos.x * 1000.0 + point.pos.y * 10.0 + cell.energy;
-    point.pos += rand_vec2(seed) * 0.1f;
-    point.prev_pos = point.pos;
+    let seed = point.pos.x * 1000.0 + point.pos.y * 10.0 + cell.energy + f32(step_counter);
+
+
+    //point.pos += rand_vec2(seed) * 0.1f;
+    //point.prev_pos = point.pos;
     points[cell.point_idx] = point;
-
 
 
     // Simple metabolism and nutrient intake (with regeneration to keep cells alive)
@@ -96,9 +108,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }*/
 
-    /*cell.color = compute_cell_color(point.radius, cell.energy);
-
-    let division_seed = f32(idx) + point.pos.x * 13.7 + point.pos.y * 7.3 + cell.energy;
+    let division_seed = f32(idx) + seed + 91.0 + point.pos.x * 13.7 + point.pos.y * 7.3 + cell.energy;
     if rand_01(division_seed) < DIVISION_CHANCE { // 1% chance per cell per frame
         // Record division request for later processing by spawn_cells kernel
         let request_idx = atomicAdd(&division_counter, 1u);
@@ -116,7 +126,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
             division_requests[request_idx] = request;
         }
-    }*/
+    }
 
     cells[idx] = cell;
 }

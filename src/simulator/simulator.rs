@@ -95,11 +95,14 @@ impl Simulation {
         self.paused_state.set(paused);
     }
 
-    pub fn step_simulation(&mut self, encoder: &mut wgpu::CommandEncoder) {
+    pub fn step_simulation(&mut self, encoder: &mut wgpu::CommandEncoder, queue: &wgpu::Queue) {
         profile_scope!("Simulation Step");
-        self.step.fetch_add(1, Ordering::Relaxed);
+        let current_step = self.step.fetch_add(1, Ordering::Relaxed) + 1; // +1 because fetch_add returns the old value
 
         let slot = &mut self.slots[self.render_slot];
+
+        // Update step counter buffer for GPU access
+        queue.write_buffer(&slot.buffers.step_counter_buffer, 0, bytemuck::cast_slice(&[current_step as u32]));
 
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("Simulation Pass"),

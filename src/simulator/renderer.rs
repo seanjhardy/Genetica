@@ -172,7 +172,7 @@ impl Renderer {
             });
             render_pass.set_pipeline(&render_pipelines.links);
             render_pass.set_bind_group(0, &render_pipelines.link_bind_group, &[]);
-            render_pass.draw(0..4, 0..(LINK_CAPACITY as u32));
+            render_pass.draw(0..10, 0..(LINK_CAPACITY as u32));
         }
 
         true

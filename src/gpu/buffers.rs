@@ -8,7 +8,7 @@ use bytemuck::Zeroable;
 
 use crate::gpu::structures::{
     Cell, CompiledRegulatoryUnit, DivisionRequest, GrnDescriptor, Link, LinkCorrection,
-    LINK_CORRECTION_STRIDE, PickParams, PickResult, MAX_GRN_REGULATORY_UNITS, VerletPoint
+    LINK_CORRECTION_STRIDE, PickParams, PickResult, MAX_GRN_REGULATORY_UNITS, Point
 };
 use crate::simulator::state::{Counter, EventSystem};
 use crate::utils::math::Rect;
@@ -24,10 +24,11 @@ const NUTRIENT_CELL_SIZE: u32 = 20;
 const NUTRIENT_UNIT_SCALE: u32 = 4_000_000_000; // annoyingly we can't do atomicSubCompareExchangeWeak with f32 :sadge:
 
 pub struct GpuBuffers {
-    pub points: GpuVector<VerletPoint>,
+    pub points: GpuVector<Point>,
     pub cells: GpuVector<Cell>,
     pub lifeform_id: wgpu::Buffer,
     pub uniform_buffer: wgpu::Buffer,
+    pub step_counter_buffer: wgpu::Buffer,
     pub cell_pick_params: wgpu::Buffer,
     pub cell_pick_result: wgpu::Buffer,
     pub event_system: EventSystem,
@@ -56,7 +57,7 @@ impl GpuBuffers {
     ) -> Self {
         let initial_cells: Vec<Cell> = Vec::new();
 
-        let points = GpuVector::<VerletPoint>::new(
+        let points = GpuVector::<Point>::new(
             device,
             POINT_CAPACITY,
             &Vec::new(),
@@ -85,6 +86,12 @@ impl GpuBuffers {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let step_counter_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Step Counter Buffer"),
+            contents: bytemuck::cast_slice(&[0u32]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
         let cell_pick_params = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Cell Pick Params"),
             contents: bytemuck::cast_slice(&[PickParams::zeroed()]),
@@ -109,10 +116,7 @@ impl GpuBuffers {
                 | wgpu::BufferUsages::COPY_DST,
         });
 
-        let link_corrections_init = vec![
-            LinkCorrection::zeroed();
-            POINT_CAPACITY * LINK_CORRECTION_STRIDE
-        ];
+        let link_corrections_init = vec![0i32; POINT_CAPACITY * LINK_CORRECTION_STRIDE];
         let link_corrections = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Link Corrections Buffer"),
             contents: bytemuck::cast_slice(&link_corrections_init),
@@ -197,6 +201,7 @@ impl GpuBuffers {
             points,
             cells,
             uniform_buffer,
+            step_counter_buffer,
             cell_pick_params,
             cell_pick_result,
             event_system,
@@ -262,7 +267,7 @@ impl GpuBuffers {
 
         let initial_count = 0u32;
         let cell_capacity = self.cells.capacity();
-        let points_zero = vec![VerletPoint::zeroed(); POINT_CAPACITY];
+        let points_zero = vec![Point::zeroed(); POINT_CAPACITY];
         queue.write_buffer(self.points.buffer(), 0, bytemuck::cast_slice(&points_zero));
         self.points.initialize_free_list(queue, 0);
         queue.write_buffer(&self.points_counter.buffer, 0, bytemuck::cast_slice(&[initial_count]));

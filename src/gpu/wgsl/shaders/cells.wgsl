@@ -7,7 +7,7 @@
 var<uniform> uniforms: Uniforms;
 
 @group(0) @binding(1)
-var<storage, read> points: array<VerletPoint>;
+var<storage, read> points: array<Point>;
 
 @group(0) @binding(2)
 var<storage, read> cells: array<Cell>;
@@ -370,14 +370,44 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
+    // Add directional indicator: brighten pixels within 5 degrees of cell's rotation angle
+    // Calculate the angle of the current pixel relative to cell center
+    let pixel_angle = atan2(uv_offset.y, uv_offset.x);
+    
+    // Calculate angular difference between pixel angle and cell angle
+    var angle_diff = pixel_angle - in.cell_angle;
+    
+    // Normalize angle difference to [-PI, PI] range
+    if angle_diff > M_PI {
+        angle_diff -= 2.0 * M_PI;
+    } else if angle_diff < -M_PI {
+        angle_diff += 2.0 * M_PI;
+    }
+    
+    // 5 degrees in radians
+    let direction_threshold = 5.0 * M_PI / 180.0;
+    
+    // If within 5 degrees and not at center, brighten to show direction
+    if abs(angle_diff) < direction_threshold && dist > 0.1 && dist < radius_normalized {
+        cell_color = brighten(cell_color, 1.3);
+    }
+
     if cell_pixels >= 20.0 {
         // Sample perlin noise texture using UV coordinates with fisheye distortion
-        let local_uv = uv_offset * 0.05;
+        // Rotate UVs by cell angle to make texture follow cell rotation
+        let cos_angle = cos(in.cell_angle);
+        let sin_angle = sin(in.cell_angle);
+        let rotation_matrix = mat2x2<f32>(
+            cos_angle, -sin_angle,
+            sin_angle, cos_angle
+        );
+        let rotated_uv = rotation_matrix * uv_offset;
+        let local_uv = rotated_uv * 0.05;
 
         // Apply fisheye distortion normalized to cell radius
         // Points at cell edge (dist = radius_normalized) get maximum distortion
         let normalized_dist = dist / radius_normalized;
-        let distortion_uv = uv_offset / radius_normalized; // Normalize so cell edge = ±1.0
+        let distortion_uv = rotated_uv / radius_normalized; // Normalize so cell edge = ±1.0
         let distorted_uv = fisheye_distortion(distortion_uv, 1.5);
         let final_local_uv = distorted_uv * 0.05; // Scale back to original local_uv range
 
@@ -410,6 +440,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     let out_a = 1.0;
+
+
 
     return vec4<f32>(cell_color.rgb, out_a);
 }

@@ -1,6 +1,6 @@
 @include src/gpu/wgsl/constants.wgsl;
 
-struct VerletPoint {
+struct Point {
     pos: vec2<f32>,
     prev_pos: vec2<f32>,
     accel: vec2<f32>,

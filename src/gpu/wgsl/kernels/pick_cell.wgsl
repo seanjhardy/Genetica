@@ -15,7 +15,7 @@ struct PickResult {
 var<uniform> pick: PickParams;
 
 @group(0) @binding(1)
-var<storage, read> points: array<VerletPoint>;
+var<storage, read> points: array<Point>;
 
 @group(0) @binding(2)
 var<storage, read> cells: array<Cell>;

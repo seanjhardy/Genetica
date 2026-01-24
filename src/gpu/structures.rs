@@ -21,7 +21,7 @@ pub const REMOVE_CELL_FROM_LIFEFORM_FLAG: u32 = 3;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct VerletPoint {
+pub struct Point {
     pub pos: [f32; 2],
     pub prev_pos: [f32; 2],
     pub accel: [f32; 2],

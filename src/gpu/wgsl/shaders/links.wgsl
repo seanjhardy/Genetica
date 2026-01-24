@@ -6,7 +6,7 @@
 var<uniform> uniforms: Uniforms;
 
 @group(0) @binding(1)
-var<storage, read> points: array<VerletPoint>;
+var<storage, read> points: array<Point>;
 
 @group(0) @binding(2)
 var<storage, read> cells: array<Cell>;
@@ -73,24 +73,37 @@ fn vs_main(
 
     let angle_a = point_a.angle + link.angle_from_a;
     let angle_b = point_b.angle + link.angle_from_b;
-    let attach_a = point_a.pos;
-    let attach_b = point_b.pos;
+    let attach_a = point_a.pos + vec2<f32>(cos(angle_a), sin(angle_a)) * point_a.radius * 0.7;
+    let attach_b = point_b.pos + vec2<f32>(cos(angle_b), sin(angle_b)) * point_b.radius * 0.7;
 
-    let delta = attach_b - attach_a;
-    let dist = length(delta);
-    if dist <= 0.0001 {
+    let delta_a = attach_a - point_a.pos;
+    let delta_b = attach_b - point_b.pos;
+    let dist_a = length(delta_a);
+    let dist_b = length(delta_b);
+    if dist_a <= 0.0001 || dist_b <= 0.0001 {
         return empty_vertex();
     }
 
-    let angle_to_b = atan2(delta.y, delta.x) + M_PI/2.0;
-    let offset = vec2<f32>(cos(angle_to_b), sin(angle_to_b)) * 0.05;
+    let dir_a = delta_a / dist_a;
+    let dir_b = delta_b / dist_b;
+    let offset_a = vec2<f32>(-dir_a.y, dir_a.x) * (0.05 * point_a.radius);
+    let offset_b = vec2<f32>(-dir_b.y, dir_b.x) * (0.05 * point_b.radius);
 
     var world_pos: vec2<f32>;
     switch vertex_index {
-        case 0u: { world_pos = attach_a + offset * point_a.radius; }
-        case 1u: { world_pos = attach_a - offset * point_a.radius; }
-        case 2u: { world_pos = attach_b + offset * point_b.radius; }
-        default: { world_pos = attach_b - offset * point_b.radius; }
+        // Segment A center -> hook
+        case 0u: { world_pos = point_a.pos + offset_a; }
+        case 1u: { world_pos = point_a.pos - offset_a; }
+        case 2u: { world_pos = attach_a + offset_a; }
+        case 3u: { world_pos = attach_a - offset_a; }
+        // Degenerate bridge between strips
+        case 4u: { world_pos = attach_a - offset_a; }
+        case 5u: { world_pos = point_b.pos + offset_b; }
+        case 6u: { world_pos = point_b.pos + offset_b; }
+        // Segment B center -> hook
+        case 7u: { world_pos = point_b.pos - offset_b; }
+        case 8u: { world_pos = attach_b + offset_b; }
+        default: { world_pos = attach_b - offset_b; }
     }
 
     output.clip_position = compute_clip_position(world_pos);
@@ -104,4 +117,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
     return alpha(brighten(in.color, 2.0), 0.2);
+    //return vec4<f32>(1.0, 0.0, 0.0, 0.0);
 }

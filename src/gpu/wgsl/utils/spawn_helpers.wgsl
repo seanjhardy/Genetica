@@ -29,7 +29,7 @@ fn spawn_cell_at_slot(
     generation: u32,
     energy: f32
 ) {
-    var point: VerletPoint;
+    var point: Point;
     point.pos = position;
     point.prev_pos = position - velocity * uniforms.sim_params.x;
     point.accel = vec2<f32>(0.0, 0.0);
@@ -42,26 +42,25 @@ fn spawn_cell_at_slot(
         // Create a fresh cell instead of copying parent to avoid data corruption
         cell.cell_wall_thickness = parent.cell_wall_thickness;
         cell.noise_permutations = array<f32, CELL_WALL_SAMPLES>(); // Initialize empty
-        cell.noise_texture_offset = parent.noise_texture_offset;
         cell.color = parent.color; // Inherit parent's color
     } else {
         cell.cell_wall_thickness = 0.05;
         cell.noise_permutations = array<f32, CELL_WALL_SAMPLES>();
-        let margin = 75.0;
-        let max_pos = 400.0 - margin;
-        cell.noise_texture_offset = vec2<f32>(
-            margin + rand_01(seed + 1000.0) * (max_pos - margin),
-            margin + rand_01(seed + 2000.0) * (max_pos - margin)
-        );
-        cell.color = vec4<f32>(0.0);
+        cell.color = color;
     }
+
+    let margin = 75.0;
+    let max_pos = 400.0 - margin;
+    cell.noise_texture_offset = vec2<f32>(
+        margin + rand_01(seed + 1000.0) * (max_pos - margin),
+        margin + rand_01(seed + 2000.0) * (max_pos - margin)
+    );
 
     cell.point_idx = point_slot;
     cell.lifeform_id = lifeform_id;
     cell.generation = generation;
     cell.energy = energy;
 
-    cell.color = color;
     cell.flags = CELL_FLAG_ACTIVE;
     cell.link_count = 0u;
     for (var i: u32 = 0u; i < MAX_CELL_LINKS; i = i + 1u) {
