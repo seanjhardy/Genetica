@@ -1,13 +1,7 @@
-# Genetica Rust - GPU-Accelerated Verlet Integration
+# Genetica Rust - A GPU accelerated evolutionary algorithm of multicellular creatures using gene regulatory networks.
 
 This is a Rust implementation demonstrating GPU-accelerated physics simulation using wgpu.
 
-## Features
-
-- **6000 points** simulated using Verlet integration on the GPU
-- **GPU-side storage** - All point data stays on the GPU
-- **GPU-side rendering** - Points are rendered directly from GPU buffers
-- **Cross-platform** - Works on macOS and Windows (and Linux)
 
 ## Requirements
 
@@ -23,13 +17,29 @@ cargo build --release
 
 ## Running
 
+### Option 1: Standard Cargo Run (Development)
 ```bash
 cargo run --release
 ```
 
-Or run the compiled binary:
+### Option 2: Build macOS App Bundle (Recommended for macOS)
 ```bash
-./target/release/genetica-rust
+./build_macos_app.sh
+```
+This creates a proper `Genetica.app` bundle with the app icon that:
+- Shows the proper icon in the dock when running
+- Can be double-clicked to launch (no terminal window)
+- Can be copied to `/Applications/` for permanent installation
+- Includes all assets bundled inside
+
+After building, launch with:
+```bash
+open Genetica.app
+```
+
+Or install to Applications:
+```bash
+cp -r Genetica.app /Applications/
 ```
 
 ## Architecture

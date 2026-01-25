@@ -1,5 +1,4 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
+import package::types::{Cell, GrnDescriptor, CompiledRegulatoryUnit};
 
 // Cells buffer
 @group(0) @binding(0) var<storage, read_write> cells: array<Cell>;

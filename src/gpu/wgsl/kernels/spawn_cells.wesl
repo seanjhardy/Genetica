@@ -1,8 +1,13 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
-@include src/gpu/wgsl/utils/color.wgsl;
-@include src/gpu/wgsl/utils/random.wgsl;
-@include src/gpu/wgsl/utils/spawn_helpers.wgsl;
+import package::types::{Uniforms, Point, Cell, Link, DivisionRequest, Event};
+import package::constants::{MIN_POINTS, M_PI};
+import package::utils::color::{hsl_to_rgb};
+import package::utils::random::{rand_01};
+import package::utils::spawn_helpers::{
+    generate_random_position,
+    spawn_cell_at_slot,
+    create_link,
+    add_link_to_cell,
+};
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> points: array<Point>;

@@ -1,3 +1,5 @@
+import package::types::Point;
+import package::constants::M_PI;
 
 // Computes the signed angle from vector u to v in radians (range [-pi, pi]).
 fn signed_angle(u: vec2<f32>, v: vec2<f32>) -> f32 {
@@ -26,27 +28,47 @@ fn unsigned_angle(u: vec2<f32>, v: vec2<f32>) -> f32 {
 }
 
 fn distance_constraint(
-    a: Point, 
+    a: Point,
     b: Point,
     rest_length: f32,
-    strength: f32) -> vec2<vec2<f32>> {
+    strength: f32
+) -> vec4<f32> {
     let pos_a = a.pos;
     let pos_b = b.pos;
-    let a_mass = a.mass;
-    let b_mass = b.mass;
+
+    // Your mass model
+    let a_mass = a.radius * a.radius;
+    let b_mass = b.radius * b.radius;
 
     let delta = pos_b - pos_a;
     let dist = length(delta);
 
-    let diff = (dist - rest_length) / dist;
+    let eps = 1e-8;
+    if (dist < eps) {
+        // No well-defined direction to separate; do nothing (or pick a fallback dir)
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
 
-    let invA = select(1.0 / a_mass, 0.0, a_mass > 0.0);
-    let invB = select(1.0 / b_mass, 0.0, b_mass > 0.0);
+    // Inverse masses (mass == 0 => fixed)
+    let invA = select(0.0, 1.0 / a_mass, a_mass > 0.0);
+    let invB = select(0.0, 1.0 / b_mass, b_mass > 0.0);
     let invSum = invA + invB;
 
-    let correction_a = delta * (strength * diff * (invA / invSum));
-    let correction_b = delta * (strength * diff * (invB / invSum));
-    return vec2<vec2<f32>>(correction_a, correction_b);
+    if (invSum <= 0.0) {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
+
+    let diff = (dist - rest_length) / dist; // scalar
+    let s = clamp(strength, 0.0, 1.0);
+
+    // Shared correction along delta (same as n * (dist-rest))
+    let correction = delta * (s * diff / invSum);
+
+    // Return per-point position deltas
+    let dA =  correction * invA;
+    let dB = -correction * invB;
+
+    return vec4<f32>(dA, dB);
 }
 
 // Rotates A and B about C to move angle ABC toward `theta`.
@@ -95,8 +117,8 @@ fn rotate_points_to_angle(
     // If you prefer 0 mass immovable, swap the invMass logic accordingly.
     let massA = A.radius * A.radius;
     let massB = B.radius * B.radius;
-    let invA = select(1.0 / massA, 0.0, massA > 0.0);
-    let invB = select(1.0 / massB, 0.0, massB > 0.0);
+    let invA = select(0.0, 1.0 / massA, massA > 0.0);
+    let invB = select(0.0, 1.0 / massB, massB > 0.0);
     let invSum = invA + invB;
 
     // If both immovable, do nothing
@@ -114,7 +136,7 @@ fn rotate_points_to_angle(
     let A2 = anchor + u2;
     let B2 = anchor + v2;
 
-    return vec4<f32>(A2.pos, B2.pos);
+    return vec4<f32>(A2, B2);
 }
 
 // Rotates A and B about C to change the signed angle at C by `corr` radians.
@@ -136,8 +158,8 @@ fn apply_angle_correction(
 
     let massA = A.radius * A.radius;
     let massB = B.radius * B.radius;
-    let invA = select(1.0 / massA, 0.0, massA > 0.0);
-    let invB = select(1.0 / massB, 0.0, massB > 0.0);
+    let invA = select(0.0, 1.0 / massA, massA > 0.0);
+    let invB = select(0.0, 1.0 / massB, massB > 0.0);
     let invSum = invA + invB;
 
     if (invSum <= 0.0) {
@@ -194,5 +216,5 @@ fn min_angle_constraint(
     if (delta < -M_PI) { delta += M_PI * 2.0; }
 
     // Apply full correction (no strength scaling)
-    return apply_angle_correction(A.pos, B.pos, anchor, delta);
+    return apply_angle_correction(A, B, anchor, delta);
 }

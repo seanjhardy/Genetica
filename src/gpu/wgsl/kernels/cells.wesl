@@ -1,8 +1,7 @@
-@include src/gpu/wgsl/constants.wgsl;
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/utils/color.wgsl;
-@include src/gpu/wgsl/utils/random.wgsl;
-@include src/gpu/wgsl/utils/spawn_helpers.wgsl;
+import package::constants::{CELL_FLAG_ACTIVE, POINT_FLAG_ACTIVE, M_PI};
+import package::types::{Uniforms, Point, Cell, NutrientGrid, Link, DivisionRequest};
+import package::utils::random::{rand_01};
+
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> points: array<Point>;

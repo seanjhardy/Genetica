@@ -1,5 +1,5 @@
-@include src/gpu/wgsl/constants.wgsl;
-@include src/gpu/wgsl/types.wgsl;
+import package::constants::{LINK_FLAG_ACTIVE};
+import package::types::{Cell, Link, FreeList};
 
 // Note: This file accesses cells, links, and link_free_list which must be bound
 // in the file that includes this one (e.g., links.wgsl, cells.wgsl)

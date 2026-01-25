@@ -1,3 +1,7 @@
+import package::types::{Uniforms, Point, Cell, Link};
+import package::constants::{POINT_FLAG_ACTIVE, CELL_WALL_SAMPLES, CELL_FLAG_ACTIVE, MAX_CELL_LINKS, LINK_FLAG_ACTIVE};
+import package::utils::random::{rand_01};
+
 fn generate_random_position(seed: f32) -> vec2<f32> {
     let bounds_left = uniforms.bounds.x;
     let bounds_top = uniforms.bounds.y;

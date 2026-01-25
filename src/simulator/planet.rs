@@ -241,6 +241,7 @@ impl Planet {
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         
         // Update uniforms
+        println!("Seed: {}", self.seed);
         let uniforms = PlanetUniforms {
             seed: self.seed / 10000.0,
             noise_frequency: self.noise_frequency,

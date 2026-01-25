@@ -1,0 +1,31 @@
+{
+  "wgsl-analyzer.diagnostics.enable": true,
+  "wgsl-analyzer.diagnostics.nagaParsingErrors": true,
+  "wgsl-analyzer.diagnostics.nagaValidationErrors": true,
+  "wgsl-analyzer.diagnostics.typeErrors": true,
+  "[wesl]": {
+    "wgsl-analyzer.diagnostics.enable": false,
+    "wgsl-analyzer.diagnostics.nagaParsingErrors": false,
+    "wgsl-analyzer.diagnostics.nagaValidationErrors": false,
+    "wgsl-analyzer.diagnostics.typeErrors": false
+  },
+  "[wesl-lsp]": {
+    "wgsl-analyzer.diagnostics.enable": false,
+    "wgsl-analyzer.diagnostics.nagaParsingErrors": false,
+    "wgsl-analyzer.diagnostics.nagaValidationErrors": false,
+    "wgsl-analyzer.diagnostics.typeErrors": false
+  },
+  "[wgsl]": {
+    "wgsl-analyzer.diagnostics.enable": true,
+    "wgsl-analyzer.diagnostics.nagaParsingErrors": true,
+    "wgsl-analyzer.diagnostics.nagaValidationErrors": true,
+    "wgsl-analyzer.diagnostics.typeErrors": true
+  },
+  "rust-analyzer.cargo.buildScripts.enable": true,
+  "rust-analyzer.cargo.loadOutDirsFromCheck": true,
+  "rust-analyzer.cargo.buildScripts.overrideCommand": [
+    "cargo",
+    "build",
+    "--message-format=json"
+  ]
+}

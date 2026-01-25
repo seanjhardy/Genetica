@@ -1,4 +1,10 @@
-@include src/gpu/wgsl/constants.wgsl;
+import package::constants::{
+    MAX_CELL_LINKS,
+    CELL_WALL_SAMPLES,
+    MAX_GENES_PER_GENOME,
+    GENOME_WORD_COUNT,
+    MAX_GRN_INPUTS_PER_UNIT,
+};
 
 struct Point {
     pos: vec2<f32>,

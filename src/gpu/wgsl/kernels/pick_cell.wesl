@@ -1,5 +1,5 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
+import package::types::{Point, Cell};
+import package::constants::{CELL_CAPACITY, CELL_FLAG_ACTIVE, POINT_FLAG_ACTIVE};
 
 struct PickParams {
     mouse_pos: vec2<f32>,

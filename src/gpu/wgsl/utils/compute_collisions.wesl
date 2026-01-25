@@ -1,5 +1,5 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
+import package::types::{Cell, Link};
+import package::constants::{HASH_CELL_SIZE, CELL_FLAG_ACTIVE, LINK_FLAG_ACTIVE, COLLISION_EPSILON};
 
 
 fn hash_cell_position(pos: vec2<f32>) -> u32 {

@@ -1,7 +1,14 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
-@include src/gpu/wgsl/utils/color.wgsl;
-@include src/gpu/wgsl/utils/distortion.wgsl;
+import package::types::{Uniforms, Point, Cell, Link};
+import package::constants::{
+    POINT_FLAG_ACTIVE,
+    CELL_FLAG_ACTIVE,
+    MAX_CELL_LINKS,
+    LINK_FLAG_ACTIVE,
+    CELL_WALL_SAMPLES,
+    M_PI,
+};
+import package::utils::color::{brighten};
+import package::utils::distortion::{fisheye_distortion};
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;

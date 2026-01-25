@@ -27,7 +27,7 @@ struct RenderState {
 
 const LINE_THICKNESS_WORLD: f32 = 2.0;
 const GRID_SPACING_WORLD: f32 = 20.0;
-const GRID_ZOOM_THRESHOLD: f32 = 0.5;
+const GRID_ZOOM_THRESHOLD: f32 = 20.0;
 
 pub struct BoundsRenderer {
     pipeline: wgpu::RenderPipeline,

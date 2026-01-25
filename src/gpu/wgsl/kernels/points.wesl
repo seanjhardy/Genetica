@@ -1,12 +1,11 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
-@include src/gpu/wgsl/utils/color.wgsl;
+import package::types::{Uniforms, Point};
+import package::constants::{LINK_CORRECTION_SCALE_POS, LINK_CORRECTION_SCALE_ANGLE, POINT_FLAG_ACTIVE};
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> points: array<Point>;
 @group(0) @binding(2) var<storage, read_write> link_corrections: array<atomic<i32>>;
 
-const FRICTION: f32 = 0.99;
+const FRICTION: f32 = 0.98;
 const VELOCITY_EPSILON: f32 = 0.001;
 
 fn correction_base(point_idx: u32) -> u32 {
@@ -39,7 +38,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     
     point.pos = point.pos + correction;
-    point.prev_pos = point.prev_pos;// + correction;
+    point.prev_pos = point.prev_pos;
     point.angle = point.angle + angle_correction;
 
     let radius: f32 = point.radius;

@@ -1,6 +1,5 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
-@include src/gpu/wgsl/utils/color.wgsl;
+import package::types::{Uniforms, Point};
+import package::constants::{POINT_FLAG_ACTIVE};
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> points: array<Point>;
@@ -65,4 +64,3 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let color = mix(vec3<f32>(0.2, 0.8, 1.0), vec3<f32>(0.05, 0.2, 0.4), t);
     return vec4<f32>(color, 1.0);
 }
-

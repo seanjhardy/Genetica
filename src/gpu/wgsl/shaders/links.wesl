@@ -1,6 +1,6 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
-@include src/gpu/wgsl/utils/color.wgsl;
+import package::types::{Uniforms, Point, Cell, Link};
+import package::constants::{LINK_FLAG_ACTIVE, CELL_FLAG_ACTIVE};
+import package::utils::color::{alpha, brighten};
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;

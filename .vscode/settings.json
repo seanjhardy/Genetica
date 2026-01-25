@@ -48,11 +48,31 @@
     "stdexcept": "cpp",
     "streambuf": "cpp",
     "typeinfo": "cpp",
-    "variant": "cpp"
+    "variant": "cpp",
+    "*.wesl": "wesl-lsp"
   },
-  "wgsl-analyzer.customImports": {
-    "types": "file:///Users/seanjhardy/Documents/Projects/Simulations/Genetica/rust/src/gpu/wgsl/types.wgsl",
-    "processing": "file:///Users/seanjhardy/Documents/Projects/Simulations/Genetica/rust/src/gpu/wgsl/processing.wgsl",
-    "constants": "file:///Users/seanjhardy/Documents/Projects/Simulations/Genetica/rust/src/gpu/wgsl/constants.wgsl"
-  }
+  "wgsl-analyzer.server.path": "/Users/seanjhardy/.cargo/bin/wgsl-analyzer",
+  "wgsl-analyzer.diagnostics.enable": true,
+  "wgsl-analyzer.diagnostics.nagaParsingErrors": true,
+  "wgsl-analyzer.diagnostics.nagaValidationErrors": true,
+  "wgsl-analyzer.diagnostics.typeErrors": true,
+  "[wesl]": {
+    "wgsl-analyzer.diagnostics.enable": false,
+    "wgsl-analyzer.diagnostics.nagaParsingErrors": false,
+    "wgsl-analyzer.diagnostics.nagaValidationErrors": false,
+    "wgsl-analyzer.diagnostics.typeErrors": false
+  },
+  "[wesl-lsp]": {
+    "wgsl-analyzer.diagnostics.enable": false,
+    "wgsl-analyzer.diagnostics.nagaParsingErrors": false,
+    "wgsl-analyzer.diagnostics.nagaValidationErrors": false,
+    "wgsl-analyzer.diagnostics.typeErrors": false
+  },
+  "rust-analyzer.cargo.buildScripts.enable": true,
+  "rust-analyzer.cargo.loadOutDirsFromCheck": true,
+  "rust-analyzer.cargo.buildScripts.overrideCommand": [
+    "cargo",
+    "build",
+    "--message-format=json"
+  ]
 }

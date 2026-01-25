@@ -1,5 +1,4 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
+import package::types::{Uniforms, NutrientGrid};
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
@@ -85,4 +84,3 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let color = vec3<f32>(0.0, intensity, 0.0);
     return vec4<f32>(color, alpha);
 }
-

@@ -1,5 +1,4 @@
-@include src/gpu/wgsl/types.wgsl;
-@include src/gpu/wgsl/constants.wgsl;
+import package::types::{Uniforms, NutrientGrid};
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
@@ -67,5 +66,4 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     atomicStore(&nutrient_grid.values[index], u32(new_nutrient_level * f32(nutrient_scale)));
 }
-
 
