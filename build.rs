@@ -25,6 +25,7 @@ fn main() {
         ("package::shaders::caustics_blit", "shaders_caustics_blit"),
         ("package::shaders::caustics_composite", "shaders_caustics_composite"),
         ("package::shaders::terrain_caustics_composite", "shaders_terrain_caustics_composite"),
+        ("package::shaders::water_distortion", "shaders_water_distortion"),
         ("package::shaders::post_processing", "shaders_post_processing"),
         ("package::shaders::text", "shaders_text"),
         ("package::shaders::ui_rect", "shaders_ui_rect"),

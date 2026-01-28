@@ -65,7 +65,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let water_color = mix(deep, shallow, height);
 
-    var color = mix(rock_color, water_color, 1.0 - pow(height, 3) * 0.9);
+    var color = mix(rock_color, water_color, 1.0 - pow(height, 4) * 0.9);
 
     let shadow = textureSample(shadow_texture, tex_sampler, in.uv).r;
     color = vec4<f32>(color.rgb * shadow, 1.0);

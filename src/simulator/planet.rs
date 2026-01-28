@@ -68,7 +68,7 @@ pub struct Planet {
 
 impl Planet {
     fn expanded_bounds(&self) -> Rect {
-        const TERRAIN_EXPANSION: f32 = 2.0;
+        const TERRAIN_EXPANSION: f32 = 1.0;
         let center = self.current_bounds.center();
         let expanded_width = self.current_bounds.width * TERRAIN_EXPANSION;
         let expanded_height = self.current_bounds.height * TERRAIN_EXPANSION;
@@ -663,7 +663,7 @@ impl Planet {
             return;
         }
 
-        const SCALE: f32 = 2.0;
+        const SCALE: f32 = 1.0;
         let expanded_bounds = self.expanded_bounds();
         let width = (expanded_bounds.width / SCALE).max(1.0).min(4096.0) as u32;
         let height = (expanded_bounds.height / SCALE).max(1.0).min(4096.0) as u32;

@@ -156,7 +156,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     noise_result = os2_noise_with_derivatives_improve_xy(X - noise_result.xyz / 16.0);
     let value = noise_result.w;
     let intensity = clamp(0.6 + 0.8 * value, 0.0, 1.0);
-    let sharp = pow(intensity, 2.0); // higher = sharper (try 2.0–6.0)
+    let sharp = pow(intensity, 3.0); // higher = sharper (try 2.0–6.0)
     return vec4<f32>(vec3<f32>(sharp), 1.0);
 
 }

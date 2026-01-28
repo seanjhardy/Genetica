@@ -20,6 +20,7 @@ use crate::utils::gpu::device::GpuDevice;
 use crate::gpu::pipelines::RenderPipelines;
 use crate::gpu::uniforms::Uniforms;
 use crate::gpu::bounds_renderer::BoundsRenderer;
+use crate::gpu::water_distortion_renderer::WaterDistortionRenderer;
 use crate::gpu::buffers::{GpuBuffers, CELL_CAPACITY};
 use crate::gpu::structures::{PickParams, PickResult, Point};
 use crate::simulator::environment::Environment;
@@ -38,6 +39,7 @@ pub struct Application {
     renderer: crate::simulator::renderer::Renderer,
     pub gpu: GpuDevice,
     bounds_renderer: BoundsRenderer,
+    water_distortion_renderer: WaterDistortionRenderer,
     ui_renderer: UiRenderer,
     pub ui_manager: UIManager,
     camera: Camera,
@@ -95,6 +97,7 @@ impl Application {
         render_pipelines: RenderPipelines,
         simulation: Simulation,
         bounds_renderer: BoundsRenderer,
+        water_distortion_renderer: WaterDistortionRenderer,
         ui_renderer: UiRenderer,
         ui_manager: UIManager,
         camera: Camera,
@@ -141,6 +144,7 @@ impl Application {
             renderer: crate::simulator::renderer::Renderer::new(),
             gpu,
             bounds_renderer,
+            water_distortion_renderer,
             ui_renderer,
             ui_manager,
             camera,
@@ -435,6 +439,7 @@ impl Application {
                 &render_buffers,
                 &mut self.render_pipelines,
                 &mut self.bounds_renderer,
+                &mut self.water_distortion_renderer,
                 &mut *environment,
                 &mut self.ui_renderer,
                 &mut self.ui_manager,
@@ -1155,6 +1160,7 @@ impl Application {
         );
 
         let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.queue, &gpu.config);
+        let water_distortion_renderer = WaterDistortionRenderer::new(&gpu.device, &gpu.queue, &gpu.config);
         environment.planet_mut().initialize(&gpu.device, gpu.config.format);
 
         let ui_renderer = UiRenderer::new(&gpu.device, &gpu.queue, &gpu.config);
@@ -1209,6 +1215,7 @@ impl Application {
             render_pipelines,
             simulation,
             bounds_renderer,
+            water_distortion_renderer,
             ui_renderer,
             ui_manager,
             camera,

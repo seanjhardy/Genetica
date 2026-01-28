@@ -459,7 +459,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let normalized_dist = clamp(dist / max(radius_normalized, 1.0e-4), 0.0, 1.0);
     let edge_opacity = smoothstep(0.1, 1.0, normalized_dist);
-    var out_a = mix(0.12, 0.9, edge_opacity);
+    var out_a = mix(0.4, 0.9, edge_opacity);
     if dist > radius_normalized - cell.cell_wall_thickness {
         out_a = 1.0;
     }

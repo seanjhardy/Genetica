@@ -8,6 +8,7 @@ use crate::utils::gpu::device::GpuDevice;
 use crate::gpu::buffers::{GpuBuffers, CELL_CAPACITY, LINK_CAPACITY};
 use crate::gpu::pipelines::RenderPipelines;
 use crate::gpu::bounds_renderer::BoundsRenderer;
+use crate::gpu::water_distortion_renderer::WaterDistortionRenderer;
 use crate::ui::UiRenderer;
 
 /// Renderer handles simulation rendering (cells and bounds) to viewport textures
@@ -27,6 +28,7 @@ impl Renderer {
         buffers: &GpuBuffers,
         render_pipelines: &mut RenderPipelines,
         bounds_renderer: &mut BoundsRenderer,
+        water_distortion_renderer: &mut WaterDistortionRenderer,
         environment: &mut crate::simulator::environment::Environment,
         ui_renderer: &mut UiRenderer,
         ui_manager: &mut crate::ui::UIManager,
@@ -41,6 +43,7 @@ impl Renderer {
 
         // Prepare viewport textures (compute layout and create textures)
         let mut viewport_texture_view = None;
+        let mut viewport_texture = None;
         let mut viewport_size = None;
         {
             profile_scope!("Prepare Viewports");
@@ -53,6 +56,9 @@ impl Renderer {
                     if let Some(view) = ui_renderer.get_viewport_texture_view(element, "simulation") {
                         viewport_texture_view = Some(view);
                     }
+                    if let Some(texture) = ui_renderer.get_viewport_texture(element, "simulation") {
+                        viewport_texture = Some(texture);
+                    }
                     if let Some((width, height)) = ui_renderer.get_viewport_size(element, "simulation") {
                         viewport_size = Some((width, height));
                     }
@@ -64,6 +70,13 @@ impl Renderer {
             Some(view) => view,
             None => {
                 return false; // No viewport exists, don't render simulation
+            }
+        };
+
+        let viewport_texture = match viewport_texture {
+            Some(texture) => texture,
+            None => {
+                return false; // No viewport texture exists, don't render simulation
             }
         };
 
@@ -191,6 +204,36 @@ impl Renderer {
             render_pass.set_pipeline(&render_pipelines.links);
             render_pass.set_bind_group(0, &render_pipelines.link_bind_group, &[]);
             render_pass.draw(0..10, 0..(LINK_CAPACITY as u32));
+        }
+
+        // Apply water distortion to the rendered scene
+        {
+            profile_scope!("Apply Water Distortion");
+            let bounds = environment.get_bounds();
+            let view_size = viewport_size
+                .map(|(width, height)| Vec2::new(width as f32, height as f32))
+                .unwrap_or_else(|| Vec2::new(gpu.config.width as f32, gpu.config.height as f32));
+            
+            water_distortion_renderer.update(
+                &gpu.queue,
+                bounds,
+                camera_pos,
+                zoom,
+                view_size.x,
+                view_size.y,
+                time,
+            );
+            
+            if let Some((width, height)) = viewport_size {
+                water_distortion_renderer.apply_distortion(
+                    encoder,
+                    &gpu.device,
+                    viewport_texture_view,
+                    viewport_texture,
+                    viewport_texture_view,
+                    (width, height),
+                );
+            }
         }
 
         /*{

@@ -191,7 +191,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     );
     let expanded_size = bounds_size * 2.0;
     let base_uv = (in.world_pos - bounds_center) / expanded_size + vec2<f32>(0.5, 0.5);
-    let view_dir_uv = (in.world_pos - uniform_data.camera_pos_zoom_thickness.xy) / expanded_size;
+    let camera_pos = uniform_data.camera_pos_zoom_thickness.xy;
+    let zoom = uniform_data.camera_pos_zoom_thickness.z;
+    let view_dir_uv = (in.world_pos - camera_pos) / expanded_size * zoom;
     let parallax_strength = uniform_data.padding.x;
     let view_height = uniform_data.padding.y;
     let min_steps = max(uniform_data.padding.z, 4.0);
@@ -202,7 +204,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let deep = vec4<f32>(1.0, 3.0, 18.0, 255.0) / 1000.0;
     var color = select(textureSample(planet_texture, planet_sampler, sample_uv), deep, out_of_bounds);
 
-    let zoom = uniform_data.camera_pos_zoom_thickness.z;
     let line_thickness_world = uniform_data.camera_pos_zoom_thickness.w;
     let grid_spacing_world = uniform_data.view_size_grid.z;
     let grid_opacity = uniform_data.view_size_grid.w;

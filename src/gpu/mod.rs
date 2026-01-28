@@ -3,5 +3,6 @@ pub mod pipelines;
 pub mod buffers;
 pub mod uniforms;
 pub mod bounds_renderer;
+pub mod water_distortion_renderer;
 pub mod structures;
 pub mod wgsl;

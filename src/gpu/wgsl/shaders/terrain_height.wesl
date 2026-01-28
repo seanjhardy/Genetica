@@ -259,7 +259,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let base_noise = octave_noise(vec3<f32>(coord, 0.0));
     let base_norm = clamp(base_noise * 2.0 + 0.5, 0.0, 1.0);
     let band_min = -0.20;
-    let band_max = 0.999;
+    let band_max = 0.998;
     let band_steps = 5u; // higher band frequency
     let band_range = band_max - band_min;
     let band_step = band_range / f32(band_steps);
@@ -288,5 +288,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let detail = octave_noise(vec3<f32>(detail_coord, 0.0) + band_offset_next) * 0.5;
     let height = clamp(banded_norm + detail, 0.0, 1.0);
     let clamped = max(height, uniforms.floor_height);
+    
     return vec4<f32>(clamped, clamped, clamped, 1.0);
 }

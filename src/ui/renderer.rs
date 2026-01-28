@@ -1417,7 +1417,7 @@ impl UiRenderer {
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format: self.surface_format, // Use surface format for compatibility
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                     view_formats: &[],
                 });
 
@@ -1455,6 +1455,29 @@ impl UiRenderer {
             for child in &view.children {
                 if let Some(texture_view) = self.get_viewport_texture_view(child, viewport_id) {
                     return Some(texture_view);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Get the texture for a viewport by ID from the component tree
+    pub fn get_viewport_texture<'a>(&self, component: &'a Component, viewport_id: &str) -> Option<&'a wgpu::Texture> {
+        // Traverse the component tree to find the viewport with matching ID
+        if let Some(component_id) = &component.id {
+            if component_id == viewport_id {
+                if let ComponentType::Viewport(viewport) = &component.component_type {
+                    return viewport.texture.as_ref();
+                }
+            }
+        }
+
+        // Recursively search children
+        if let ComponentType::View(view) = &component.component_type {
+            for child in &view.children {
+                if let Some(texture) = self.get_viewport_texture(child, viewport_id) {
+                    return Some(texture);
                 }
             }
         }

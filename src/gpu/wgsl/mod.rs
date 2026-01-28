@@ -49,6 +49,8 @@ pub static CAUSTICS_COMPOSITE_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wesl!("shaders_caustics_composite").to_string()));
 pub static TERRAIN_CAUSTICS_COMPOSITE_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wesl!("shaders_terrain_caustics_composite").to_string()));
+pub static WATER_DISTORTION_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wesl!("shaders_water_distortion").to_string()));
 pub static POST_PROCESSING_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wesl!("shaders_post_processing").to_string()));
 pub static TEXT_SHADER: Lazy<ShaderSource<'static>> =
