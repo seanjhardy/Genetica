@@ -7,7 +7,7 @@ use std::sync::Arc;
 use bytemuck::Zeroable;
 
 use crate::gpu::structures::{
-    Cell, CompiledRegulatoryUnit, DivisionRequest, GrnDescriptor, Link, LinkCorrection,
+    Cell, CompiledRegulatoryUnit, DivisionRequest, GrnDescriptor, Link,
     LINK_CORRECTION_STRIDE, PickParams, PickResult, MAX_GRN_REGULATORY_UNITS, Point
 };
 use crate::simulator::state::{Counter, EventSystem};
@@ -289,10 +289,7 @@ impl GpuBuffers {
         let link_zero = vec![Link::zeroed(); self.link_capacity];
         queue.write_buffer(&self.link_buffer, 0, bytemuck::cast_slice(&link_zero));
 
-        let link_corrections_zero = vec![
-            LinkCorrection::zeroed();
-            POINT_CAPACITY * LINK_CORRECTION_STRIDE
-        ];
+        let link_corrections_zero = vec![0i32; POINT_CAPACITY * LINK_CORRECTION_STRIDE];
         queue.write_buffer(
             &self.link_corrections,
             0,

@@ -33,6 +33,7 @@ impl Renderer {
         bounds_corners: [Vec2; 4],
         camera_pos: Vec2,
         zoom: f32,
+        time: f32,
         show_grid: bool,
         encoder: &mut wgpu::CommandEncoder,
     ) -> bool {
@@ -40,6 +41,7 @@ impl Renderer {
 
         // Prepare viewport textures (compute layout and create textures)
         let mut viewport_texture_view = None;
+        let mut viewport_size = None;
         {
             profile_scope!("Prepare Viewports");
             if let Some(screen) = ui_manager.get_screen("simulation") {
@@ -50,6 +52,9 @@ impl Renderer {
                     // Get the simulation viewport texture from the component
                     if let Some(view) = ui_renderer.get_viewport_texture_view(element, "simulation") {
                         viewport_texture_view = Some(view);
+                    }
+                    if let Some((width, height)) = ui_renderer.get_viewport_size(element, "simulation") {
+                        viewport_size = Some((width, height));
                     }
                 }
             }
@@ -67,9 +72,9 @@ impl Renderer {
         {
             profile_scope!("Update Bounds");
             let bounds = environment.get_bounds();
-            // Get viewport dimensions from the viewport texture
-            // For now, use screen dimensions - we can get actual viewport size later if needed
-            let view_size = Vec2::new(gpu.config.width as f32, gpu.config.height as f32);
+            let view_size = viewport_size
+                .map(|(width, height)| Vec2::new(width as f32, height as f32))
+                .unwrap_or_else(|| Vec2::new(gpu.config.width as f32, gpu.config.height as f32));
             bounds_renderer.update_bounds(
                 &gpu.queue,
                 bounds_corners,
@@ -79,19 +84,30 @@ impl Renderer {
                 view_size.x,
                 view_size.y,
                 [1.0, 1.0, 1.0, 1.0], // White border
+                time,
             );
         }
 
         // Update planet texture if bounds changed
         {
             profile_scope!("Update Planet");
-            environment.planet_mut().update(&gpu.device, &gpu.queue, gpu.config.format);
+            environment
+                .planet_mut()
+                .update(&gpu.device, &gpu.queue, gpu.config.format);
+        }
+        {
+            profile_scope!("Update Terrain Caustics");
+            environment
+                .planet_mut()
+                .update_caustics(&gpu.device, &gpu.queue, time);
         }
         
         // Render planet background and bounds border to viewport texture first
         {
             profile_scope!("Render Planet Background & Bounds");
-            let planet_texture_view = environment.planet().texture_view();
+            let planet_texture_view = environment.planet().display_texture_view();
+            let height_texture_view = environment.planet().height_texture_view();
+            let planet_texture_generation = environment.planet().texture_generation();
 
             bounds_renderer.render(
                 encoder,
@@ -99,6 +115,8 @@ impl Renderer {
                 &gpu.queue,
                 viewport_texture_view,
                 planet_texture_view,
+                height_texture_view,
+                planet_texture_generation,
             );
         }
 
@@ -174,6 +192,20 @@ impl Renderer {
             render_pass.set_bind_group(0, &render_pipelines.link_bind_group, &[]);
             render_pass.draw(0..10, 0..(LINK_CAPACITY as u32));
         }
+
+        /*{
+            profile_scope!("Render Caustics Overlay");
+            let planet_texture_view = environment.planet().texture_view();
+            let height_texture_view = environment.planet().height_texture_view();
+            bounds_renderer.render_caustics(
+                encoder,
+                &gpu.device,
+                &gpu.queue,
+                viewport_texture_view,
+                planet_texture_view,
+                height_texture_view,
+            );
+        }*/
 
         true
     }

@@ -308,6 +308,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let center = vec2<f32>(0.5, 0.5);
     let uv_offset = (in.uv - center) * 2.0; // [-0.5, 0.5]
     let dist = length(uv_offset);
+    let fragment_world_pos = in.world_pos + uv_offset * in.max_radius;
+    let bounds = uniforms.bounds;
+    if fragment_world_pos.x < bounds.x
+        || fragment_world_pos.x > bounds.z
+        || fragment_world_pos.y < bounds.y
+        || fragment_world_pos.y > bounds.w {
+        discard;
+    }
 
     // Calculate the point on the circumference in the direction of this pixel
     // Use non-rotated UV for neighbor calculations
@@ -446,9 +454,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         cell_color = brighten(cell_color, 1.0 + brightness_boost);
     }
 
-    let out_a = 1.0;
+    let blue_tint = vec3<f32>(0.95, 0.98, 1.05);
+    cell_color = vec4<f32>(cell_color.rgb * blue_tint, cell_color.a);
 
+    let normalized_dist = clamp(dist / max(radius_normalized, 1.0e-4), 0.0, 1.0);
+    let edge_opacity = smoothstep(0.1, 1.0, normalized_dist);
+    var out_a = mix(0.12, 0.9, edge_opacity);
+    if dist > radius_normalized - cell.cell_wall_thickness {
+        out_a = 1.0;
+    }
 
-
-    return vec4<f32>(cell_color.rgb, out_a);
+    return vec4<f32>(cell_color.rgb, out_a * cell_color.a);
 }

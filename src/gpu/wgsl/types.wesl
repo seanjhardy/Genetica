@@ -118,6 +118,7 @@ struct Uniforms {
     bounds: vec4<f32>,     // (left, top, right, bottom)
     nutrient: vec4<u32>,   // (Cell size, scale, reserved, reserved)
     selection: vec4<u32>,  // (selected_cell, reserved0, reserved1, reserved2)
+    seed: vec4<u32>,       // (spawn_seed, reserved0, reserved1, reserved2)
 }
 
 

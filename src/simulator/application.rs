@@ -26,6 +26,7 @@ use crate::simulator::environment::Environment;
 use crate::simulator::renderer::Renderer;
 use crate::simulator::simulator::Simulation;
 use crate::simulator::poll_thread::PollThread;
+use rand::Rng;
 
 const SIMULATION_DELTA_TIME: f32 = 1.0;
 const PICK_WORKGROUP_SIZE: u32 = 256;
@@ -362,36 +363,23 @@ impl Application {
 
         let camera_pos = self.camera.get_position();
         let zoom = self.camera.get_zoom();
-        let view_size = Vec2::new(self.gpu.config.width as f32, self.gpu.config.height as f32);
+        let viewport_size = self
+            .ui_manager
+            .get_screen("simulation")
+            .and_then(|screen| screen.find_component_bounds("simulation"))
+            .map(|bounds| Vec2::new(bounds.width, bounds.height))
+            .filter(|size| size.x > 0.0 && size.y > 0.0);
+        let view_size = viewport_size.unwrap_or_else(|| {
+            Vec2::new(self.gpu.config.width as f32, self.gpu.config.height as f32)
+        });
+        if view_size.x != self.gpu.config.width as f32 || view_size.y != self.gpu.config.height as f32 {
+            self.uniforms_need_update = true;
+        }
         //let (nutrient_grid_width, nutrient_grid_height) = buffers.nutrient_grid_dimensions();
 
         // Only update uniforms if camera moved, bounds changed, or window resized
         if self.uniforms_need_update {
-            let selected_cell = self.selected_cell.unwrap_or(u32::MAX);
-            let uniforms = Uniforms::new(
-                SIMULATION_DELTA_TIME,
-                [camera_pos.x, camera_pos.y],
-                zoom,
-                self.bounds.left,
-                self.bounds.top,
-                self.bounds.right(),
-                self.bounds.bottom(),
-                view_size.x,
-                view_size.y,
-                0.0, // cell count (not used for points)
-                20,  // nutrient cell size (not used for points)
-                4_000_000_000, // nutrient scale (not used for points)
-                100, // nutrient grid width (not used for points)
-                100, // nutrient grid height (not used for points)
-                selected_cell,
-            );
-
-            // Update uniforms for all slots to ensure consistency when slots rotate
-            let sim = self.simulation.lock();
-            for slot in &sim.slots {
-                slot.buffers.update_uniforms(&self.gpu.queue, bytemuck::cast_slice(&[uniforms]));
-            }
-            self.uniforms_need_update = false;
+            self.apply_uniforms_now();
         }
 
         let current_step = self.simulation.lock().get_step();
@@ -442,7 +430,7 @@ impl Application {
             profile_scope!("Render Simulation");
             let mut environment = self.environment.lock();
             let render_buffers = self.simulation.lock().get_render_buffers();
-            self.renderer.render_simulation(
+        self.renderer.render_simulation(
                 &mut self.gpu,
                 &render_buffers,
                 &mut self.render_pipelines,
@@ -453,6 +441,7 @@ impl Application {
                 bounds_corners,
                 camera_pos,
                 zoom,
+                time,
                 self.show_grid,
                 &mut encoder,
             );
@@ -903,10 +892,62 @@ impl Application {
 
         self.camera.set_position(self.initial_camera_position);
         self.camera.set_zoom(self.initial_camera_zoom);
+        {
+            let mut environment = self.environment.lock();
+            self.bounds = environment.get_bounds();
+            environment
+                .planet_mut()
+                .update(&self.gpu.device, &self.gpu.queue, self.gpu.config.format);
+            environment
+                .planet_mut()
+                .update_caustics(&self.gpu.device, &self.gpu.queue, self.application_time * 0.005);
+        }
         self.uniforms_need_update = true;
+        self.apply_uniforms_now();
 
         self.real_time = 0.0;
         self.realtime_frame_counter = 0;
+    }
+
+    fn apply_uniforms_now(&mut self) {
+        let viewport_size = self
+            .ui_manager
+            .get_screen("simulation")
+            .and_then(|screen| screen.find_component_bounds("simulation"))
+            .map(|bounds| Vec2::new(bounds.width, bounds.height))
+            .filter(|size| size.x > 0.0 && size.y > 0.0);
+        let view_size = viewport_size.unwrap_or_else(|| {
+            Vec2::new(self.gpu.config.width as f32, self.gpu.config.height as f32)
+        });
+        let camera_pos = self.camera.get_position();
+        let zoom = self.camera.get_zoom();
+        let selected_cell = self.selected_cell.unwrap_or(u32::MAX);
+        let spawn_seed = self.simulation.lock().spawn_seed();
+        let uniforms = Uniforms::new(
+            SIMULATION_DELTA_TIME,
+            [camera_pos.x, camera_pos.y],
+            zoom,
+            self.bounds.left,
+            self.bounds.top,
+            self.bounds.right(),
+            self.bounds.bottom(),
+            view_size.x,
+            view_size.y,
+            0.0,
+            20,
+            4_000_000_000,
+            100,
+            100,
+            selected_cell,
+            spawn_seed,
+        );
+
+        let sim = self.simulation.lock();
+        for slot in &sim.slots {
+            slot.buffers
+                .update_uniforms(&self.gpu.queue, bytemuck::cast_slice(&[uniforms]));
+        }
+        self.uniforms_need_update = false;
     }
 
         /// Submits GPU work to the queue
@@ -1091,6 +1132,9 @@ impl Application {
             (width, height)
         };
 
+        let mut rng = rand::thread_rng();
+        let spawn_seed: u32 = rng.gen();
+
         let initial_uniforms = Uniforms::new(
             SIMULATION_DELTA_TIME,
             [camera.get_position().x, camera.get_position().y],
@@ -1107,6 +1151,7 @@ impl Application {
             nutrient_grid_width,
             nutrient_grid_height,
             u32::MAX,
+            spawn_seed,
         );
 
         let bounds_renderer = BoundsRenderer::new(&gpu.device, &gpu.queue, &gpu.config);
@@ -1146,6 +1191,7 @@ impl Application {
             Arc::new(gpu.queue.clone()),
             environment.clone(),
             initial_uniforms,
+            spawn_seed,
         );
 
         let render_buffers = simulation.get_render_buffers();

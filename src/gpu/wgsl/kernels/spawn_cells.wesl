@@ -1,5 +1,5 @@
 import package::types::{Uniforms, Point, Cell, Link, DivisionRequest, Event};
-import package::constants::{MIN_POINTS, M_PI};
+import package::constants::{MIN_CELLS, M_PI};
 import package::utils::color::{hsl_to_rgb};
 import package::utils::random::{rand_01};
 import package::utils::spawn_helpers::{
@@ -32,7 +32,7 @@ const MAX_EVENTS: u32 = 2000u;
 
 // Check if we should spawn more cells (below capacity limit)
 fn should_spawn_more(current_count: u32) -> bool {
-    return current_count < MIN_POINTS;
+    return current_count < MIN_CELLS;
 }
 
 // Attempt to acquire both physics and cell slots atomically
@@ -144,6 +144,7 @@ fn spawn_cell(seed: f32) {
 }
 
 fn process_division_request(request: DivisionRequest) {
+    let base_seed = f32(uniforms.seed.x & 0x00FFFFFFu);
     // Safety check: ensure parent indices are valid
     if request.parent_cell_idx >= arrayLength(&cells) {
         return;
@@ -186,7 +187,11 @@ fn process_division_request(request: DivisionRequest) {
     }
 
     // Create daughter cell with unique seed based on parent, generation, and daughter position
-    let daughter_seed = f32(request.parent_cell_idx) + f32(request.generation) * 1000.0 + daughter_pos.x * 0.1 + daughter_pos.y * 0.01;
+    let daughter_seed = base_seed
+        + f32(request.parent_cell_idx)
+        + f32(request.generation) * 1000.0
+        + daughter_pos.x * 0.1
+        + daughter_pos.y * 0.01;
     spawn_cell_at_slot(
         point_slot_idx,
         cell_slot_idx,
@@ -255,7 +260,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if should_spawn_more(current_count) {
         // Spawn only a single cell per dispatch to pace growth.
         if (atomicLoad(&event_counter.value) < MAX_EVENTS) {
-            let seed = f32(current_count);
+            let base_seed = f32(uniforms.seed.x & 0x00FFFFFFu);
+            let seed = base_seed + f32(current_count);
             spawn_cell(seed);
         }
     }

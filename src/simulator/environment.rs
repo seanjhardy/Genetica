@@ -76,6 +76,12 @@ impl Environment {
         self.bounds = bounds;
         self.planet.set_bounds(bounds);
     }
+
+    /// Reset environment bounds and reseed planet noise
+    pub fn reset_with_new_seed(&mut self, bounds: Rect) {
+        self.set_bounds(bounds);
+        self.planet.reseed();
+    }
     /// Get cursor hint for drag handle
     pub fn get_cursor_hint(&self) -> Option<&'static str> {
         self.drag_handler.get_cursor_hint()

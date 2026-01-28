@@ -10,6 +10,7 @@ use crate::simulator::environment::Environment;
 use crate::simulator::state::{PauseState, SimSlot, SlotState};
 use crate::genetic_algorithm::GeneticAlgorithm;
 use parking_lot::Mutex;
+use rand::Rng;
 
 const WORKGROUP_SIZE: u32 = 1024;
 const SIM_STATE_RING_SIZE: usize = 1;
@@ -26,6 +27,7 @@ pub struct Simulation {
     current_bounds: Rect,
     initial_bounds: Rect,
     paused_state: PauseState,
+    spawn_seed: u32,
 }
 
 impl Simulation {
@@ -34,6 +36,7 @@ impl Simulation {
         queue: Arc<wgpu::Queue>,
         environment: Arc<parking_lot::Mutex<Environment>>,
         initial_uniforms: Uniforms,
+        spawn_seed: u32,
     ) -> Self {
         let initial_bounds = environment.lock().get_bounds();
         let initial_uniform_bytes = bytemuck::bytes_of(&initial_uniforms).to_vec();
@@ -80,6 +83,7 @@ impl Simulation {
             initial_bounds,
             render_slot: 0,
             paused_state: PauseState::new(false),
+            spawn_seed,
         }
     }
 
@@ -155,13 +159,14 @@ impl Simulation {
 
         {
             let mut env = self.environment.lock();
-            env.set_bounds(self.initial_bounds);
+            env.reset_with_new_seed(self.initial_bounds);
         }
 
         self.genetic_algorithm.lock().reset();
 
         self.step.store(0, Ordering::Relaxed);
         self.current_bounds = self.initial_bounds;
+        self.spawn_seed = rand::thread_rng().gen();
     }
 
     pub fn get_step(&self) -> usize {
@@ -170,6 +175,10 @@ impl Simulation {
 
     pub fn step_counter(&self) -> Arc<AtomicUsize> {
         self.step.clone()
+    }
+
+    pub fn spawn_seed(&self) -> u32 {
+        self.spawn_seed
     }
 
 

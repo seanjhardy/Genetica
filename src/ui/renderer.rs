@@ -1462,6 +1462,27 @@ impl UiRenderer {
         None
     }
 
+    /// Get the size for a viewport by ID from the component tree
+    pub fn get_viewport_size(&self, component: &Component, viewport_id: &str) -> Option<(u32, u32)> {
+        if let Some(component_id) = &component.id {
+            if component_id == viewport_id {
+                if let ComponentType::Viewport(viewport) = &component.component_type {
+                    return Some((viewport.width, viewport.height));
+                }
+            }
+        }
+
+        if let ComponentType::View(view) = &component.component_type {
+            for child in &view.children {
+                if let Some(size) = self.get_viewport_size(child, viewport_id) {
+                    return Some(size);
+                }
+            }
+        }
+
+        None
+    }
+
     fn add_rounded_rect(
         &mut self,
         x: f32,
@@ -2225,4 +2246,3 @@ impl UiRenderer {
     }
 
 }
-

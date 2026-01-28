@@ -6,16 +6,20 @@ struct PlanetUniform {
     grid_threshold_padding: vec4<f32>,      // grid_zoom_threshold, padding...
     border_color: vec4<f32>,
     bounds: vec4<f32>,                      // left, top, right, bottom
-    padding: vec4<f32>,
+    padding: vec4<f32>,                     // parallax_strength, view_height, min_steps, max_steps
+    time_params: vec4<f32>,                 // time, reserved...
 }
 
 @group(0) @binding(0)
 var planet_texture: texture_2d<f32>;
 
 @group(0) @binding(1)
-var planet_sampler: sampler;
+var height_texture: texture_2d<f32>;
 
 @group(0) @binding(2)
+var planet_sampler: sampler;
+
+@group(0) @binding(3)
 var<uniform> uniform_data: PlanetUniform;
 
 struct VertexOutput {
@@ -86,9 +90,117 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return out;
 }
 
+fn sample_height(uv: vec2<f32>) -> f32 {
+    let clamped = clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0));
+    let dims = vec2<f32>(textureDimensions(height_texture));
+    let texel = 1.0 / max(dims, vec2<f32>(1.0, 1.0));
+
+    let c = textureSample(height_texture, planet_sampler, clamped).r;
+    let l = textureSample(height_texture, planet_sampler, clamped + vec2<f32>(-texel.x, 0.0)).r;
+    let r = textureSample(height_texture, planet_sampler, clamped + vec2<f32>(texel.x, 0.0)).r;
+    let u = textureSample(height_texture, planet_sampler, clamped + vec2<f32>(0.0, -texel.y)).r;
+    let d = textureSample(height_texture, planet_sampler, clamped + vec2<f32>(0.0, texel.y)).r;
+
+    let dilated = max(c, max(max(l, r), max(u, d)));
+    return 1.0 - clamp(dilated, 0.0, 1.0);
+}
+
+fn parallax_occlusion_uv(
+    base_uv: vec2<f32>,
+    view_dir_uv: vec2<f32>,
+    parallax_strength: f32,
+    view_height: f32,
+    min_steps: f32,
+    max_steps: f32
+) -> vec2<f32> {
+    if (parallax_strength <= 0.0) {
+        return base_uv;
+    }
+
+    let view_height_clamped = max(view_height, 1.0e-4);
+    let view_dir = normalize(vec3<f32>(view_dir_uv, view_height_clamped));
+    let ndotv = clamp(abs(view_dir.z), 0.0, 1.0);
+    let steps_f = clamp(mix(max_steps, min_steps, ndotv), 1.0, max_steps);
+    let steps = max(u32(steps_f + 0.5), 1u);
+    let layer_depth = 1.0 / f32(steps);
+
+    var curr_uv = base_uv;
+    var curr_depth = 0.0;
+    var height = sample_height(curr_uv);
+    var prev_uv = curr_uv;
+    var prev_depth = 0.0;
+    var prev_height = height;
+    let parallax_dir = (view_dir.xy / max(view_dir.z, 1.0e-4)) * parallax_strength;
+    let step_uv = parallax_dir * layer_depth;
+
+    var i = 0u;
+    loop {
+        if (i >= steps || curr_depth >= height) {
+            break;
+        }
+        prev_uv = curr_uv;
+        prev_depth = curr_depth;
+        prev_height = height;
+        curr_uv = curr_uv + step_uv;
+        curr_depth = curr_depth + layer_depth;
+        height = sample_height(curr_uv);
+        i = i + 1u;
+    }
+
+    var low_uv = curr_uv;
+    var low_depth = curr_depth;
+    var low_height = height;
+    var high_uv = prev_uv;
+    var high_depth = prev_depth;
+    var high_height = prev_height;
+
+    var refine = 0u;
+    loop {
+        if (refine >= 5u) {
+            break;
+        }
+        let mid_uv = (low_uv + high_uv) * 0.5;
+        let mid_depth = (low_depth + high_depth) * 0.5;
+        let mid_height = sample_height(mid_uv);
+        if (mid_depth <= mid_height) {
+            high_uv = mid_uv;
+            high_depth = mid_depth;
+            high_height = mid_height;
+        } else {
+            low_uv = mid_uv;
+            low_depth = mid_depth;
+            low_height = mid_height;
+        }
+        refine = refine + 1u;
+    }
+
+    let denom = (high_height - high_depth) - (low_height - low_depth);
+    let weight = select(0.0, (high_height - high_depth) / denom, abs(denom) > 1.0e-5);
+    return mix(high_uv, low_uv, clamp(weight, 0.0, 1.0));
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var color = textureSample(planet_texture, planet_sampler, in.uv);
+    let bounds = uniform_data.bounds;
+    let bounds_width = bounds.z - bounds.x;
+    let bounds_height = bounds.w - bounds.y;
+    let bounds_size = max(vec2<f32>(bounds_width, bounds_height), vec2<f32>(1.0e-4));
+    let bounds_center = vec2<f32>(
+        (bounds.x + bounds.z) * 0.5,
+        (bounds.y + bounds.w) * 0.5
+    );
+    let expanded_size = bounds_size * 2.0;
+    let base_uv = (in.world_pos - bounds_center) / expanded_size + vec2<f32>(0.5, 0.5);
+    let view_dir_uv = (in.world_pos - uniform_data.camera_pos_zoom_thickness.xy) / expanded_size;
+    let parallax_strength = uniform_data.padding.x;
+    let view_height = uniform_data.padding.y;
+    let min_steps = max(uniform_data.padding.z, 4.0);
+    let max_steps = max(uniform_data.padding.w, min_steps);
+    let parallax_uv = parallax_occlusion_uv(base_uv, view_dir_uv, parallax_strength, view_height, min_steps, max_steps);
+    let sample_uv = clamp(parallax_uv, vec2<f32>(0.0), vec2<f32>(1.0));
+    let out_of_bounds = any(parallax_uv < vec2<f32>(0.0)) || any(parallax_uv > vec2<f32>(1.0));
+    let deep = vec4<f32>(1.0, 3.0, 18.0, 255.0) / 1000.0;
+    var color = select(textureSample(planet_texture, planet_sampler, sample_uv), deep, out_of_bounds);
 
     let zoom = uniform_data.camera_pos_zoom_thickness.z;
     let line_thickness_world = uniform_data.camera_pos_zoom_thickness.w;
@@ -150,4 +262,3 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     return color;
 }
-

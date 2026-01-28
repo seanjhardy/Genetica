@@ -33,6 +33,22 @@ pub static PERLIN_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wesl!("shaders_perlin").to_string()));
 pub static ENV_TEXTURE_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wesl!("shaders_env_texture").to_string()));
+pub static TERRAIN_HEIGHT_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wesl!("shaders_terrain_height").to_string()));
+pub static TERRAIN_ROCK_NOISE_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wesl!("shaders_terrain_rock_noise").to_string()));
+pub static TERRAIN_SHADOW_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wesl!("shaders_terrain_shadow").to_string()));
+pub static TERRAIN_COMPOSITE_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wesl!("shaders_terrain_composite").to_string()));
+pub static CAUSTICS_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wesl!("shaders_caustics").to_string()));
+pub static CAUSTICS_BLIT_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wesl!("shaders_caustics_blit").to_string()));
+pub static CAUSTICS_COMPOSITE_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wesl!("shaders_caustics_composite").to_string()));
+pub static TERRAIN_CAUSTICS_COMPOSITE_SHADER: Lazy<ShaderSource<'static>> =
+    Lazy::new(|| shader_source(include_wesl!("shaders_terrain_caustics_composite").to_string()));
 pub static POST_PROCESSING_SHADER: Lazy<ShaderSource<'static>> =
     Lazy::new(|| shader_source(include_wesl!("shaders_post_processing").to_string()));
 pub static TEXT_SHADER: Lazy<ShaderSource<'static>> =
